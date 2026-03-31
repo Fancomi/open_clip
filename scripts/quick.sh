@@ -1,15 +1,20 @@
 #!/bin/bash
-# quick.sh — 1/10 数据 scaling law 对比
+# quick.sh — 全量 COCO 对比训练，大 batch
 #
 # 实验矩阵（4 组）：
 #   PE-Core-B × CLIP | PE-Core-B × SigLIP
 #   ViT-B     × CLIP | ViT-B     × SigLIP
 #
-# 数据：
-#   train: clip_train_quick.tsv (56,675 行 ≈ 1/10 全量)
-#   val:   clip_val.tsv (25,010 行，quick 用全量 val 评估)
-#   每 epoch ≈ 221 steps (56675 / 256)，2 epochs ≈ 442 steps
-# 硬件：2x A800-80GB
+# 数据：clip_train.tsv (566,747 行全量) / clip_val.tsv (25,010 行)
+# global batch = 4096/GPU × 2 = 8192
+# steps/epoch ≈ 69，10 epochs ≈ 690 steps
+#
+# 超参参考 h14_84_8_pretrain.sh（demo 为 batch=32768, lr=2.048e-3）
+#   lr = 1e-3（按 batch 比例缩放）
+#   beta2 = 0.95（demo 一致）
+#   warmup = 50 steps（690 总步的 ~7%）
+#
+# 硬件：2x A800-80GB（4096/GPU ≈ 57GB，grad-ckpt 开启）
 
 set -e
 export PYTHONPATH="./src:${PYTHONPATH}"
@@ -17,14 +22,14 @@ export PYTHONPATH="./src:${PYTHONPATH}"
 TS=$(date +%m%d_%H%M)
 
 COCO="/root/paddlejob/workspace/env_run/penghaotian/datas/coco/annotations"
-TRAIN="${COCO}/clip_train_quick.tsv"
+TRAIN="${COCO}/clip_train.tsv"
 VAL="${COCO}/clip_val.tsv"
 
 COMMON="--dataset-type csv --csv-img-key filepath --csv-caption-key caption \
-    --precision bf16 --workers 4 --epochs 2 --batch-size 128 \
-    --lr 5e-4 --beta1 0.9 --beta2 0.98 --eps 1e-6 --wd 0.2 --warmup 50 \
-    --save-frequency 1 --save-most-recent \
-    --grad-checkpointing --log-every-n-steps 10 --val-frequency 1"
+    --precision bf16 --workers 6 --epochs 10 --batch-size 4096 \
+    --lr 1e-3 --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 --warmup 5 \
+    --save-frequency 2 --save-most-recent \
+    --grad-checkpointing --log-every-n-steps 1 --val-frequency 2"
 
 run() {
     local TAG=$1 MODEL=$2 EXTRA=$3 PORT=$4
