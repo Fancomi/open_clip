@@ -1,7 +1,9 @@
 import logging
+import time
 
 
 def setup_logging(log_file, level, include_host=False):
+    logging.Formatter.converter = time.localtime  # use local time (Beijing CST) instead of UTC
     if include_host:
         import socket
         hostname = socket.gethostname()

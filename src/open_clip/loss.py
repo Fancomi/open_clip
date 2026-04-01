@@ -461,4 +461,4 @@ class SigLipLoss(nn.Module):
             else:
                 assert False
 
-        return {"contrastive_loss": loss} if output_dict else loss
+        return {"siglip_loss": loss} if output_dict else loss

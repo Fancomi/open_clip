@@ -568,6 +568,7 @@ class Eva(nn.Module):
             dynamic_img_pad: bool = False,
             ref_feat_shape: Optional[Union[Tuple[int, int], int]] = None,
             head_init_scale: float = 0.001,
+            use_deep_norm_init: bool = True,
             device=None,
             dtype=None,
     ):
@@ -743,6 +744,7 @@ class Eva(nn.Module):
         self.head_drop = nn.Dropout(drop_rate)
         self.head = nn.Linear(embed_dim, num_classes, **dd) if num_classes > 0 else nn.Identity()
         self.head_init_scale = head_init_scale
+        self.use_deep_norm_init = use_deep_norm_init
 
         # TODO: skip init when on meta device when safe to do so
         self.init_weights(needs_reset=False)
@@ -755,10 +757,16 @@ class Eva(nn.Module):
             trunc_normal_(self.cls_token, std=.02)
         if self.reg_token is not None:
             trunc_normal_(self.reg_token, std=.02)
+        if self.attn_pool is not None:
+            # Re-init MAP latent query with std=1.0 to match open_clip AttentionalPooler (torch.randn).
+            # timm default uses std=dim^-0.5 (~0.036) which produces near-zero features at init,
+            # preventing CLIP contrastive loss from receiving gradient signal.
+            trunc_normal_(self.attn_pool.latent, std=1.0)
 
-        self.fix_init_weight()
+        if self.use_deep_norm_init:
+            self.fix_init_weight()
 
-        if self.head_init_scale and isinstance(self.head, nn.Linear):
+        if self.use_deep_norm_init and self.head_init_scale and isinstance(self.head, nn.Linear):
             trunc_normal_(self.head.weight, std=.02)
             with torch.no_grad():
                 self.head.weight.mul_(self.head_init_scale)
@@ -2204,6 +2212,7 @@ def vit_pe_core_base_patch16_224(pretrained: bool = False, **kwargs) -> Eva:
         attn_pool_num_heads=8,
         attn_pool_mlp_ratio=4.,
         norm_layer=partial(LayerNorm, eps=1e-5),
+        use_deep_norm_init=False,
         #dynamic_img_size=True
     )
     return _create_eva('vit_pe_core_base_patch16_224', pretrained=pretrained, **dict(model_args, **kwargs))

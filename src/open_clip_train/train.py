@@ -100,6 +100,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             with autocast():
                 model_out = model(images, texts)
                 logit_scale = model_out["logit_scale"]
+                logit_bias = model_out.get("logit_bias", None)
                 if args.distill:
                     with torch.no_grad():
                         dist_model_out = dist_model(images, texts)
@@ -110,6 +111,23 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 losses["loss"] = total_loss
 
             backward(total_loss, scaler)
+
+            # === DIAG: print key grad/feature stats for first 5 steps ===
+            if is_master(args) and i_accum < 5:
+                m = unwrap_model(model)
+                lb = getattr(m, 'logit_bias', None)
+                ls = getattr(m, 'logit_scale', None)
+                img_f = model_out.get("image_features", None)
+                txt_f = model_out.get("text_features", None)
+                lb_grad = lb.grad.item() if (lb is not None and lb.grad is not None) else None
+                ls_grad = ls.grad.item() if (ls is not None and ls.grad is not None) else None
+                logging.info(
+                    f"  [diag2] logit_bias.grad={lb_grad}  logit_scale.grad={ls_grad}"
+                    + (f"  img_norm={img_f.norm(dim=-1).mean().item():.4f}"
+                       f"  txt_norm={txt_f.norm(dim=-1).mean().item():.4f}"
+                       if img_f is not None else "")
+                    + (f"  sim_pos={( (img_f * txt_f).sum(-1).mean().item()):.4f}" if img_f is not None else "")
+                )
         else:
             # First, cache the features without any gradient tracking.
             with torch.no_grad():
@@ -145,7 +163,9 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
 
                     inputs_no_accum = {}
                     inputs_no_accum["logit_scale"] = logit_scale = model_out.pop("logit_scale")
+                    logit_bias = None
                     if "logit_bias" in model_out:
+                        logit_bias = model_out["logit_bias"]
                         inputs_no_accum["logit_bias"] = model_out.pop("logit_bias")
 
                     inputs = {}
@@ -173,12 +193,41 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 if args.grad_clip_norm is not None:
                     scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip_norm, norm_type=2.0)
+                # diag3: read true grads after unscale, before step
+                if is_master(args) and i_accum < 5:
+                    m = unwrap_model(model)
+                    lb = getattr(m, 'logit_bias', None)
+                    ls = getattr(m, 'logit_scale', None)
+                    vp = next(iter(m.visual.parameters()))
+                    _vp_before = vp.data.float().clone()
+                    _lb_grad = lb.grad.item() if (lb is not None and lb.grad is not None) else None
+                    _ls_grad = ls.grad.item() if (ls is not None and ls.grad is not None) else None
+                    logging.info(f"  [diag3] lb.grad={_lb_grad}  ls.grad={_ls_grad}"
+                                 f"  visual[0].norm={vp.data.norm().item():.4f}")
                 scaler.step(optimizer)
+                # diag3 cont: measure param update magnitude after step
+                if is_master(args) and i_accum < 5:
+                    delta = (vp.data.float() - _vp_before).norm().item()
+                    logging.info(f"  [diag3] visual[0] param_delta={delta:.6f}")
             scaler.update()
         else:
             if args.grad_clip_norm is not None:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip_norm, norm_type=2.0)
+            # diag3: param delta (amp_bf16 path, scaler=None)
+            if is_master(args) and i_accum < 5:
+                m = unwrap_model(model)
+                vp = next(iter(m.visual.parameters()))
+                _vp_before = vp.data.float().clone()
+                lb = getattr(m, 'logit_bias', None)
+                ls = getattr(m, 'logit_scale', None)
+                _lb_grad = lb.grad.item() if (lb is not None and lb.grad is not None) else None
+                _ls_grad = ls.grad.item() if (ls is not None and ls.grad is not None) else None
+                logging.info(f"  [diag3] lb.grad={_lb_grad}  ls.grad={_ls_grad}"
+                             f"  visual[0].norm={vp.data.norm().item():.4f}")
             optimizer.step()
+            if is_master(args) and i_accum < 5:
+                delta = (vp.data.float() - _vp_before).norm().item()
+                logging.info(f"  [diag3] visual[0] param_delta={delta:.6f}")
 
         # reset gradient accum, if enabled
         if args.accum_freq > 1:
@@ -194,6 +243,14 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
         if is_master(args) and (i_accum % args.log_every_n_steps == 0 or batch_count == num_batches_per_epoch):
             batch_size = len(images)
             num_samples = batch_count * batch_size * args.accum_freq * args.world_size
+
+            # Grad norm diagnostics (first 3 steps only to avoid overhead)
+            if batch_count <= 3:
+                grad_norms = {n: p.grad.norm().item() for n, p in model.named_parameters()
+                              if p.grad is not None}
+                total_gnorm = sum(v**2 for v in grad_norms.values()) ** 0.5
+                logging.info(f"  [diag] total_grad_norm={total_gnorm:.4f} "
+                             f"n_params_with_grad={len(grad_norms)}")
             samples_per_epoch = dataloader.num_samples
             percent_complete = 100.0 * batch_count / num_batches_per_epoch
 
@@ -204,6 +261,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 losses_m[key].update(val.item(), batch_size)
 
             logit_scale_scalar = logit_scale.item()
+            logit_bias_scalar = logit_bias.item() if logit_bias is not None else None
             loss_log = " ".join(
                 [
                     f"{loss_name.capitalize()}: {loss_m.val:#.5g} ({loss_m.avg:#.5g})" 
@@ -217,7 +275,9 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 f"Data (t): {data_time_m.avg:.3f} "
                 f"Batch (t): {batch_time_m.avg:.3f}, {samples_per_second:#g}/s, {samples_per_second_per_gpu:#g}/s/gpu "
                 f"LR: {optimizer.param_groups[0]['lr']:5f} "
-                f"Logit Scale: {logit_scale_scalar:.3f} " + loss_log
+                f"Logit Scale: {logit_scale_scalar:.3f} "
+                + (f"Logit Bias: {logit_bias_scalar:.3f} " if logit_bias_scalar is not None else "")
+                + loss_log
             )
 
             # Save train loss / etc. Using non avg meter values as loggers have their own smoothing
@@ -228,7 +288,9 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 "samples_per_second_per_gpu": samples_per_second_per_gpu,
                 "scale": logit_scale_scalar,
                 "lr": optimizer.param_groups[0]["lr"]
-            }            
+            }
+            if logit_bias_scalar is not None:
+                log_data["bias"] = logit_bias_scalar
             log_data.update({name:val.val for name,val in losses_m.items()})
 
             log_data = {"train/" + name: val for name, val in log_data.items()}
@@ -304,7 +366,7 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
 
                 cumulative_loss += total_loss * batch_size
                 num_samples += batch_size
-                if is_master(args) and (i % 100) == 0:
+                if is_master(args) and (i % args.log_every_n_steps) == 0:
                     logging.info(
                         f"Eval Epoch: {epoch} [{num_samples} / {samples_per_val}]\t"
                         f"Clip Loss: {cumulative_loss / num_samples:.6f}\t")
