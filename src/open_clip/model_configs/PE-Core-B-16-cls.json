@@ -4,7 +4,7 @@
         "image_size": 224,
         "timm_model_name": "vit_pe_core_base_patch16_224",
         "timm_model_pretrained": false,
-        "timm_pool": "tok",
+        "timm_pool": "token",
         "timm_proj": "linear"
     },
     "text_cfg": {

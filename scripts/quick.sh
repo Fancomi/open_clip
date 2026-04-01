@@ -14,6 +14,7 @@
 
 set -e
 export PYTHONPATH="./src:${PYTHONPATH}"
+export TZ='Asia/Shanghai'  # Use Beijing time for timestamps
 
 TS=$(date +%m%d_%H%M)
 
@@ -41,7 +42,7 @@ run() {
         --name "${NAME}"
 }
 
-run "vit_siglip"    "ViT-B-16-exp"         29511
+# run "vit_siglip"    "ViT-B-16-exp"         29511
 run "pe_cls_siglip" "PE-Core-B-16-cls"    29510
 
 

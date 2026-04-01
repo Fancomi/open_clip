@@ -11,6 +11,7 @@
 
 set -e
 export PYTHONPATH="./src:${PYTHONPATH}"
+export TZ='Asia/Shanghai'  # Use Beijing time for timestamps
 
 TS=$(date +%m%d_%H%M)
 

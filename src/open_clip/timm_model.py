@@ -81,6 +81,9 @@ class TimmModel(nn.Module):
                 # reset global pool if pool config set, otherwise leave as network default
                 reset_kwargs = dict(global_pool=pool) if pool else {}
                 self.trunk.reset_classifier(0, **reset_kwargs)
+                # For models with attn_pool (e.g., Eva/PE), delete it to use standard pooling
+                if pool and hasattr(self.trunk, 'attn_pool') and self.trunk.attn_pool is not None:
+                    self.trunk.attn_pool = None
             prev_chs = self.trunk.num_features
 
         head_layers = OrderedDict()
