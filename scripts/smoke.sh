@@ -21,7 +21,7 @@ VAL="${COCO}/clip_val_smoke.tsv"
 
 COMMON="--dataset-type csv --csv-img-key filepath --csv-caption-key caption \
     --precision amp_bf16 --workers 4 --epochs 1 --batch-size 128 \
-    --lr 5e-4 --beta1 0.9 --beta2 0.98 --eps 1e-6 --wd 0.2 --warmup 2 \
+    --lr 4e-4 --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 --warmup 1 \
     --save-frequency 1 --save-most-recent --delete-previous-checkpoint \
     --grad-checkpointing --log-every-n-steps 1 --val-frequency 1 \
     --siglip"

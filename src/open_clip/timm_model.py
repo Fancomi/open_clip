@@ -14,6 +14,7 @@ try:
     from timm.layers import RotAttentionPool2d
     from timm.layers import AttentionPool2d as AbsAttentionPool2d
     from timm.layers import Mlp, to_2tuple
+    from timm.layers import trunc_normal_
 except ImportError:
     timm = None
 
@@ -100,6 +101,10 @@ class TimmModel(nn.Module):
         if proj == 'linear':
             head_layers['drop'] = nn.Dropout(drop)
             head_layers['proj'] = nn.Linear(prev_chs, embed_dim, bias=proj_bias)
+            # Use timm-style trunc_normal_ init for consistency with trunk
+            trunc_normal_(head_layers['proj'].weight, std=.02)
+            if head_layers['proj'].bias is not None:
+                nn.init.zeros_(head_layers['proj'].bias)
         elif proj == 'mlp':
             head_layers['mlp'] = Mlp(prev_chs, 2 * embed_dim, embed_dim, drop=(drop, 0), bias=(True, proj_bias))
 

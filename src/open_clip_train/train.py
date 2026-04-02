@@ -331,6 +331,7 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
         num_samples = 0
         samples_per_val = dataloader.num_samples
 
+        logging.info(f"Eval: Starting validation on {samples_per_val} samples...")
         # FIXME this does not scale past small eval datasets
         # all_image_features @ all_text_features will blow up memory and compute very quickly
         cumulative_loss = 0.0
@@ -357,33 +358,53 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
 
                     batch_size = images.shape[0]
                     labels = torch.arange(batch_size, device=device).long()
-                    total_loss = (
-                        F.cross_entropy(logits_per_image, labels) +
-                        F.cross_entropy(logits_per_text, labels)
-                    ) / 2
+
+                    # Use the same loss function as training
+                    if args.siglip:
+                        # SigLIP sigmoid pairwise loss
+                        logits_per_image = logit_scale * image_features @ text_features.t()
+                        logits_per_text = logits_per_image.t()
+                        # Sigmoid loss for each pair
+                        labels_binary = torch.eye(batch_size, device=device)
+                        loss_i2t = F.binary_cross_entropy_with_logits(
+                            logits_per_image, labels_binary, reduction='mean')
+                        loss_t2i = F.binary_cross_entropy_with_logits(
+                            logits_per_text, labels_binary, reduction='mean')
+                        total_loss = (loss_i2t + loss_t2i) / 2
+                    else:
+                        # CLIP contrastive loss
+                        total_loss = (
+                            F.cross_entropy(logits_per_image, labels) +
+                            F.cross_entropy(logits_per_text, labels)
+                        ) / 2
 
                     gen_loss = maybe_compute_generative_loss(model_out)
 
                 cumulative_loss += total_loss * batch_size
                 num_samples += batch_size
                 if is_master(args) and (i % args.log_every_n_steps) == 0:
+                    loss_name = "SigLIP Loss" if args.siglip else "Clip Loss"
                     logging.info(
                         f"Eval Epoch: {epoch} [{num_samples} / {samples_per_val}]\t"
-                        f"Clip Loss: {cumulative_loss / num_samples:.6f}\t")
+                        f"{loss_name}: {cumulative_loss / num_samples:.6f}\t")
 
                     if gen_loss is not None:
                         cumulative_gen_loss += gen_loss * batch_size
                         logging.info(
                             f"Generative Loss: {cumulative_gen_loss / num_samples:.6f}\t")
 
+            logging.info(f"Eval: Computing retrieval metrics on {len(all_image_features)} image-text pairs...")
+            logging.info(f"Eval:   Step 1/3 - Computing similarity matrix [25010, 25010]...")
             val_metrics = get_clip_metrics(
                 image_features=torch.cat(all_image_features),
                 text_features=torch.cat(all_text_features),
                 logit_scale=logit_scale.cpu(),
             )
+            logging.info(f"Eval:   Step 3/3 - Metrics computed.")
             loss = cumulative_loss / num_samples
+            loss_key = "siglip_val_loss" if args.siglip else "clip_val_loss"
             metrics.update(
-                {**val_metrics, "clip_val_loss": loss.item(), "epoch": epoch, "num_samples": num_samples}
+                {**val_metrics, loss_key: loss.item(), "epoch": epoch, "num_samples": num_samples}
             )
             if gen_loss is not None:
                 gen_loss = cumulative_gen_loss / num_samples
@@ -424,14 +445,18 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
 
 def get_clip_metrics(image_features, text_features, logit_scale):
     metrics = {}
+    logging.info(f"Eval:   Step 1/3 - Computing similarity matrix [{len(image_features)}, {len(text_features)}]...")
     logits_per_image = (logit_scale * image_features @ text_features.t()).detach().cpu()
+    logging.info(f"Eval:   Step 2/3 - Sorting similarity matrix (this may take time for large datasets)...")
     logits_per_text = logits_per_image.t().detach().cpu()
 
     logits = {"image_to_text": logits_per_image, "text_to_image": logits_per_text}
     ground_truth = torch.arange(len(text_features)).view(-1, 1)
 
-    for name, logit in logits.items():
+    for i, (name, logit) in enumerate(logits.items()):
+        logging.info(f"Eval:     Sorting {i+1}/2 - {name}...")
         ranking = torch.argsort(logit, descending=True)
+        logging.info(f"Eval:     Computing ranks for {name}...")
         preds = torch.where(ranking == ground_truth)[1]
         preds = preds.detach().cpu().numpy()
         metrics[f"{name}_mean_rank"] = preds.mean() + 1

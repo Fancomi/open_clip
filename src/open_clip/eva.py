@@ -94,6 +94,27 @@ from timm.layers import (
     AttentionRope,
     AttentionPoolLatent,
 )
+
+
+class RMSNorm(nn.Module):
+    """Root Mean Square Layer Normalization
+
+    From DINOv3: https://github.com/facebookresearch/dinov3
+    """
+    def __init__(self, dim: int, eps: float = 1e-6, device=None, dtype=None):
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(dim, device=device, dtype=dtype))
+        self.eps = eps
+
+    def reset_parameters(self) -> None:
+        nn.init.constant_(self.weight, 1)
+
+    def _norm(self, x: torch.Tensor) -> torch.Tensor:
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        output = self._norm(x.float()).type_as(x)
+        return output * self.weight
 from timm.models._builder import build_model_with_cfg
 from timm.models._features import feature_take_indices
 from timm.models._manipulate import checkpoint
@@ -2216,6 +2237,38 @@ def vit_pe_core_base_patch16_224(pretrained: bool = False, **kwargs) -> Eva:
         #dynamic_img_size=True
     )
     return _create_eva('vit_pe_core_base_patch16_224', pretrained=pretrained, **dict(model_args, **kwargs))
+
+
+@register_model
+def vit_pe_core_base_patch16_224_dinov3(pretrained: bool = False, **kwargs) -> Eva:
+    """PE ViT with DINOv3-inspired improvements
+
+    Key features:
+    - RMSNorm with eps=1e-6 (vs LayerNorm eps=1e-5)
+    - No pre-transformer norm (use_pre_transformer_norm=False)
+    - LayerScale with init=1e-4 for faster convergence
+    - Standard MLP FFN
+    - Storage tokens/registers (num_reg_tokens=4)
+    """
+    model_args = dict(
+        patch_size=16,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
+        mlp_ratio=4.0,
+        global_pool='token',  # CLS token pooling
+        attn_type='rope',
+        use_pre_transformer_norm=False,  # No norm_pre
+        use_rot_pos_emb=True,
+        ref_feat_shape=(14, 14),
+        rope_grid_offset=1.,
+        rope_grid_indexing='xy',
+        init_values=None,  # No LayerScale (not needed for depth=12)
+        num_reg_tokens=4,  # Storage tokens (registers)
+        norm_layer=partial(RMSNorm, eps=1e-6),  # DINOv3 uses RMSNorm
+        use_deep_norm_init=False,
+    )
+    return _create_eva('vit_pe_core_base_patch16_224_dinov3', pretrained=pretrained, **dict(model_args, **kwargs))
 
 
 @register_model
