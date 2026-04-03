@@ -28,7 +28,7 @@ VAL="${COCO}/clip_val.tsv"
 
 COMMON="--dataset-type csv --csv-img-key filepath --csv-caption-key caption \
     --precision amp_bf16 --workers 6 --epochs 30 --batch-size 2048 \
-    --lr 3e-4 --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 --warmup 20 \
+    --lr 2e-4 --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 --warmup 20 \
     --save-frequency 0 \
     --grad-checkpointing --log-every-n-steps 1 --val-frequency 5"
 
@@ -46,18 +46,21 @@ run() {
         --name "${NAME}"
 }
 
-# PE-DINOv3 with SigLIP
-run "pe_dinov3_siglip[retry+trunc_normal]" "PE-Core-B-16-dinov3" 29512 "--siglip"
-# PE-CLS with SigLIP (baseline)
-run "pe_cls_siglip[retry+trunc_normal]"    "PE-Core-B-16-cls"    29510 "--siglip" # 确保和之前效果一致
+# DINOv3 with SigLIP (ape)
+run "dinov3_siglip"     "DINOv3-B-16-ape"    29510 "--siglip"
+# # PE-DINOv3 with SigLIP
+# run "pe_dinov3_siglip" "PE-Core-B-16-dinov3" 29511 "--siglip"
+# # PE-CLS with SigLIP (baseline)
+# run "pe_cls_siglip"    "PE-Core-B-16-cls"    29512 "--siglip"
 # # ViT with CLIP
-# run "vit_clip"         "ViT-B-16-exp"        29515 ""
+# run "vit_clip"         "ViT-B-16-exp"        29513 ""
 # # PE-CLS with CLIP
-# run "pe_cls_clip"      "PE-Core-B-16-cls"    29511 ""
+# run "pe_cls_clip"      "PE-Core-B-16-cls"    29514 ""
 # # PE-DINOv3 with CLIP
-# run "pe_dinov3_clip"   "PE-Core-B-16-dinov3" 29513 ""
+# run "pe_dinov3_clip"   "PE-Core-B-16-dinov3" 29515 ""
 # # ViT with SigLIP
-# run "vit_siglip"       "ViT-B-16-exp"        29514 "--siglip"
-
+# run "vit_siglip"       "ViT-B-16-exp"        29516 "--siglip"
+# # DINOv3 with CLIP (ape)
+# run "dinov3_clip"    "DINOv3-B-16-ape"       29517 ""
 
 echo "======== quick 全部完成 ========"

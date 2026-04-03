@@ -2249,6 +2249,7 @@ def vit_pe_core_base_patch16_224_dinov3(pretrained: bool = False, **kwargs) -> E
     - LayerScale with init=1e-4 for faster convergence
     - Standard MLP FFN
     - Storage tokens/registers (num_reg_tokens=4)
+    - RoPE using dinov3 style (rope_type='dinov3', rope_temperature=100, rope_rotate_half=True)
     """
     model_args = dict(
         patch_size=16,
@@ -2260,9 +2261,11 @@ def vit_pe_core_base_patch16_224_dinov3(pretrained: bool = False, **kwargs) -> E
         attn_type='rope',
         use_pre_transformer_norm=False,  # No norm_pre
         use_rot_pos_emb=True,
-        ref_feat_shape=(14, 14),
-        rope_grid_offset=1.,
-        rope_grid_indexing='xy',
+        # DINOv3-style RoPE config
+        # use_abs_pos_emb=False, # diff from dinov3
+        rope_type='dinov3',
+        rope_temperature=100,
+        rope_rotate_half=True,
         init_values=None,  # No LayerScale (not needed for depth=12)
         num_reg_tokens=4,  # Storage tokens (registers)
         norm_layer=partial(RMSNorm, eps=1e-6),  # DINOv3 uses RMSNorm
@@ -2909,6 +2912,33 @@ def vit_base_patch16_dinov3(pretrained: bool = False, **kwargs) -> Eva:
         rope_rotate_half=True,
         use_rot_pos_emb=True,
         use_abs_pos_emb=False,
+        num_reg_tokens=4,
+        use_fc_norm=False,
+        norm_layer=partial(LayerNorm, eps=1e-5),
+    )
+    model = _create_eva('vit_base_patch16_dinov3', pretrained=pretrained, **dict(model_args, **kwargs))
+    return model
+
+
+@register_model
+def vit_base_patch16_dinov3_ape(pretrained: bool = False, **kwargs) -> Eva:
+    """DINOv3 B/16 https://arxiv.org/abs/2508.10104
+    NOTE: Pass global_pool='token' to use CLS-token pooling (matches upstream DINOv3).
+    """
+    model_args = dict(
+        patch_size=16,
+        dynamic_img_size=True,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
+        qkv_bias=False,
+        init_values=1.0e-05, # layer-scale
+        rope_type='dinov3',
+        rope_temperature=100,
+        #rope_rescale_coords=2,  # haven't added to interface
+        rope_rotate_half=True,
+        use_rot_pos_emb=True,
+        use_abs_pos_emb=True,
         num_reg_tokens=4,
         use_fc_norm=False,
         norm_layer=partial(LayerNorm, eps=1e-5),
