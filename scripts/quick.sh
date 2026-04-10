@@ -15,6 +15,17 @@
 # schedule: warmup 10 → cosine decay to 0
 #
 # 硬件：2x A800-80GB
+#
+# ============ LeJEPA 正则化 ============
+# LeJEPA SIGReg (https://arxiv.org/abs/2511.08544): 约束 embedding 服从各向同性高斯
+# 两种模式（模型自动包装，始终传 unnormalized features 给 SIGReg）:
+#   --lejepa          : SIGReg 直接作用于 backbone raw embedding（轻量）
+#   --lejepa --lejepa-proj: SIGReg 作用于 MLP projector 输出（更强正则化）
+#
+# 关键参数:
+#   --lejepa-weight   : SIGReg 权重 λ，推荐 1e-4 ~ 1e-2
+#   --lejepa-num-slices: 随机切片数，默认 256
+#   --lejepa-proj-dim : projector 输出维度（仅 --lejepa-proj 模式）
 
 set -e
 export PYTHONPATH="./src:${PYTHONPATH}"
@@ -27,7 +38,7 @@ TRAIN="${COCO}/clip_train_dedup.tsv"
 VAL="${COCO}/clip_val.tsv"
 
 COMMON="--dataset-type csv --csv-img-key filepath --csv-caption-key caption \
-    --precision amp_bf16 --workers 6 --epochs 20 --batch-size 2048 \
+    --precision amp_bf16 --workers 6 --epochs 30 --batch-size 2048 \
     --lr 2e-4 --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 --warmup 20 \
     --save-frequency 0 \
     --grad-checkpointing --log-every-n-steps 1 --val-frequency 5"
@@ -46,21 +57,52 @@ run() {
         --name "${NAME}"
 }
 
+# ============ 原有实验 ============
 # DINOv3 with SigLIP (ape)
-run "dinov3_siglip"     "DINOv3-B-16-ape"    29510 "--siglip"
+#run "dinov3_siglip"     "DINOv3-B-16-ape"    29510 "--siglip"
 # PE-DINOv3 with SigLIP
-run "pe_dinov3_siglip" "PE-Core-B-16-dinov3" 29511 "--siglip"
+#run "pe_dinov3_siglip" "PE-Core-B-16-dinov3" 29511 "--siglip"
 # PE-CLS with SigLIP (baseline)
-run "pe_cls_siglip"    "PE-Core-B-16-cls"    29512 "--siglip"
+#run "pe_cls_siglip"    "PE-Core-B-16-cls"    29512 "--siglip"
 # ViT with CLIP
-run "vit_clip"         "ViT-B-16-exp"        29513 ""
+#run "vit_clip"         "ViT-B-16-exp"        29513 ""
 # PE-CLS with CLIP
-run "pe_cls_clip"      "PE-Core-B-16-cls"    29514 ""
+#run "pe_cls_clip"      "PE-Core-B-16-cls"    29514 ""
 # PE-DINOv3 with CLIP
-run "pe_dinov3_clip"   "PE-Core-B-16-dinov3" 29515 ""
+#run "pe_dinov3_clip"   "PE-Core-B-16-dinov3" 29515 ""
 # ViT with SigLIP
-run "vit_siglip"       "ViT-B-16-exp"        29516 "--siglip"
+#run "vit_siglip"       "ViT-B-16-exp"        29516 "--siglip"
 # DINOv3 with CLIP (ape)
-run "dinov3_clip"    "DINOv3-B-16-ape"       29517 ""
+#run "dinov3_clip"    "DINOv3-B-16-ape"       29517 ""
+
+# # ============ LeJEPA 正则化实验 ============
+# # 模式1: 无 Projector (轻量级，直接在 CLIP 特征上应用 SIGReg)
+# # 推荐用于快速实验验证效果
+# run "pe_dinov3_siglip_lejepa"     "PE-Core-B-16-dinov3"     29528 "--siglip --lejepa"
+
+# # 模式2: 有 Projector (更强正则化，通过 Projector 间接约束 backbone) # 原版就是有proj
+# # 推荐用于追求更好的正则化效果
+# run "pe_dinov3_siglip_lejepa_proj" "PE-Core-B-16-dinov3"    29529 "--siglip --lejepa --lejepa-proj"
+# run "dinov3_siglip_lejepa"         "DINOv3-B-16-ape"        29530 "--siglip --lejepa"
+# run "dinov3_siglip_lejepa_proj"    "DINOv3-B-16-ape"        29531 "--siglip --lejepa --lejepa-proj"
+
+# run "pe_dinov3_siglip_lejepa_proj_e-3" "PE-Core-B-16-dinov3"    29536 "--siglip --lejepa --lejepa-proj --lejepa-weight 1e-3"
+# run "pe_dinov3_siglip_lejepa_e-3"      "PE-Core-B-16-dinov3"    29537 "--siglip --lejepa --lejepa-weight 1e-3"
+
+# run "pe_dinov3_siglip_lejepa_proj_e-2" "PE-Core-B-16-dinov3"    29538 "--siglip --lejepa --lejepa-proj --lejepa-weight 1e-2"
+# run "pe_dinov3_siglip_lejepa_e-2"      "PE-Core-B-16-dinov3"    29539 "--siglip --lejepa --lejepa-weight 1e-2"
+
+
+
+
+run "vit_leproj"         "ViT-B-16-exp"        29513 "--siglip --lejepa --lejepa-proj"
+run "pe_cls_leproj"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa --lejepa-proj"
+run "pe_dinov3_leproj"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa --lejepa-proj"
+run "dinov3_leproj"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa --lejepa-proj"
+
+run "vit_le"         "ViT-B-16-exp"        29513 "--siglip --lejepa"
+run "pe_cls_le"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa"
+run "pe_dinov3_le"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa"
+run "dinov3_le"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa"
 
 echo "======== quick 全部完成 ========"

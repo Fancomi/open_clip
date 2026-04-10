@@ -29,6 +29,7 @@ except ImportError:
     hvd = None
 
 from open_clip import create_model_and_transforms, trace_model, get_tokenizer, create_loss
+from open_clip.model import CLIPLeJEPA
 from open_clip_train.data import get_data
 from open_clip_train.distributed import is_master, init_distributed_device, broadcast_object
 from open_clip_train.logger import setup_logging
@@ -241,6 +242,20 @@ def main(args):
         cache_dir=args.cache_dir,
         **model_kwargs,
     )
+
+    # LeJEPA: 包装模型，始终提供 image_proj/text_proj 给 SIGReg
+    if getattr(args, 'lejepa', False):
+        use_proj = getattr(args, 'lejepa_proj', False)
+        logging.info(f"=> Wrapping model with CLIPLeJEPA (use_proj={use_proj})")
+        model = CLIPLeJEPA(
+            clip_model=model,
+            use_proj=use_proj,
+            proj_dim=getattr(args, 'lejepa_proj_dim', 512),
+            proj_layers=getattr(args, 'lejepa_proj_layers', 3),
+            output_dict=True,
+        )
+        model = model.to(device)
+
     if args.distill:
         # FIXME: currently assumes the model you're distilling from has the same tokenizer & transforms.
         dist_model, _, _ = create_model_and_transforms(

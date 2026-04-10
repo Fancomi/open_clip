@@ -662,6 +662,97 @@ class CustomTextCLIP(nn.Module):
         return image_features, text_features, self.logit_scale.exp()
 
 
+class CLIPLeJEPA(nn.Module):
+    """CLIP wrapper，提供 normalized features（用于对比损失）和 unnormalized proj（用于 SIGReg）。
+
+    use_proj=False: projector = Identity，SIGReg 直接作用于 backbone raw embedding
+    use_proj=True:  projector = MLP，SIGReg 作用于 projector 输出，间接约束 backbone
+    """
+    output_dict: torch.jit.Final[bool]
+
+    def __init__(
+            self,
+            clip_model: nn.Module,
+            use_proj: bool = False,
+            proj_dim: int = 512,
+            proj_layers: int = 3,
+            output_dict: bool = False,
+    ):
+        super().__init__()
+        self.output_dict = output_dict
+        self.clip_model = clip_model
+        self.visual = clip_model.visual
+        self.logit_scale = clip_model.logit_scale
+        self.logit_bias = getattr(clip_model, 'logit_bias', None)
+
+        # 获取 embed_dim：依次尝试常见属性，最后 probe forward
+        embed_dim = (
+            getattr(clip_model.visual, 'output_dim', None)
+            or getattr(clip_model, 'embed_dim', None)
+        )
+        if embed_dim is None:
+            # 通过 visual.head 最后一层 Linear 推断
+            for m in reversed(list(clip_model.visual.head.modules())):
+                if isinstance(m, nn.Linear):
+                    embed_dim = m.out_features
+                    break
+        if embed_dim is None:
+            raise ValueError("Cannot determine embed_dim from clip_model")
+
+        if use_proj:
+            hidden_dim = embed_dim * 2
+            self.image_projector = self._build_mlp(embed_dim, proj_dim, hidden_dim, proj_layers)
+            self.text_projector = self._build_mlp(embed_dim, proj_dim, hidden_dim, proj_layers)
+        else:
+            self.image_projector = nn.Identity()
+            self.text_projector = nn.Identity()
+
+    @staticmethod
+    def _build_mlp(in_dim: int, out_dim: int, hidden_dim: int, num_layers: int) -> nn.Sequential:
+        if num_layers == 1:
+            return nn.Sequential(nn.Linear(in_dim, out_dim))
+        layers: list = [nn.Linear(in_dim, hidden_dim), nn.BatchNorm1d(hidden_dim), nn.GELU()]
+        for _ in range(num_layers - 2):
+            layers += [nn.Linear(hidden_dim, hidden_dim), nn.BatchNorm1d(hidden_dim), nn.GELU()]
+        layers.append(nn.Linear(hidden_dim, out_dim))
+        return nn.Sequential(*layers)
+
+    def forward(self, image: Optional[torch.Tensor] = None, text: Optional[torch.Tensor] = None):
+        # 各编一次，raw 用于 proj，normalized 用于对比损失
+        image_raw = self.clip_model.encode_image(image, normalize=False) if image is not None else None
+        text_raw = self.clip_model.encode_text(text, normalize=False) if text is not None else None
+
+        image_features = F.normalize(image_raw, dim=-1) if image_raw is not None else None
+        text_features = F.normalize(text_raw, dim=-1) if text_raw is not None else None
+        image_proj = self.image_projector(image_raw) if image_raw is not None else None
+        text_proj = self.text_projector(text_raw) if text_raw is not None else None
+
+        if self.output_dict:
+            out = {
+                "image_features": image_features, "text_features": text_features,
+                "image_proj": image_proj, "text_proj": text_proj,
+                "logit_scale": self.logit_scale.exp(),
+            }
+            if self.logit_bias is not None:
+                out["logit_bias"] = self.logit_bias
+            return out
+        if self.logit_bias is not None:
+            return image_features, text_features, self.logit_scale.exp(), self.logit_bias, image_proj, text_proj
+        return image_features, text_features, self.logit_scale.exp(), image_proj, text_proj
+
+    def lock_image_tower(self, unlocked_groups=0, freeze_bn_stats=False):
+        self.clip_model.lock_image_tower(unlocked_groups, freeze_bn_stats)
+
+    def lock_text_tower(self, unlocked_layers: int = 0, freeze_layer_norm: bool = True):
+        self.clip_model.lock_text_tower(unlocked_layers, freeze_layer_norm)
+
+    def set_grad_checkpointing(self, enable=True):
+        self.clip_model.set_grad_checkpointing(enable)
+
+    def no_weight_decay(self):
+        return self.clip_model.no_weight_decay() if hasattr(self.clip_model, 'no_weight_decay') else set()
+
+
 def convert_weights_to_lp(model: nn.Module, dtype=torch.float16):
     """Convert applicable model parameters to low-precision (bf16 or fp16)"""
 

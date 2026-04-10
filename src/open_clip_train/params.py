@@ -480,6 +480,44 @@ def parse_args(args):
         help='A string to specify a specific distributed loss implementation.'
     )
 
+    # ============ LeJEPA 正则化参数 ============
+    parser.add_argument(
+        "--lejepa",
+        default=False,
+        action="store_true",
+        help='Enable LeJEPA SIGReg regularization (https://arxiv.org/abs/2511.08544). Works with --siglip.'
+    )
+    parser.add_argument(
+        "--lejepa-proj",
+        default=False,
+        action="store_true",
+        help='Use Projector for SIGReg (stronger regularization).'
+    )
+    parser.add_argument(
+        "--lejepa-weight",
+        type=float,
+        default=1e-4,
+        help='SIGReg weight lambda. Recommended: 1e-2 to 1e-4.'
+    )
+    parser.add_argument(
+        "--lejepa-num-slices",
+        type=int,
+        default=256,
+        help='Number of random slices for SIGReg.'
+    )
+    parser.add_argument(
+        "--lejepa-proj-dim",
+        type=int,
+        default=512,
+        help='Projector output dimension (only with --lejepa-proj).'
+    )
+    parser.add_argument(
+        "--lejepa-proj-layers",
+        type=int,
+        default=3,
+        help='Projector layers (only with --lejepa-proj).'
+    )
+
     args = parser.parse_args(args)
 
     if 'timm' not in args.opt:

@@ -264,7 +264,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             logit_bias_scalar = logit_bias.item() if logit_bias is not None else None
             loss_log = " ".join(
                 [
-                    f"{loss_name.capitalize()}: {loss_m.val:#.5g} ({loss_m.avg:#.5g})" 
+                    f"{loss_name.capitalize()}: {loss_m.val:.6f} ({loss_m.avg:.6f})"
                     for loss_name, loss_m in losses_m.items()
                 ]
             )

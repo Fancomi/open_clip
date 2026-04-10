@@ -462,3 +462,147 @@ class SigLipLoss(nn.Module):
                 assert False
 
         return {"siglip_loss": loss} if output_dict else loss
+
+
+def _dist_all_reduce_avg(x):
+    """跨 GPU 平均归约，未初始化时直接返回。"""
+    if has_distributed and dist.is_available() and dist.is_initialized():
+        torch.distributed.nn.functional.all_reduce(x, torch.distributed.ReduceOp.AVG)
+    return x
+
+
+def _dist_world_size():
+    if has_distributed and dist.is_available() and dist.is_initialized():
+        return dist.get_world_size()
+    return 1
+
+
+class SIGReg(nn.Module):
+    """Sketched Isotropic Gaussian Regularization (LeJEPA, https://arxiv.org/abs/2511.08544)
+
+    随机切片 + Epps-Pulley 特征函数检验，约束 embeddings 服从各向同性高斯分布。
+    输入特征应为 unnormalized（不在超球面上），否则统计量为常数。
+    """
+
+    def __init__(self, knots: int = 17, num_slices: int = 256):
+        super().__init__()
+        t = torch.linspace(0, 3, knots, dtype=torch.float32)
+        dt = 3.0 / (knots - 1)
+        weights = torch.full((knots,), 2 * dt, dtype=torch.float32)
+        weights[[0, -1]] = dt
+        phi = (-t.square() / 2.0).exp()  # N(0,1) 特征函数: exp(-t²/2)
+
+        self.num_slices = num_slices
+        self.register_buffer("t", t)
+        self.register_buffer("phi", phi)
+        self.register_buffer("weights", weights * phi)  # 梯形权重 × φ(t)
+        self.register_buffer("global_step", torch.zeros((), dtype=torch.long))
+        # generator 缓存（避免每次重建）
+        self._gen: Optional[torch.Generator] = None
+        self._gen_device = None
+
+    def _get_generator(self, device, seed: int) -> torch.Generator:
+        if self._gen is None or self._gen_device != device:
+            self._gen = torch.Generator(device=device)
+            self._gen_device = device
+        self._gen.manual_seed(seed)
+        return self._gen
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: [N, D]，unnormalized 特征
+        Returns:
+            Epps-Pulley 统计量（标量），越小越接近各向同性高斯
+        """
+        N = x.size(0)
+        world_size = _dist_world_size()
+
+        with torch.no_grad():
+            # 同步 global_step seed（保证各 rank 投影方向一致）
+            step = self.global_step.clone().to(x.device)
+            _dist_all_reduce_avg(step)  # AVG on identical values = same value
+            seed = int(step.item()) * 2  # ×2 避免与其他地方 seed 冲突
+            g = self._get_generator(x.device, seed)
+
+            A = torch.randn(x.size(-1), self.num_slices, device=x.device, dtype=x.dtype, generator=g)
+            A /= A.norm(p=2, dim=0, keepdim=True)
+            self.global_step.add_(1)
+
+        t = self.t.to(x)          # 同步 device + dtype
+        phi = self.phi.to(x)
+        weights = self.weights.to(x)
+
+        # 投影: [N, num_slices]，再扩展积分维度: [N, num_slices, knots]
+        x_t = (x @ A).unsqueeze(-1) * t
+
+        cos_mean = x_t.cos().mean(0)   # [num_slices, knots]
+        sin_mean = x_t.sin().mean(0)
+
+        # 跨 GPU 平均（等价于全局 batch 均值）
+        _dist_all_reduce_avg(cos_mean)
+        _dist_all_reduce_avg(sin_mean)
+
+        # |φ̂(t) - φ(t)|² = (cos_mean - φ)² + sin_mean²
+        err = (cos_mean - phi).square() + sin_mean.square()
+
+        # 梯形数值积分，乘以全局样本数
+        return (err @ weights).mean() * N * world_size
+
+
+class ClipLeJEPALoss(nn.Module):
+    """LeJEPA SIGReg 正则化 + CLIP/SigLIP 主损失
+
+    L = L_clip + λ × (SIGReg(image_proj) + SIGReg(text_proj))
+
+    image_proj / text_proj 由 CLIPLeJEPA 模型提供（unnormalized）：
+    - 有 projector 时：MLP projector 输出
+    - 无 projector 时：backbone raw embedding（未 L2 normalize）
+    """
+
+    def __init__(
+            self,
+            sigreg_weight: float = 0.01,
+            sigreg_knots: int = 17,
+            sigreg_num_slices: int = 256,
+            use_siglip: bool = False,
+            local_loss: bool = False,
+            gather_with_grad: bool = False,
+            cache_labels: bool = False,
+            rank: int = 0,
+            world_size: int = 1,
+            use_horovod: bool = False,
+            dist_impl=None,
+    ):
+        super().__init__()
+        self.sigreg_weight = sigreg_weight
+
+        if use_siglip:
+            assert not use_horovod, "Horovod not supported for SigLip"
+            self.main_loss = SigLipLoss(rank=rank, world_size=world_size, dist_impl=dist_impl)
+        else:
+            self.main_loss = ClipLoss(
+                local_loss=local_loss, gather_with_grad=gather_with_grad,
+                cache_labels=cache_labels, rank=rank, world_size=world_size, use_horovod=use_horovod,
+            )
+        self.sigreg = SIGReg(knots=sigreg_knots, num_slices=sigreg_num_slices)
+
+    def forward(
+            self,
+            image_features,
+            text_features,
+            logit_scale,
+            logit_bias=None,
+            image_proj=None,
+            text_proj=None,
+            output_dict: bool = False,
+    ):
+        main_loss = self.main_loss(image_features, text_features, logit_scale, logit_bias, output_dict=False)
+
+        # SIGReg 作用在 unnormalized proj 上（由 CLIPLeJEPA 提供）
+        reg = sum(self.sigreg(f) for f in (image_proj, text_proj) if f is not None)
+        weighted_reg = self.sigreg_weight * reg
+
+        if output_dict:
+            return {"contrastive_loss": main_loss, "sigreg": weighted_reg}
+        return main_loss + weighted_reg
