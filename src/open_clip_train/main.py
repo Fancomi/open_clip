@@ -221,6 +221,11 @@ def main(args):
     if args.siglip:
         model_kwargs['init_logit_scale'] = np.log(10)  # different from CLIP
         model_kwargs['init_logit_bias'] = -10
+    if getattr(args, 'attn_res', False):
+        model_kwargs['attn_res'] = True
+        block_size = getattr(args, 'attn_res_block_size', 0)
+        if block_size > 0:
+            model_kwargs['attn_res_block_size'] = block_size
     model, preprocess_train, preprocess_val = create_model_and_transforms(
         args.model,
         args.pretrained,
@@ -242,6 +247,12 @@ def main(args):
         cache_dir=args.cache_dir,
         **model_kwargs,
     )
+
+    # AttnRes: log info
+    if getattr(args, 'attn_res', False):
+        block_size = getattr(args, 'attn_res_block_size', 0)
+        mode = f'Block (block_size={block_size})' if block_size > 0 else 'Full'
+        logging.info(f"=> Attention Residuals ({mode} AttnRes) enabled on vision tower")
 
     # LeJEPA: 包装模型，始终提供 image_proj/text_proj 给 SIGReg
     if getattr(args, 'lejepa', False):

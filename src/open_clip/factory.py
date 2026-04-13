@@ -431,6 +431,15 @@ def create_model(
         raise RuntimeError("Model configuration could not be determined after Stage 1.")
     text_cfg = model_cfg['text_cfg']
     vision_cfg = model_cfg['vision_cfg']
+
+    # Handle attn_res: inject into vision_cfg only (text tower not affected by default)
+    attn_res_enabled = model_kwargs.pop('attn_res', False)
+    attn_res_block_size = model_kwargs.pop('attn_res_block_size', 0)
+    if attn_res_enabled:
+        vision_cfg['attn_res'] = True
+        if attn_res_block_size > 0:
+            vision_cfg['attn_res_block_size'] = attn_res_block_size
+
     if force_quick_gelu:
         model_cfg["quick_gelu"] = True
     if force_patch_dropout is not None:
@@ -505,15 +514,24 @@ def create_model(
     pretrained_loaded = False
     if checkpoint_path:
         logging.info(f'Loading full pretrained weights from: {checkpoint_path}')
-        # Use the load_checkpoint helper which handles state dict loading, conversions, etc.
-        # Use strict=True by default for full model loading to catch mismatches.
-        load_checkpoint(
+        # AttnRes adds extra parameters not in pretrained checkpoints -> use strict=False
+        ckpt_strict = not attn_res_enabled
+        if not ckpt_strict:
+            logging.info('AttnRes enabled: loading checkpoint with strict=False (extra AttnRes params zero-init)')
+        incompatible = load_checkpoint(
             model,
             checkpoint_path,
-            strict=True,
+            strict=ckpt_strict,
             weights_only=weights_only,
             device='cpu' # Load to CPU first
         )
+        if not ckpt_strict and incompatible:
+            missing = [k for k in incompatible.missing_keys if 'attn_res' not in k]
+            unexpected = incompatible.unexpected_keys
+            if missing:
+                logging.warning(f'Unexpected missing keys (non-AttnRes): {missing}')
+            if unexpected:
+                logging.warning(f'Unexpected keys in checkpoint: {unexpected}')
         pretrained_loaded = True
 
     # Load tower-specific weights (image and text), after the full CLIP checkpoint, potentially overwriting parts.

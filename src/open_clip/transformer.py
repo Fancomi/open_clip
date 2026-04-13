@@ -45,6 +45,48 @@ class LayerScale(nn.Module):
         return x.mul_(self.gamma) if self.inplace else x * self.gamma
 
 
+class RMSNormNoWeight(nn.Module):
+    """Parameter-free RMS normalization (no learned scale/gate)."""
+
+    def __init__(self, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        rms = torch.rsqrt(x.float().pow(2).mean(-1, keepdim=True) + self.eps)
+        return (x.float() * rms).to(x.dtype)
+
+
+class AttnResOperator(nn.Module):
+    """Depth-wise attention operator for Attention Residuals (AttnRes).
+
+    Replaces standard additive residual with learned softmax attention over depth.
+    Paper: https://arxiv.org/abs/2504.02595
+
+    V = stack([completed_block_reps..., partial_block])  # [N+1, B, T, d]
+    K = norm(V)
+    logits = einsum('d, nbtd -> nbt', pseudo_query, K)
+    h = einsum('nbt, nbtd -> btd', logits.softmax(0), V)
+
+    pseudo_query is zero-init → uniform weights at init → h = mean(V).
+    Since V includes partial_block (which has real signal), h is a reasonable
+    starting point and training proceeds normally without signal collapse.
+    """
+
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.pseudo_query = nn.Parameter(torch.zeros(dim))
+        # Paper: standard RMSNorm with learnable scale (d params per operator)
+        self.key_norm = nn.RMSNorm(dim, eps=eps)
+
+    def forward(self, sources: torch.Tensor) -> torch.Tensor:
+        # sources: [N_src, B, T, d] -> output: [B, T, d]
+        K = self.key_norm(sources)
+        logits = torch.einsum("d, nbtd -> nbt", self.pseudo_query, K)
+        weights = F.softmax(logits, dim=0)
+        return torch.einsum("nbt, nbtd -> btd", weights, sources)
+
+
 class PatchDropout(nn.Module):
     """
     https://arxiv.org/abs/2212.00794
@@ -472,12 +514,20 @@ class Transformer(nn.Module):
             scale_attn_inner: bool = False,
             scale_attn: bool = False,
             scale_fc: bool = False,
+            attn_res: bool = False,
+            attn_res_block_size: int = 0,
     ):
         super().__init__()
         self.width = width
         self.layers = layers
         self.batch_first = batch_first
         self.grad_checkpointing = False
+        self.attn_res = attn_res
+        self.attn_res_block_size = attn_res_block_size
+
+        # AttnRes requires custom blocks (to access sub-layer internals)
+        if attn_res:
+            block_type = 'custom'
 
         # Auto-select custom block if any custom features are enabled
         if block_type is None:
@@ -519,8 +569,100 @@ class Transformer(nn.Module):
                 for _ in range(layers)
             ])
 
+        if attn_res:
+            # 2 operators per layer: one for attn sub-layer, one for MLP sub-layer
+            self.attn_res_ops = nn.ModuleList([
+                AttnResOperator(width) for _ in range(layers * 2)
+            ])
+
     def get_cast_dtype(self) -> torch.dtype:
         return self.resblocks[0].get_weight_dtype()
+
+    def _run_sublayer_attnres(
+            self,
+            block: CustomResidualAttentionBlock,
+            ar_op: AttnResOperator,
+            sublayer: str,
+            attn_mask: Optional[torch.Tensor],
+            *sources: torch.Tensor,
+    ) -> torch.Tensor:
+        """Run a single sub-layer with AttnRes composition.
+
+        Sources are passed as individual tensors (not pre-stacked) so that
+        torch.checkpoint saves only references to already-held tensors rather
+        than a new stacked copy.  The stack is created inside and freed after
+        use, cutting peak memory from O(L²·BTd) to O(L·BTd).
+
+        Returns raw delta f_l(h_l) per paper — sources store sublayer outputs,
+        not composed representations (paper §3, line 494).
+        """
+        src_tensor = torch.stack(sources, dim=0)  # [N_src, B, T, d], freed after
+        h = ar_op(src_tensor)
+        if sublayer == 'attn':
+            delta = block.ls_1(block.ln_attn(block.attn(block.ln_1(h), attn_mask=attn_mask)))
+        else:
+            delta = block.ls_2(block.mlp(block.ln_2(h)))
+        # Return (h, delta) so caller can: append delta to sources, use h+delta as output
+        return h, delta
+
+    def _forward_attn_res(
+            self,
+            x: torch.Tensor,
+            attn_mask: Optional[torch.Tensor] = None,
+            take_indices: Optional[set] = None,
+            max_index: int = -1,
+    ):
+        """Forward pass with Full or Block Attention Residuals.
+
+        Full AttnRes (attn_res_block_size=0):
+            sources accumulate across all 2*layers sub-layers.
+        Block AttnRes (attn_res_block_size=N, N>0):
+            sources reset at every N Transformer-block boundary.
+
+        Args:
+            max_index: if >= 0, stop after this layer index (for stop_early).
+        """
+        sources = [x]  # x_0 = token embedding (the "0-th delta")
+        intermediates = []
+        use_ckpt = self.grad_checkpointing and not torch.jit.is_scripting()
+        blocks = self.resblocks if max_index < 0 else self.resblocks[:max_index + 1]
+        block_size = self.attn_res_block_size  # 0 = full
+        h, delta = x, torch.zeros_like(x)
+
+        for i, block in enumerate(blocks):
+            # Block AttnRes: reset sources at each group boundary
+            if block_size > 0 and i > 0 and i % block_size == 0:
+                sources = [h + delta]  # composed output of previous group's last sub-layer
+
+            # --- Attn sub-layer ---
+            if use_ckpt:
+                h_attn, delta_attn = checkpoint(
+                    self._run_sublayer_attnres, block, self.attn_res_ops[i * 2],
+                    'attn', attn_mask, *sources, use_reentrant=False)
+            else:
+                h_attn, delta_attn = self._run_sublayer_attnres(
+                    block, self.attn_res_ops[i * 2], 'attn', attn_mask, *sources)
+            sources.append(delta_attn)  # store raw delta per paper
+
+            # --- MLP sub-layer ---
+            if use_ckpt:
+                h_mlp, delta_mlp = checkpoint(
+                    self._run_sublayer_attnres, block, self.attn_res_ops[i * 2 + 1],
+                    'mlp', None, *sources, use_reentrant=False)
+            else:
+                h_mlp, delta_mlp = self._run_sublayer_attnres(
+                    block, self.attn_res_ops[i * 2 + 1], 'mlp', None, *sources)
+            sources.append(delta_mlp)  # store raw delta
+
+            h, delta = h_mlp, delta_mlp
+            x = h + delta  # composed output for intermediates / final output
+
+            if take_indices is not None and i in take_indices:
+                intermediates.append(x.transpose(0, 1) if not self.batch_first else x)
+
+        if take_indices is not None:
+            return x, intermediates
+        return x
 
     def forward_intermediates(
             self,
@@ -534,19 +676,23 @@ class Transformer(nn.Module):
         if not self.batch_first:
             x = x.transpose(0, 1).contiguous()    # NLD -> LND
 
-        intermediates = []
-        if torch.jit.is_scripting() or not stop_early:  # can't slice blocks in torchscript
-            blocks = self.resblocks
+        if self.attn_res:
+            _max_idx = max_index if (stop_early and not torch.jit.is_scripting()) else -1
+            x, intermediates = self._forward_attn_res(x, attn_mask, take_indices, max_index=_max_idx)
         else:
-            blocks = self.resblocks[:max_index + 1]
-        for i, blk in enumerate(blocks):
-            if self.grad_checkpointing and not torch.jit.is_scripting():
-                x = checkpoint(blk, x, None, None, attn_mask, use_reentrant=False)
+            intermediates = []
+            if torch.jit.is_scripting() or not stop_early:  # can't slice blocks in torchscript
+                blocks = self.resblocks
             else:
-                x = blk(x, attn_mask=attn_mask)
+                blocks = self.resblocks[:max_index + 1]
+            for i, blk in enumerate(blocks):
+                if self.grad_checkpointing and not torch.jit.is_scripting():
+                    x = checkpoint(blk, x, None, None, attn_mask, use_reentrant=False)
+                else:
+                    x = blk(x, attn_mask=attn_mask)
 
-            if i in take_indices:
-                intermediates.append(x.transpose(0, 1) if not self.batch_first else x)
+                if i in take_indices:
+                    intermediates.append(x.transpose(0, 1) if not self.batch_first else x)
 
         if not self.batch_first:
             x = x.transpose(0, 1)    # LND -> NLD
@@ -564,12 +710,15 @@ class Transformer(nn.Module):
         if not self.batch_first:
             x = x.transpose(0, 1).contiguous()    # NLD -> LND
 
-        for r in self.resblocks:
-            if self.grad_checkpointing and not torch.jit.is_scripting():
-                # TODO: handle kwargs https://github.com/pytorch/pytorch/issues/79887#issuecomment-1161758372
-                x = checkpoint(r, x, None, None, attn_mask, use_reentrant=False)
-            else:
-                x = r(x, attn_mask=attn_mask)
+        if self.attn_res:
+            x = self._forward_attn_res(x, attn_mask)
+        else:
+            for r in self.resblocks:
+                if self.grad_checkpointing and not torch.jit.is_scripting():
+                    # TODO: handle kwargs https://github.com/pytorch/pytorch/issues/79887#issuecomment-1161758372
+                    x = checkpoint(r, x, None, None, attn_mask, use_reentrant=False)
+                else:
+                    x = r(x, attn_mask=attn_mask)
 
         if not self.batch_first:
             x = x.transpose(0, 1)    # LND -> NLD
@@ -611,6 +760,8 @@ class VisionTransformer(nn.Module):
             scale_attn_inner: bool = False,
             scale_attn: bool = False,
             scale_fc: bool = False,
+            attn_res: bool = False,
+            attn_res_block_size: int = 0,
     ):
         super().__init__()
         assert pool_type in ('tok', 'avg', 'none')
@@ -665,6 +816,8 @@ class VisionTransformer(nn.Module):
             scale_attn_inner=scale_attn_inner,
             scale_attn=scale_attn,
             scale_fc=scale_fc,
+            attn_res=attn_res,
+            attn_res_block_size=attn_res_block_size,
         )
 
         if attentional_pool:
@@ -976,6 +1129,8 @@ class TextTransformer(nn.Module):
             scale_attn_inner: bool = False,
             scale_attn: bool = False,
             scale_fc: bool = False,
+            attn_res: bool = False,
+            attn_res_block_size: int = 0,
     ):
         super().__init__()
         assert pool_type in ('first', 'last', 'argmax', 'eos', 'none')
@@ -1013,6 +1168,8 @@ class TextTransformer(nn.Module):
             scale_attn_inner=scale_attn_inner,
             scale_attn=scale_attn,
             scale_fc=scale_fc,
+            attn_res=attn_res,
+            attn_res_block_size=attn_res_block_size,
         )
         self.ln_final = norm_layer(width)
 

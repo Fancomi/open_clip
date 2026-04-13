@@ -1,6 +1,7 @@
 #!/bin/bash
 # quick.sh — PE-CLS vs PE-DINOv3 vs ViT with SigLIP/CLIP loss comparison
-#
+source /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/activate
+
 # 实验矩阵（6 组）：
 #   PE-CLS    + SigLIP (baseline)
 #   PE-CLS    + CLIP
@@ -38,10 +39,13 @@ TRAIN="${COCO}/clip_train_dedup.tsv"
 VAL="${COCO}/clip_val.tsv"
 
 COMMON="--dataset-type csv --csv-img-key filepath --csv-caption-key caption \
-    --precision amp_bf16 --workers 6 --epochs 30 --batch-size 2048 \
+    --precision amp_bf16 --workers 6 --epochs 30 --batch-size 1024 \
     --lr 2e-4 --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 --warmup 20 \
     --save-frequency 0 \
     --grad-checkpointing --log-every-n-steps 1 --val-frequency 5"
+
+# bs:2048 GPU:2,  math.log(2048*2)+1 9.317766166719343
+# bs:1024 GPU:2,  math.log(1024*2)+1 8.624
 
 run() {
     local TAG=$1 MODEL=$2 PORT=$3 EXTRA=$4
@@ -92,17 +96,34 @@ run() {
 # run "pe_dinov3_siglip_lejepa_proj_e-2" "PE-Core-B-16-dinov3"    29538 "--siglip --lejepa --lejepa-proj --lejepa-weight 1e-2"
 # run "pe_dinov3_siglip_lejepa_e-2"      "PE-Core-B-16-dinov3"    29539 "--siglip --lejepa --lejepa-weight 1e-2"
 
+# 对比全部的无le和有le
+# run "vit_leproj"         "ViT-B-16-exp"        29513 "--siglip --lejepa --lejepa-proj"
+# run "pe_cls_leproj"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa --lejepa-proj"
+# run "pe_dinov3_leproj"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa --lejepa-proj"
+# run "dinov3_leproj"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa --lejepa-proj"
+# run "vit_le"         "ViT-B-16-exp"        29513 "--siglip --lejepa"
+# run "pe_cls_le"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa"
+# run "pe_dinov3_le"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa"
+# run "dinov3_le"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa"
 
+# run "pe_dinov3" "PE-Core-B-16-dinov3"    29529 "--siglip"
+# run "pe_dinov3_attnres_b3" "PE-Core-B-16-dinov3" 29540 "--siglip --attn-res --attn-res-block-size 2"
+# run "pe_dinov3_lejepa" "PE-Core-B-16-dinov3"    29529 "--siglip --lejepa --lejepa-proj"
 
+# 对比全部的无AttnRes和有AttnRes
+run "pe_dinov3_attnres2"   "PE-Core-B-16-dinov3" 29515 "--siglip --attn-res --attn-res-block-size 2"
+run "vit_attnres2"         "ViT-B-16-exp"        29513 "--siglip --attn-res --attn-res-block-size 2"
+run "pe_cls_attnres2"      "PE-Core-B-16-cls"    29514 "--siglip --attn-res --attn-res-block-size 2"
+run "dinov3_attnres2"    "DINOv3-B-16-ape"       29517 "--siglip --attn-res --attn-res-block-size 2"
 
-run "vit_leproj"         "ViT-B-16-exp"        29513 "--siglip --lejepa --lejepa-proj"
-run "pe_cls_leproj"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa --lejepa-proj"
-run "pe_dinov3_leproj"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa --lejepa-proj"
-run "dinov3_leproj"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa --lejepa-proj"
+# run "pe_dinov3_leproj_attnres2" "PE-Core-B-16-dinov3" 29540 "--siglip --attn-res --attn-res-block-size 2 --lejepa --lejepa-proj"
+# run "dinov3_le_attnres2" "DINOv3-B-16-ape"       29541 "--siglip --attn-res --attn-res-block-size 2 --lejepa"
+# run "vit_leproj_attnres2" "ViT-B-16-exp"         29542 "--siglip --attn-res --attn-res-block-size 2 --lejepa --lejepa-proj"
+# run "pe_cls_le_attnres2" "PE-Core-B-16-cls"      29543 "--siglip --attn-res --attn-res-block-size 2 --lejepa"
 
-run "vit_le"         "ViT-B-16-exp"        29513 "--siglip --lejepa"
-run "pe_cls_le"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa"
-run "pe_dinov3_le"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa"
-run "dinov3_le"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa"
+# run "pe_dinov3"   "PE-Core-B-16-dinov3" 29515 "--siglip"
+# run "vit"         "ViT-B-16-exp"        29513 "--siglip"
+# run "pe_cls"      "PE-Core-B-16-cls"    29514 "--siglip"
+# run "dinov3"    "DINOv3-B-16-ape"       29517 "--siglip"
 
 echo "======== quick 全部完成 ========"

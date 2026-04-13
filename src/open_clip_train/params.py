@@ -517,6 +517,18 @@ def parse_args(args):
         default=3,
         help='Projector layers (only with --lejepa-proj).'
     )
+    parser.add_argument(
+        "--attn-res",
+        default=False,
+        action="store_true",
+        help='Enable Attention Residuals (AttnRes): replace additive residuals with depth-wise attention.'
+    )
+    parser.add_argument(
+        "--attn-res-block-size",
+        default=0,
+        type=int,
+        help='Block AttnRes: reset sources every N EvaBlocks (0 = Full AttnRes, attends all history).'
+    )
 
     args = parser.parse_args(args)
 

@@ -120,6 +120,8 @@ from timm.models._features import feature_take_indices
 from timm.models._manipulate import checkpoint
 from timm.models._registry import generate_default_cfgs, register_model
 
+from .transformer import AttnResOperator
+
 __all__ = ['Eva']
 
 
@@ -590,6 +592,8 @@ class Eva(nn.Module):
             ref_feat_shape: Optional[Union[Tuple[int, int], int]] = None,
             head_init_scale: float = 0.001,
             use_deep_norm_init: bool = True,
+            attn_res: bool = False,
+            attn_res_block_size: int = 0,
             device=None,
             dtype=None,
     ):
@@ -651,6 +655,9 @@ class Eva(nn.Module):
         self.no_embed_class = no_embed_class
         self.dynamic_img_size = dynamic_img_size
         self.grad_checkpointing = False
+        self.attn_res = attn_res
+        # 0 = Full AttnRes; >0 = Block AttnRes (reset sources every N EvaBlocks)
+        self.attn_res_block_size = attn_res_block_size
 
         # resolve norm / pool usage
         activate_pre_norm = use_pre_transformer_norm
@@ -747,6 +754,12 @@ class Eva(nn.Module):
             for i in range(depth)])
         self.feature_info = [
             dict(module=f'blocks.{i}', num_chs=embed_dim, reduction=r) for i in range(depth)]
+
+        if attn_res:
+            # 2 operators per block: one before attn sub-layer, one before MLP sub-layer
+            self.attn_res_ops = nn.ModuleList([
+                AttnResOperator(embed_dim) for _ in range(depth * 2)
+            ])
 
         self.norm = norm_layer(embed_dim, **dd) if activate_post_norm else nn.Identity()
 
@@ -1040,6 +1053,140 @@ class Eva(nn.Module):
         x = global_pool_nlc(x, pool_type=pool_type, num_prefix_tokens=self.num_prefix_tokens)
         return x
 
+    def _run_attn_sublayer(
+            self,
+            block: 'EvaBlock',
+            ar_op: AttnResOperator,
+            partial: torch.Tensor,
+            rope: Optional[torch.Tensor],
+            attn_mask: Optional[torch.Tensor],
+            is_causal: bool,
+            *block_reps: torch.Tensor,
+    ) -> torch.Tensor:
+        """Attn sub-layer with Block AttnRes (paper pseudocode forward(), attn half).
+
+        block_reps: completed block-level representations [B, T, d] each.
+        partial: current intra-block partial sum (b_n^i), shape [B, T, d].
+
+        Returns updated partial (= partial + attn_out).
+        """
+        V = torch.stack(list(block_reps) + [partial], dim=0)  # [N+1, B, T, d]
+        h = ar_op(V)
+        raw = block.attn(block.norm1(h), rope=rope, attn_mask=attn_mask, is_causal=is_causal)
+        attn_out = block.drop_path1(block.gamma_1 * raw if block.gamma_1 is not None else raw)
+        return partial + attn_out
+
+    def _run_mlp_sublayer(
+            self,
+            block: 'EvaBlock',
+            ar_op: AttnResOperator,
+            partial: torch.Tensor,
+            *block_reps: torch.Tensor,
+    ) -> torch.Tensor:
+        """MLP sub-layer with Block AttnRes (paper pseudocode forward(), MLP half).
+
+        Returns updated partial (= partial + mlp_out).
+        """
+        V = torch.stack(list(block_reps) + [partial], dim=0)
+        h = ar_op(V)
+        raw = block.mlp(block.norm2(h))
+        mlp_out = block.drop_path2(block.gamma_2 * raw if block.gamma_2 is not None else raw)
+        return partial + mlp_out
+
+    def _forward_block(
+            self,
+            block_start: int,
+            block_end: int,
+            partial: torch.Tensor,
+            rot_pos_embed: Optional[torch.Tensor],
+            attn_mask: Optional[torch.Tensor],
+            is_causal: bool,
+            *block_reps: torch.Tensor,
+    ) -> torch.Tensor:
+        """Forward one block of layers [block_start, block_end) with fixed block_reps.
+
+        Called once per AttnRes block (possibly under gradient checkpointing).
+        block_reps are the completed inter-block snapshots BEFORE this block;
+        they are live tensors (not detached) so gradients flow through them.
+        """
+        rope_mixed = getattr(self, 'rope_mixed', False)
+        for i in range(block_start, block_end):
+            block = self.blocks[i]
+            rope = rot_pos_embed[i] if (rope_mixed and rot_pos_embed is not None) else rot_pos_embed
+            partial = self._run_attn_sublayer(
+                block, self.attn_res_ops[i * 2], partial, rope, attn_mask, is_causal, *block_reps)
+            partial = self._run_mlp_sublayer(
+                block, self.attn_res_ops[i * 2 + 1], partial, *block_reps)
+        return partial
+
+    def _forward_features_attn_res(
+            self,
+            x: torch.Tensor,
+            rot_pos_embed: Optional[torch.Tensor],
+            attn_mask: Optional[torch.Tensor] = None,
+            is_causal: bool = False,
+    ) -> torch.Tensor:
+        """Block loop with Block Attention Residuals, per paper pseudocode.
+
+        block_size (attn_res_block_size) counts Transformer layers (each has attn+MLP).
+        At every block boundary, partial is saved as a completed block rep.
+        Within a block, standard residuals accumulate (partial += delta).
+        The AttnRes operator attends over [all completed blocks + current partial].
+
+        block_size > 0 (Block AttnRes):
+            Checkpoint granularity = one block. block_reps are NOT detached, so
+            gradients flow back through all cross-layer AttnRes connections. Memory
+            is controlled because only one block's internal activations are live at
+            a time during recomputation; block_reps are O(L/block_size) tensors.
+
+        block_size = 0 (Full AttnRes / legacy):
+            Falls back to per-layer checkpointing. block_reps stays as [x] only
+            (detached) to avoid cascading recomputation OOM.
+        """
+        use_ckpt = self.grad_checkpointing and not torch.jit.is_scripting()
+        block_size = self.attn_res_block_size
+
+        if block_size <= 0:
+            # Legacy full-AttnRes path: per-layer checkpoint, block_reps = [x] only.
+            rope_mixed = getattr(self, 'rope_mixed', False)
+            block_reps = [x.detach()]
+            partial = x
+            for i, block in enumerate(self.blocks):
+                rope = rot_pos_embed[i] if (rope_mixed and rot_pos_embed is not None) else rot_pos_embed
+                if use_ckpt:
+                    partial = checkpoint(
+                        self._run_attn_sublayer, block, self.attn_res_ops[i * 2],
+                        partial, rope, attn_mask, is_causal, *block_reps, use_reentrant=False)
+                    partial = checkpoint(
+                        self._run_mlp_sublayer, block, self.attn_res_ops[i * 2 + 1],
+                        partial, *block_reps, use_reentrant=False)
+                else:
+                    partial = self._run_attn_sublayer(
+                        block, self.attn_res_ops[i * 2], partial, rope, attn_mask, is_causal, *block_reps)
+                    partial = self._run_mlp_sublayer(
+                        block, self.attn_res_ops[i * 2 + 1], partial, *block_reps)
+            return partial
+
+        # Block AttnRes: checkpoint per-block, no detach on block_reps.
+        num_layers = len(self.blocks)
+        block_reps = [x]  # initial representation — no detach, full gradient flow
+        partial = x
+        b = 0
+        while b * block_size < num_layers:
+            start = b * block_size
+            end = min((b + 1) * block_size, num_layers)
+            if use_ckpt:
+                partial = checkpoint(
+                    self._forward_block, start, end, partial,
+                    rot_pos_embed, attn_mask, is_causal,
+                    *block_reps, use_reentrant=False)
+            else:
+                partial = self._forward_block(
+                    start, end, partial, rot_pos_embed, attn_mask, is_causal, *block_reps)
+            block_reps.append(partial)  # no detach: gradients flow through cross-layer path
+            b += 1
+        return partial
+
     def forward_features(
             self,
             x: torch.Tensor,
@@ -1060,7 +1207,9 @@ class Eva(nn.Module):
         x, rot_pos_embed = self._pos_embed(x)
         x = self.norm_pre(x)
 
-        if getattr(self, 'rope_mixed', False) and rot_pos_embed is not None:
+        if self.attn_res:
+            x = self._forward_features_attn_res(x, rot_pos_embed, attn_mask=attn_mask, is_causal=is_causal)
+        elif getattr(self, 'rope_mixed', False) and rot_pos_embed is not None:
             # Handle depth-dependent embeddings for mixed mode
             # pos embed has shape (depth, num_heads, H*W, dim) or (depth, batch_size, num_heads, H*W, dim)
             for i, blk in enumerate(self.blocks):

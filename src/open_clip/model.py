@@ -61,6 +61,8 @@ class CLIPVisionCfg:
     scale_attn_inner: bool = False  # apply layer norm on attention context, before output projection
     scale_attn: bool = False  # apply layer norm after full attention block
     scale_fc: bool = False  # apply layer norm in MLP block
+    attn_res: bool = False  # Attention Residuals: replace additive residuals with depth-wise attention
+    attn_res_block_size: int = 0  # Block AttnRes: reset sources every N blocks (0 = Full AttnRes)
 
     timm_model_name: Optional[str] = None  # a valid model name overrides layers, width, patch_size
     timm_model_pretrained: bool = False  # use (imagenet) pretrained weights for named model
@@ -104,6 +106,8 @@ class CLIPTextCfg:
     scale_attn_inner: bool = False  # apply layer norm on attention context, before output projection
     scale_attn: bool = False  # apply layer norm after full attention block
     scale_fc: bool = False  # apply layer norm in MLP block
+    attn_res: bool = False  # Attention Residuals: replace additive residuals with depth-wise attention
+    attn_res_block_size: int = 0  # Block AttnRes: reset sources every N blocks (0 = Full AttnRes)
 
     # HuggingFace specific text tower config
     hf_model_name: Optional[str] = None
@@ -156,6 +160,7 @@ def _build_vision_tower(
             patch_drop=vision_cfg.patch_dropout if vision_cfg.patch_dropout > 0 else None,
             embed_dim=embed_dim,
             image_size=vision_cfg.image_size,
+            extra_model_kwargs={'attn_res': True, 'attn_res_block_size': vision_cfg.attn_res_block_size} if vision_cfg.attn_res else None,
         )
     elif isinstance(vision_cfg.layers, (tuple, list)):
         vision_heads = vision_cfg.width * 32 // vision_cfg.head_width
@@ -201,6 +206,8 @@ def _build_vision_tower(
             scale_attn_inner=vision_cfg.scale_attn_inner,
             scale_attn=vision_cfg.scale_attn,
             scale_fc=vision_cfg.scale_fc,
+            attn_res=vision_cfg.attn_res,
+            attn_res_block_size=vision_cfg.attn_res_block_size,
         )
 
     return visual
@@ -258,6 +265,8 @@ def _build_text_tower(
             scale_attn_inner=text_cfg.scale_attn_inner,
             scale_attn=text_cfg.scale_attn,
             scale_fc=text_cfg.scale_fc,
+            attn_res=text_cfg.attn_res,
+            attn_res_block_size=text_cfg.attn_res_block_size,
         )
     return text
 
