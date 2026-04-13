@@ -5,6 +5,7 @@ import re
 import argparse
 from pathlib import Path
 import matplotlib.pyplot as plt
+import colorsys
 
 
 def parse_log(log_path: str) -> dict:
@@ -90,13 +91,25 @@ def main():
         ('t2i_median_rank', 'T2I Median Rank', 'Epoch', 'Rank', '↓', False),
     ]
 
+    # 精选色相, 避开难看的黄绿区间; 每对(j//2)同色相, 偶数浅色虚线、奇数深色实线
+    nice_hues = [0.0, 0.08, 0.58, 0.78, 0.15, 0.35, 0.48, 0.68]
+    n = len(names)
+    colors = []
+    for j in range(n):
+        h = nice_hues[(j // 2) % len(nice_hues)]
+        l = 0.60 if j % 2 == 0 else 0.30
+        colors.append(colorsys.hls_to_rgb(h, l, 0.80))
+
     for i, (key, title, xlabel, ylabel, direction, use_train) in enumerate(single_metrics):
         ax = axes[i]
-        for data, name in zip(all_data, names):
+        for idx, (data, name) in enumerate(zip(all_data, names)):
+            ls = '--' if idx % 2 == 0 else '-'
             if use_train:
-                ax.plot(data['train_steps'], data[key], label=name, alpha=0.8)
+                ax.plot(data['train_steps'], data[key], label=name, alpha=0.85,
+                        color=colors[idx], linestyle=ls)
             else:
-                ax.plot(data['eval_epochs'], data[key], 'o-', label=name, markersize=5)
+                ax.plot(data['eval_epochs'], data[key], 'o-', label=name, markersize=5,
+                        color=colors[idx], linestyle=ls)
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
         ax.set_title(f'{title} ({direction})')
