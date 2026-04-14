@@ -37,11 +37,17 @@ COCO="/root/paddlejob/workspace/env_run/penghaotian/datas/coco/annotations"
 TRAIN="${COCO}/clip_train_dedup.tsv"
 VAL="${COCO}/clip_val.tsv"
 
-COMMON="--dataset-type csv --csv-img-key filepath --csv-caption-key caption \
-    --precision amp_bf16 --workers 6 --epochs 30 --batch-size 2048 \
+CC3M="/root/paddlejob/workspace/env_run/penghaotian/datas/LLaVA-ReCap-CC3M/wds"
+CC3M_TRAIN="${CC3M}/{00000..00280}.tar"
+CC3M_N_TRAIN=2857622
+
+BASE="--precision amp_bf16 --workers 6 --epochs 30 --batch-size 2048 \
     --lr 2e-4 --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 --warmup 20 \
     --save-frequency 0 \
     --grad-checkpointing --log-every-n-steps 1 --val-frequency 5"
+
+COMMON="${BASE} --dataset-type csv --csv-img-key filepath --csv-caption-key caption"
+COMMON_WDS="${BASE} --dataset-type webdataset --train-num-samples ${CC3M_N_TRAIN}"
 
 run() {
     local TAG=$1 MODEL=$2 PORT=$3 EXTRA=$4
@@ -53,6 +59,20 @@ run() {
         --train-data "${TRAIN}" \
         --val-data "${VAL}" \
         ${COMMON} \
+        ${EXTRA} \
+        --name "${NAME}"
+}
+
+run_cc3m() {
+    local TAG=$1 MODEL=$2 PORT=$3 EXTRA=$4
+    local NAME="cc3m_${TAG}_${TS}"
+    echo "======== [cc3m] ${TAG} => ${NAME} ========"
+    torchrun --nproc_per_node=2 --master_port=${PORT} \
+        -m open_clip_train.main \
+        --model "${MODEL}" \
+        --train-data "${CC3M_TRAIN}" \
+        --val-data "${VAL}" \
+        ${COMMON_WDS} \
         ${EXTRA} \
         --name "${NAME}"
 }
@@ -93,16 +113,20 @@ run() {
 # run "pe_dinov3_siglip_lejepa_e-2"      "PE-Core-B-16-dinov3"    29539 "--siglip --lejepa --lejepa-weight 1e-2"
 
 
+# ============ CC3M 实验 ============
+run_cc3m "vit_leproj"         "ViT-B-16-exp"        29513 "--siglip --lejepa --lejepa-proj"
+run_cc3m "pe_cls_leproj"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa --lejepa-proj"
+run_cc3m "pe_dinov3_leproj"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa --lejepa-proj"
+run_cc3m "dinov3_leproj"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa --lejepa-proj"
 
+run_cc3m "vit_le"         "ViT-B-16-exp"        29513 "--siglip --lejepa"
+run_cc3m "pe_cls_le"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa"
+run_cc3m "pe_dinov3_le"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa"
+run_cc3m "dinov3_le"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa"
 
-run "vit_leproj"         "ViT-B-16-exp"        29513 "--siglip --lejepa --lejepa-proj"
-run "pe_cls_leproj"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa --lejepa-proj"
-run "pe_dinov3_leproj"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa --lejepa-proj"
-run "dinov3_leproj"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa --lejepa-proj"
-
-run "vit_le"         "ViT-B-16-exp"        29513 "--siglip --lejepa"
-run "pe_cls_le"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa"
-run "pe_dinov3_le"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa"
-run "dinov3_le"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa"
+run_cc3m "vit"         "ViT-B-16-exp"        29513 "--siglip"
+run_cc3m "pe_cls"      "PE-Core-B-16-cls"    29514 "--siglip"
+run_cc3m "pe_dinov3"   "PE-Core-B-16-dinov3" 29515 "--siglip"
+run_cc3m "dinov3"    "DINOv3-B-16-ape"       29517 "--siglip"
 
 echo "======== quick 全部完成 ========"
