@@ -552,7 +552,10 @@ def get_data(args, preprocess_fns, epoch=0, tokenizer=None):
             args, preprocess_train, is_train=True, epoch=epoch, tokenizer=tokenizer)
 
     if args.val_data:
-        data["val"] = get_dataset_fn(args.val_data, args.dataset_type)(
+        # val data may differ from train format (e.g. train=webdataset, val=tsv),
+        # so auto-detect by file extension instead of reusing args.dataset_type.
+        val_dataset_type = 'auto' if args.dataset_type == 'webdataset' else args.dataset_type
+        data["val"] = get_dataset_fn(args.val_data, val_dataset_type)(
             args, preprocess_val, is_train=False, tokenizer=tokenizer)
 
     if args.imagenet_val is not None:

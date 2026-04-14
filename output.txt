@@ -1,0 +1,1028 @@
+2026-04-14,14:42:07 | INFO | Train Epoch: 4 [ 950272/3145728 (30%)] Data (t): 0.905 Batch (t): 2.471, 6629.72/s, 828.715/s/gpu LR:
+0.000358 Logit Scale: 11.604 Logit Bias: -10.113 Contrastive_loss: 6.842992 (6.954509) Sigreg: 0.039062 (0.041251) Loss: 6.882054 (
+6.995760)
+2026-04-14,14:42:10 | INFO | Train Epoch: 4 [ 966656/3145728 (31%)] Data (t): 0.966 Batch (t): 2.537, 6458.11/s, 807.264/s/gpu LR:
+0.000358 Logit Scale: 11.608 Logit Bias: -10.113 Contrastive_loss: 6.877733 (6.953207) Sigreg: 0.040283 (0.041235) Loss: 6.918016 (
+6.994442)
+2026-04-14,14:42:12 | INFO | Train Epoch: 4 [ 983040/3145728 (31%)] Data (t): 0.870 Batch (t): 2.436, 6726.71/s, 840.839/s/gpu LR:
+0.000358 Logit Scale: 11.613 Logit Bias: -10.114 Contrastive_loss: 6.795209 (6.950574) Sigreg: 0.041260 (0.041235) Loss: 6.836469 (
+6.991809)
+2026-04-14,14:42:15 | INFO | Train Epoch: 4 [ 999424/3145728 (32%)] Data (t): 0.846 Batch (t): 2.418, 6774.61/s, 846.826/s/gpu LR:
+0.000357 Logit Scale: 11.617 Logit Bias: -10.114 Contrastive_loss: 6.888328 (6.949554) Sigreg: 0.039551 (0.041208) Loss: 6.927879 (
+6.990761)
+2026-04-14,14:42:17 | INFO | Train Epoch: 4 [1015808/3145728 (32%)] Data (t): 0.743 Batch (t): 2.416, 6780.07/s, 847.508/s/gpu LR:
+0.000357 Logit Scale: 11.621 Logit Bias: -10.114 Contrastive_loss: 6.884571 (6.948505) Sigreg: 0.043213 (0.041240) Loss: 6.927783 (
+6.989746)
+2026-04-14,14:42:20 | INFO | Train Epoch: 4 [1032192/3145728 (33%)] Data (t): 0.662 Batch (t): 2.260, 7249.16/s, 906.145/s/gpu LR:
+0.000357 Logit Scale: 11.625 Logit Bias: -10.115 Contrastive_loss: 6.837105 (6.946737) Sigreg: 0.042480 (0.041260) Loss: 6.879586 (
+6.987997)
+2026-04-14,14:42:22 | INFO | Train Epoch: 4 [1048576/3145728 (33%)] Data (t): 0.842 Batch (t): 2.409, 6801.63/s, 850.204/s/gpu LR:
+0.000357 Logit Scale: 11.629 Logit Bias: -10.115 Contrastive_loss: 6.929799 (6.946473) Sigreg: 0.040771 (0.041252) Loss: 6.970570 (
+6.987725)
+2026-04-14,14:42:25 | INFO | Train Epoch: 4 [1064960/3145728 (34%)] Data (t): 0.991 Batch (t): 2.559, 6401.87/s, 800.233/s/gpu LR:
+0.000357 Logit Scale: 11.634 Logit Bias: -10.115 Contrastive_loss: 6.936891 (6.946325) Sigreg: 0.041260 (0.041252) Loss: 6.978150 (
+6.987577)
+2026-04-14,14:42:27 | INFO | Train Epoch: 4 [1081344/3145728 (34%)] Data (t): 0.975 Batch (t): 2.542, 6444.34/s, 805.543/s/gpu LR:
+0.000357 Logit Scale: 11.638 Logit Bias: -10.116 Contrastive_loss: 6.928153 (6.946050) Sigreg: 0.042480 (0.041271) Loss: 6.970633 (
+6.987321)
+2026-04-14,14:42:30 | INFO | Train Epoch: 4 [1097728/3145728 (35%)] Data (t): 0.927 Batch (t): 2.492, 6575.46/s, 821.932/s/gpu LR:
+0.000357 Logit Scale: 11.642 Logit Bias: -10.116 Contrastive_loss: 6.908306 (6.945486) Sigreg: 0.041260 (0.041271) Loss: 6.949565 (
+6.986757)
+2026-04-14,14:42:32 | INFO | Train Epoch: 4 [1114112/3145728 (35%)] Data (t): 0.794 Batch (t): 2.364, 6931.31/s, 866.414/s/gpu LR:
+0.000357 Logit Scale: 11.646 Logit Bias: -10.116 Contrastive_loss: 6.925713 (6.945196) Sigreg: 0.041992 (0.041281) Loss: 6.967705 (
+6.986477)
+2026-04-14,14:42:34 | INFO | Train Epoch: 4 [1130496/3145728 (36%)] Data (t): 0.898 Batch (t): 2.476, 6618.00/s, 827.250/s/gpu LR:
+0.000357 Logit Scale: 11.650 Logit Bias: -10.117 Contrastive_loss: 6.912966 (6.944729) Sigreg: 0.040283 (0.041267) Loss: 6.953249 (
+6.985995)
+2026-04-14,14:42:37 | INFO | Train Epoch: 4 [1146880/3145728 (36%)] Data (t): 0.786 Batch (t): 2.357, 6951.38/s, 868.922/s/gpu LR:
+0.000357 Logit Scale: 11.654 Logit Bias: -10.117 Contrastive_loss: 6.819993 (6.942947) Sigreg: 0.041504 (0.041270) Loss: 6.861497 (
+6.984217)
+2026-04-14,14:42:39 | INFO | Train Epoch: 4 [1163264/3145728 (37%)] Data (t): 0.822 Batch (t): 2.399, 6829.71/s, 853.713/s/gpu LR:
+0.000356 Logit Scale: 11.658 Logit Bias: -10.117 Contrastive_loss: 6.793539 (6.940842) Sigreg: 0.042725 (0.041291) Loss: 6.836264 (
+6.982133)
+2026-04-14,14:42:42 | INFO | Train Epoch: 4 [1179648/3145728 (38%)] Data (t): 0.858 Batch (t): 2.437, 6723.26/s, 840.407/s/gpu LR:
+0.000356 Logit Scale: 11.663 Logit Bias: -10.118 Contrastive_loss: 6.788644 (6.938728) Sigreg: 0.040283 (0.041277) Loss: 6.828928 (
+6.980005)
+2026-04-14,14:42:44 | INFO | Train Epoch: 4 [1196032/3145728 (38%)] Data (t): 0.888 Batch (t): 2.455, 6674.82/s, 834.352/s/gpu LR:
+0.000356 Logit Scale: 11.667 Logit Bias: -10.118 Contrastive_loss: 6.823707 (6.937153) Sigreg: 0.041260 (0.041276) Loss: 6.864967 (
+6.978429)
+2026-04-14,14:42:47 | INFO | Train Epoch: 4 [1212416/3145728 (39%)] Data (t): 0.900 Batch (t): 2.515, 6515.39/s, 814.424/s/gpu LR:
+0.000356 Logit Scale: 11.671 Logit Bias: -10.118 Contrastive_loss: 6.812310 (6.935466) Sigreg: 0.039551 (0.041253) Loss: 6.851861 (
+6.976719)
+2026-04-14,14:42:49 | INFO | Train Epoch: 4 [1228800/3145728 (39%)] Data (t): 0.871 Batch (t): 2.552, 6420.78/s, 802.598/s/gpu LR:
+0.000356 Logit Scale: 11.675 Logit Bias: -10.119 Contrastive_loss: 6.790613 (6.933534) Sigreg: 0.038818 (0.041221) Loss: 6.829431 (
+6.974755)
+2026-04-14,14:42:52 | INFO | Train Epoch: 4 [1245184/3145728 (40%)] Data (t): 1.040 Batch (t): 2.642, 6202.47/s, 775.309/s/gpu LR:
+0.000356 Logit Scale: 11.679 Logit Bias: -10.119 Contrastive_loss: 6.789200 (6.931635) Sigreg: 0.043701 (0.041253) Loss: 6.832901 (
+6.972889)
+2026-04-14,14:42:54 | INFO | Train Epoch: 4 [1261568/3145728 (40%)] Data (t): 0.793 Batch (t): 2.459, 6663.06/s, 832.883/s/gpu LR:
+0.000356 Logit Scale: 11.683 Logit Bias: -10.119 Contrastive_loss: 6.755345 (6.929346) Sigreg: 0.040039 (0.041238) Loss: 6.795384 (
+6.970583)
+2026-04-14,14:42:57 | INFO | Train Epoch: 4 [1277952/3145728 (41%)] Data (t): 0.972 Batch (t): 2.564, 6390.02/s, 798.752/s/gpu LR:
+0.000356 Logit Scale: 11.688 Logit Bias: -10.120 Contrastive_loss: 6.758962 (6.927161) Sigreg: 0.040039 (0.041222) Loss: 6.799001 (
+6.968384)
+2026-04-14,14:42:59 | INFO | Train Epoch: 4 [1294336/3145728 (41%)] Data (t): 0.939 Batch (t): 2.638, 6210.18/s, 776.273/s/gpu LR:
+0.000356 Logit Scale: 11.692 Logit Bias: -10.120 Contrastive_loss: 6.717166 (6.924503) Sigreg: 0.040527 (0.041213) Loss: 6.757694 (
+6.965717)
+2026-04-14,14:43:02 | INFO | Train Epoch: 4 [1310720/3145728 (42%)] Data (t): 1.443 Batch (t): 3.015, 5433.88/s, 679.235/s/gpu LR:
+0.000355 Logit Scale: 11.696 Logit Bias: -10.120 Contrastive_loss: 6.741548 (6.922216) Sigreg: 0.039551 (0.041193) Loss: 6.781099 (
+6.963409)
+2026-04-14,14:43:05 | INFO | Train Epoch: 4 [1327104/3145728 (42%)] Data (t): 1.393 Batch (t): 3.039, 5391.57/s, 673.947/s/gpu LR:
+0.000355 Logit Scale: 11.700 Logit Bias: -10.121 Contrastive_loss: 6.766692 (6.920296) Sigreg: 0.037598 (0.041148) Loss: 6.804290 (
+6.961444)
+2026-04-14,14:43:08 | INFO | Train Epoch: 4 [1343488/3145728 (43%)] Data (t): 1.393 Batch (t): 2.968, 5521.07/s, 690.134/s/gpu LR:
+0.000355 Logit Scale: 11.704 Logit Bias: -10.121 Contrastive_loss: 6.678526 (6.917348) Sigreg: 0.040283 (0.041138) Loss: 6.718809 (
+6.958485)
+2026-04-14,14:43:12 | INFO | Train Epoch: 4 [1359872/3145728 (43%)] Data (t): 1.491 Batch (t): 3.194, 5129.51/s, 641.189/s/gpu LR:
+0.000355 Logit Scale: 11.709 Logit Bias: -10.121 Contrastive_loss: 6.740348 (6.915215) Sigreg: 0.038574 (0.041107) Loss: 6.778922 (
+6.956322)
+2026-04-14,14:43:14 | INFO | Train Epoch: 4 [1376256/3145728 (44%)] Data (t): 1.054 Batch (t): 2.784, 5884.04/s, 735.505/s/gpu LR:
+0.000355 Logit Scale: 11.713 Logit Bias: -10.122 Contrastive_loss: 6.756163 (6.913322) Sigreg: 0.037842 (0.041068) Loss: 6.794004 (
+6.954390)
+2026-04-14,14:43:17 | INFO | Train Epoch: 4 [1392640/3145728 (44%)] Data (t): 1.302 Batch (t): 2.878, 5692.14/s, 711.518/s/gpu LR:
+0.000355 Logit Scale: 11.717 Logit Bias: -10.122 Contrastive_loss: 6.852756 (6.912609) Sigreg: 0.043457 (0.041096) Loss: 6.896213 (
+6.953705)
+2026-04-14,14:43:20 | INFO | Train Epoch: 4 [1409024/3145728 (45%)] Data (t): 1.068 Batch (t): 3.027, 5412.59/s, 676.574/s/gpu LR:
+0.000355 Logit Scale: 11.721 Logit Bias: -10.122 Contrastive_loss: 6.756413 (6.910793) Sigreg: 0.034424 (0.041018) Loss: 6.790836 (
+6.951811)
+2026-04-14,14:43:24 | INFO | Train Epoch: 4 [1425408/3145728 (45%)] Data (t): 1.409 Batch (t): 3.238, 5060.41/s, 632.551/s/gpu LR:
+0.000355 Logit Scale: 11.725 Logit Bias: -10.123 Contrastive_loss: 6.822501 (6.909778) Sigreg: 0.039307 (0.040999) Loss: 6.861807 (
+6.950777)
+2026-04-14,14:43:27 | INFO | Train Epoch: 4 [1441792/3145728 (46%)] Data (t): 1.591 Batch (t): 3.159, 5187.09/s, 648.386/s/gpu LR:
+0.000355 Logit Scale: 11.730 Logit Bias: -10.123 Contrastive_loss: 6.826796 (6.908835) Sigreg: 0.039795 (0.040985) Loss: 6.866590 (
+6.949820)
+2026-04-14,14:43:30 | INFO | Train Epoch: 4 [1458176/3145728 (46%)] Data (t): 1.483 Batch (t): 3.056, 5361.47/s, 670.184/s/gpu LR:
+0.000355 Logit Scale: 11.734 Logit Bias: -10.123 Contrastive_loss: 6.817677 (6.907811) Sigreg: 0.040771 (0.040983) Loss: 6.858449 (
+6.948794)
+2026-04-14,14:43:33 | INFO | Train Epoch: 4 [1474560/3145728 (47%)] Data (t): 1.175 Batch (t): 2.937, 5577.96/s, 697.246/s/gpu LR:
+0.000354 Logit Scale: 11.738 Logit Bias: -10.124 Contrastive_loss: 6.798675 (6.906598) Sigreg: 0.034912 (0.040915) Loss: 6.833587 (
+6.947514)
+2026-04-14,14:43:36 | INFO | Train Epoch: 4 [1490944/3145728 (47%)] Data (t): 1.145 Batch (t): 2.991, 5477.26/s, 684.658/s/gpu LR:
+0.000354 Logit Scale: 11.742 Logit Bias: -10.124 Contrastive_loss: 6.878423 (6.906289) Sigreg: 0.043701 (0.040946) Loss: 6.922124 (
+6.947235)
+2026-04-14,14:43:39 | INFO | Train Epoch: 4 [1507328/3145728 (48%)] Data (t): 1.430 Batch (t): 3.110, 5268.04/s, 658.505/s/gpu LR:
+0.000354 Logit Scale: 11.746 Logit Bias: -10.124 Contrastive_loss: 6.783451 (6.904953) Sigreg: 0.038330 (0.040917) Loss: 6.821781 (
+6.945871)
+2026-04-14,14:43:42 | INFO | Train Epoch: 4 [1523712/3145728 (48%)] Data (t): 1.507 Batch (t): 3.082, 5315.51/s, 664.438/s/gpu LR:
+0.000354 Logit Scale: 11.750 Logit Bias: -10.125 Contrastive_loss: 6.733305 (6.903108) Sigreg: 0.040771 (0.040916) Loss: 6.774076 (
+6.944024)
+2026-04-14,14:43:45 | INFO | Train Epoch: 4 [1540096/3145728 (49%)] Data (t): 1.298 Batch (t): 3.025, 5415.58/s, 676.947/s/gpu LR:
+0.000354 Logit Scale: 11.755 Logit Bias: -10.125 Contrastive_loss: 6.804421 (6.902058) Sigreg: 0.039795 (0.040904) Loss: 6.844216 (
+6.942962)
+2026-04-14,14:43:48 | INFO | Train Epoch: 4 [1556480/3145728 (49%)] Data (t): 1.201 Batch (t): 2.917, 5616.41/s, 702.052/s/gpu LR:
+0.000354 Logit Scale: 11.759 Logit Bias: -10.125 Contrastive_loss: 6.688155 (6.899806) Sigreg: 0.036621 (0.040859) Loss: 6.724776 (
+6.940665)
+2026-04-14,14:43:51 | INFO | Train Epoch: 4 [1572864/3145728 (50%)] Data (t): 1.166 Batch (t): 2.805, 5840.63/s, 730.078/s/gpu LR:
+0.000354 Logit Scale: 11.763 Logit Bias: -10.126 Contrastive_loss: 6.773507 (6.898491) Sigreg: 0.037598 (0.040825) Loss: 6.811105 (
+6.939316)
+2026-04-14,14:43:54 | INFO | Train Epoch: 4 [1589248/3145728 (51%)] Data (t): 1.437 Batch (t): 3.010, 5442.53/s, 680.316/s/gpu LR:
+0.000354 Logit Scale: 11.767 Logit Bias: -10.126 Contrastive_loss: 6.750406 (6.896964) Sigreg: 0.038818 (0.040804) Loss: 6.789224 (
+6.937768)
+2026-04-14,14:43:57 | INFO | Train Epoch: 4 [1605632/3145728 (51%)] Data (t): 1.284 Batch (t): 2.858, 5731.69/s, 716.461/s/gpu LR:
+0.000354 Logit Scale: 11.771 Logit Bias: -10.126 Contrastive_loss: 6.685384 (6.894805) Sigreg: 0.039551 (0.040791) Loss: 6.724935 (
+6.935596)
+2026-04-14,14:43:59 | INFO | Train Epoch: 4 [1622016/3145728 (52%)] Data (t): 1.109 Batch (t): 2.724, 6013.58/s, 751.698/s/gpu LR:
+0.000354 Logit Scale: 11.776 Logit Bias: -10.127 Contrastive_loss: 6.734036 (6.893181) Sigreg: 0.041504 (0.040799) Loss: 6.775540 (
+6.933980)
+2026-04-14,14:44:02 | INFO | Train Epoch: 4 [1638400/3145728 (52%)] Data (t): 1.585 Batch (t): 3.159, 5185.72/s, 648.215/s/gpu LR:
+0.000353 Logit Scale: 11.780 Logit Bias: -10.127 Contrastive_loss: 6.776135 (6.892011) Sigreg: 0.040039 (0.040791) Loss: 6.816174 (
+6.932802)
+2026-04-14,14:44:06 | INFO | Train Epoch: 4 [1654784/3145728 (53%)] Data (t): 1.441 Batch (t): 3.221, 5086.10/s, 635.763/s/gpu LR:
+0.000353 Logit Scale: 11.784 Logit Bias: -10.127 Contrastive_loss: 6.673314 (6.889845) Sigreg: 0.038330 (0.040767) Loss: 6.711644 (
+6.930612)
+2026-04-14,14:44:09 | INFO | Train Epoch: 4 [1671168/3145728 (53%)] Data (t): 1.279 Batch (t): 2.902, 5646.33/s, 705.791/s/gpu LR:
+0.000353 Logit Scale: 11.788 Logit Bias: -10.128 Contrastive_loss: 6.685305 (6.887840) Sigreg: 0.038574 (0.040745) Loss: 6.723879 (
+6.928585)
+2026-04-14,14:44:12 | INFO | Train Epoch: 4 [1687552/3145728 (54%)] Data (t): 1.337 Batch (t): 2.994, 5471.81/s, 683.976/s/gpu LR:
+0.000353 Logit Scale: 11.792 Logit Bias: -10.128 Contrastive_loss: 6.698259 (6.885999) Sigreg: 0.036865 (0.040707) Loss: 6.735124 (
+6.926707)
+2026-04-14,14:44:14 | INFO | Train Epoch: 4 [1703936/3145728 (54%)] Data (t): 1.148 Batch (t): 2.768, 5919.84/s, 739.980/s/gpu LR:
+0.000353 Logit Scale: 11.796 Logit Bias: -10.128 Contrastive_loss: 6.724604 (6.884448) Sigreg: 0.036377 (0.040666) Loss: 6.760981 (
+6.925113)
+2026-04-14,14:44:17 | INFO | Train Epoch: 4 [1720320/3145728 (55%)] Data (t): 1.352 Batch (t): 2.925, 5601.52/s, 700.189/s/gpu LR:
+0.000353 Logit Scale: 11.801 Logit Bias: -10.129 Contrastive_loss: 6.647002 (6.882186) Sigreg: 0.038330 (0.040644) Loss: 6.685332 (
+6.922830)
+2026-04-14,14:44:20 | INFO | Train Epoch: 4 [1736704/3145728 (55%)] Data (t): 1.099 Batch (t): 2.816, 5818.13/s, 727.266/s/gpu LR:
+0.000353 Logit Scale: 11.805 Logit Bias: -10.129 Contrastive_loss: 6.625868 (6.879768) Sigreg: 0.040039 (0.040638) Loss: 6.665907 (
+6.920406)
+2026-04-14,14:44:23 | INFO | Train Epoch: 4 [1753088/3145728 (56%)] Data (t): 1.047 Batch (t): 3.074, 5329.82/s, 666.228/s/gpu LR:
+0.000353 Logit Scale: 11.809 Logit Bias: -10.129 Contrastive_loss: 6.632315 (6.877455) Sigreg: 0.036133 (0.040596) Loss: 6.668447 (
+6.918051)
+2026-04-14,14:44:26 | INFO | Train Epoch: 4 [1769472/3145728 (56%)] Data (t): 1.202 Batch (t): 2.775, 5905.13/s, 738.141/s/gpu LR:
+0.000353 Logit Scale: 11.813 Logit Bias: -10.130 Contrastive_loss: 6.623951 (6.875108) Sigreg: 0.038086 (0.040573) Loss: 6.662037 (
+6.915681)
+2026-04-14,14:44:29 | INFO | Train Epoch: 4 [1785856/3145728 (57%)] Data (t): 1.270 Batch (t): 3.047, 5376.62/s, 672.078/s/gpu LR:
+0.000352 Logit Scale: 11.817 Logit Bias: -10.130 Contrastive_loss: 6.693249 (6.873440) Sigreg: 0.035400 (0.040525) Loss: 6.728649 (
+6.913965)
+2026-04-14,14:44:32 | INFO | Train Epoch: 4 [1802240/3145728 (57%)] Data (t): 1.194 Batch (t): 2.761, 5933.30/s, 741.663/s/gpu LR:
+0.000352 Logit Scale: 11.822 Logit Bias: -10.130 Contrastive_loss: 6.672385 (6.871612) Sigreg: 0.039551 (0.040516) Loss: 6.711936 (
+6.912128)
+2026-04-14,14:44:34 | INFO | Train Epoch: 4 [1818624/3145728 (58%)] Data (t): 0.982 Batch (t): 2.589, 6329.09/s, 791.137/s/gpu LR:
+0.000352 Logit Scale: 11.826 Logit Bias: -10.131 Contrastive_loss: 6.700809 (6.870073) Sigreg: 0.040527 (0.040516) Loss: 6.741336 (
+6.910590)
+2026-04-14,14:44:37 | INFO | Train Epoch: 4 [1835008/3145728 (58%)] Data (t): 0.763 Batch (t): 2.482, 6602.19/s, 825.274/s/gpu LR:
+0.000352 Logit Scale: 11.830 Logit Bias: -10.131 Contrastive_loss: 6.613656 (6.867784) Sigreg: 0.037109 (0.040486) Loss: 6.650765 (
+6.908270)
+2026-04-14,14:44:39 | INFO | Train Epoch: 4 [1851392/3145728 (59%)] Data (t): 1.036 Batch (t): 2.601, 6298.28/s, 787.285/s/gpu LR:
+0.000352 Logit Scale: 11.834 Logit Bias: -10.131 Contrastive_loss: 6.655587 (6.865906) Sigreg: 0.041260 (0.040493) Loss: 6.696847 (
+6.906399)
+2026-04-14,14:44:42 | INFO | Train Epoch: 4 [1867776/3145728 (59%)] Data (t): 0.913 Batch (t): 2.477, 6614.30/s, 826.787/s/gpu LR:
+0.000352 Logit Scale: 11.838 Logit Bias: -10.132 Contrastive_loss: 6.603115 (6.863601) Sigreg: 0.042480 (0.040510) Loss: 6.645595 (
+6.904111)
+2026-04-14,14:44:44 | INFO | Train Epoch: 4 [1884160/3145728 (60%)] Data (t): 0.881 Batch (t): 2.450, 6686.00/s, 835.750/s/gpu LR:
+0.000352 Logit Scale: 11.843 Logit Bias: -10.132 Contrastive_loss: 6.637551 (6.861635) Sigreg: 0.038330 (0.040491) Loss: 6.675881 (
+6.902126)
+2026-04-14,14:44:47 | INFO | Train Epoch: 4 [1900544/3145728 (60%)] Data (t): 0.962 Batch (t): 2.537, 6458.12/s, 807.264/s/gpu LR:
+0.000352 Logit Scale: 11.847 Logit Bias: -10.132 Contrastive_loss: 6.587345 (6.859271) Sigreg: 0.038818 (0.040477) Loss: 6.626163 (
+6.899747)
+2026-04-14,14:44:49 | INFO | Train Epoch: 4 [1916928/3145728 (61%)] Data (t): 0.883 Batch (t): 2.448, 6692.68/s, 836.585/s/gpu LR:
+0.000352 Logit Scale: 11.851 Logit Bias: -10.133 Contrastive_loss: 6.598659 (6.857043) Sigreg: 0.039551 (0.040469) Loss: 6.638210 (
+6.897512)
+2026-04-14,14:44:52 | INFO | Train Epoch: 4 [1933312/3145728 (61%)] Data (t): 0.861 Batch (t): 2.479, 6610.08/s, 826.260/s/gpu LR:
+0.000351 Logit Scale: 11.855 Logit Bias: -10.133 Contrastive_loss: 6.615025 (6.854992) Sigreg: 0.038086 (0.040449) Loss: 6.653111 (
+6.895441)
+2026-04-14,14:44:54 | INFO | Train Epoch: 4 [1949696/3145728 (62%)] Data (t): 0.908 Batch (t): 2.483, 6597.81/s, 824.726/s/gpu LR:
+0.000351 Logit Scale: 11.859 Logit Bias: -10.133 Contrastive_loss: 6.678937 (6.853513) Sigreg: 0.040527 (0.040449) Loss: 6.719464 (
+6.893962)
+2026-04-14,14:44:57 | INFO | Train Epoch: 4 [1966080/3145728 (62%)] Data (t): 0.914 Batch (t): 2.487, 6587.43/s, 823.428/s/gpu LR:
+0.000351 Logit Scale: 11.864 Logit Bias: -10.134 Contrastive_loss: 6.569883 (6.851149) Sigreg: 0.040283 (0.040448) Loss: 6.610167 (
+6.891597)
+2026-04-14,14:44:59 | INFO | Train Epoch: 4 [1982464/3145728 (63%)] Data (t): 0.767 Batch (t): 2.383, 6874.07/s, 859.259/s/gpu LR:
+0.000351 Logit Scale: 11.868 Logit Bias: -10.134 Contrastive_loss: 6.565593 (6.848789) Sigreg: 0.039307 (0.040439) Loss: 6.604899 (
+6.889228)
+2026-04-14,14:45:02 | INFO | Train Epoch: 4 [1998848/3145728 (64%)] Data (t): 0.938 Batch (t): 2.503, 6546.27/s, 818.283/s/gpu LR:
+0.000351 Logit Scale: 11.872 Logit Bias: -10.134 Contrastive_loss: 6.592958 (6.846692) Sigreg: 0.040771 (0.040441) Loss: 6.633730 (
+6.887133)
+2026-04-14,14:45:04 | INFO | Train Epoch: 4 [2015232/3145728 (64%)] Data (t): 1.036 Batch (t): 2.657, 6166.57/s, 770.822/s/gpu LR:
+0.000351 Logit Scale: 11.876 Logit Bias: -10.135 Contrastive_loss: 6.780907 (6.846157) Sigreg: 0.039551 (0.040434) Loss: 6.820457 (
+6.886591)
+2026-04-14,14:45:07 | INFO | Train Epoch: 4 [2031616/3145728 (65%)] Data (t): 1.013 Batch (t): 2.582, 6345.40/s, 793.175/s/gpu LR:
+0.000351 Logit Scale: 11.881 Logit Bias: -10.135 Contrastive_loss: 6.782234 (6.845642) Sigreg: 0.038086 (0.040415) Loss: 6.820320 (
+6.886057)
+2026-04-14,14:45:09 | INFO | Train Epoch: 4 [2048000/3145728 (65%)] Data (t): 0.934 Batch (t): 2.497, 6561.97/s, 820.246/s/gpu LR:
+0.000351 Logit Scale: 11.885 Logit Bias: -10.135 Contrastive_loss: 6.725976 (6.844684) Sigreg: 0.041992 (0.040428) Loss: 6.767968 (
+6.885112)
+2026-04-14,14:45:12 | INFO | Train Epoch: 4 [2064384/3145728 (66%)] Data (t): 0.916 Batch (t): 2.493, 6572.95/s, 821.619/s/gpu LR:
+0.000351 Logit Scale: 11.889 Logit Bias: -10.136 Contrastive_loss: 6.761062 (6.844021) Sigreg: 0.038330 (0.040411) Loss: 6.799392 (
+6.884432)
+2026-04-14,14:45:14 | INFO | Train Epoch: 4 [2080768/3145728 (66%)] Data (t): 0.788 Batch (t): 2.364, 6930.21/s, 866.277/s/gpu LR:
+0.000351 Logit Scale: 11.893 Logit Bias: -10.136 Contrastive_loss: 6.627854 (6.842319) Sigreg: 0.040283 (0.040410) Loss: 6.668138 (
+6.882729)
+2026-04-14,14:45:17 | INFO | Train Epoch: 4 [2097152/3145728 (67%)] Data (t): 0.867 Batch (t): 2.430, 6743.17/s, 842.896/s/gpu LR:
+0.000350 Logit Scale: 11.897 Logit Bias: -10.136 Contrastive_loss: 6.701796 (6.841221) Sigreg: 0.036865 (0.040382) Loss: 6.738661 (
+6.881603)
+2026-04-14,14:45:19 | INFO | Train Epoch: 4 [2113536/3145728 (67%)] Data (t): 0.808 Batch (t): 2.365, 6926.61/s, 865.827/s/gpu LR:
+0.000350 Logit Scale: 11.901 Logit Bias: -10.137 Contrastive_loss: 6.593130 (6.839298) Sigreg: 0.039062 (0.040372) Loss: 6.632193 (
+6.879670)
+2026-04-14,14:45:21 | INFO | Train Epoch: 4 [2129920/3145728 (68%)] Data (t): 0.880 Batch (t): 2.444, 6702.40/s, 837.800/s/gpu LR:
+0.000350 Logit Scale: 11.906 Logit Bias: -10.137 Contrastive_loss: 6.603310 (6.837482) Sigreg: 0.039307 (0.040364) Loss: 6.642617 (
+6.877846)
+2026-04-14,14:45:24 | INFO | Train Epoch: 4 [2146304/3145728 (68%)] Data (t): 0.869 Batch (t): 2.431, 6740.80/s, 842.600/s/gpu LR:
+0.000350 Logit Scale: 11.910 Logit Bias: -10.137 Contrastive_loss: 6.601088 (6.835678) Sigreg: 0.038086 (0.040347) Loss: 6.639174 (
+6.876024)
+2026-04-14,14:45:26 | INFO | Train Epoch: 4 [2162688/3145728 (69%)] Data (t): 0.814 Batch (t): 2.376, 6894.26/s, 861.782/s/gpu LR:
+0.000350 Logit Scale: 11.914 Logit Bias: -10.138 Contrastive_loss: 6.550238 (6.833515) Sigreg: 0.039062 (0.040337) Loss: 6.589300 (
+6.873852)
+2026-04-14,14:45:29 | INFO | Train Epoch: 4 [2179072/3145728 (69%)] Data (t): 0.876 Batch (t): 2.443, 6706.92/s, 838.365/s/gpu LR:
+0.000350 Logit Scale: 11.918 Logit Bias: -10.138 Contrastive_loss: 6.508112 (6.831069) Sigreg: 0.040039 (0.040335) Loss: 6.548151 (
+6.871403)
+2026-04-14,14:45:31 | INFO | Train Epoch: 4 [2195456/3145728 (70%)] Data (t): 0.775 Batch (t): 2.341, 6998.20/s, 874.775/s/gpu LR:
+0.000350 Logit Scale: 11.922 Logit Bias: -10.138 Contrastive_loss: 6.482180 (6.828465) Sigreg: 0.037842 (0.040316) Loss: 6.520021 (
+6.868781)
+2026-04-14,14:45:33 | INFO | Train Epoch: 4 [2211840/3145728 (70%)] Data (t): 0.658 Batch (t): 2.221, 7377.67/s, 922.209/s/gpu LR:
+0.000350 Logit Scale: 11.927 Logit Bias: -10.139 Contrastive_loss: 6.389380 (6.825213) Sigreg: 0.038086 (0.040299) Loss: 6.427465 (
+6.865512)
+2026-04-14,14:45:35 | INFO | Train Epoch: 4 [2228224/3145728 (71%)] Data (t): 0.683 Batch (t): 2.261, 7246.34/s, 905.793/s/gpu LR:
+0.000350 Logit Scale: 11.931 Logit Bias: -10.139 Contrastive_loss: 6.548760 (6.823180) Sigreg: 0.037109 (0.040276) Loss: 6.585870 (
+6.863456)
+2026-04-14,14:45:38 | INFO | Train Epoch: 4 [2244608/3145728 (71%)] Data (t): 0.709 Batch (t): 2.280, 7187.28/s, 898.410/s/gpu LR:
+0.000349 Logit Scale: 11.935 Logit Bias: -10.139 Contrastive_loss: 6.398221 (6.820078) Sigreg: 0.038086 (0.040260) Loss: 6.436307 (
+6.860338)
+2026-04-14,14:45:40 | INFO | Train Epoch: 4 [2260992/3145728 (72%)] Data (t): 0.753 Batch (t): 2.316, 7074.59/s, 884.324/s/gpu LR:
+0.000349 Logit Scale: 11.939 Logit Bias: -10.140 Contrastive_loss: 6.400261 (6.817036) Sigreg: 0.034912 (0.040221) Loss: 6.435174 (
+6.857257)
+2026-04-14,14:45:43 | INFO | Train Epoch: 4 [2277376/3145728 (72%)] Data (t): 0.710 Batch (t): 2.414, 6786.98/s, 848.373/s/gpu LR:
+0.000349 Logit Scale: 11.944 Logit Bias: -10.140 Contrastive_loss: 6.441996 (6.814338) Sigreg: 0.038574 (0.040209) Loss: 6.480570 (
+6.854547)
+2026-04-14,14:45:45 | INFO | Train Epoch: 4 [2293760/3145728 (73%)] Data (t): 0.824 Batch (t): 2.390, 6854.80/s, 856.849/s/gpu LR:
+0.000349 Logit Scale: 11.948 Logit Bias: -10.140 Contrastive_loss: 6.415392 (6.811488) Sigreg: 0.038086 (0.040194) Loss: 6.453478 (
+6.851682)
+2026-04-14,14:45:47 | INFO | Train Epoch: 4 [2310144/3145728 (73%)] Data (t): 0.771 Batch (t): 2.338, 7009.18/s, 876.147/s/gpu LR:
+0.000349 Logit Scale: 11.952 Logit Bias: -10.141 Contrastive_loss: 6.436027 (6.808825) Sigreg: 0.035889 (0.040164) Loss: 6.471916 (
+6.848989)
+2026-04-14,14:45:50 | INFO | Train Epoch: 4 [2326528/3145728 (74%)] Data (t): 0.799 Batch (t): 2.360, 6941.72/s, 867.715/s/gpu LR:
+0.000349 Logit Scale: 11.956 Logit Bias: -10.141 Contrastive_loss: 6.407811 (6.806001) Sigreg: 0.038086 (0.040149) Loss: 6.445897 (
+6.846150)
+2026-04-14,14:45:52 | INFO | Train Epoch: 4 [2342912/3145728 (74%)] Data (t): 0.714 Batch (t): 2.276, 7198.96/s, 899.870/s/gpu LR:
+0.000349 Logit Scale: 11.961 Logit Bias: -10.141 Contrastive_loss: 6.426017 (6.803344) Sigreg: 0.034912 (0.040112) Loss: 6.460929 (
+6.843456)
+2026-04-14,14:45:54 | INFO | Train Epoch: 4 [2359296/3145728 (75%)] Data (t): 0.684 Batch (t): 2.249, 7286.34/s, 910.793/s/gpu LR:
+0.000349 Logit Scale: 11.965 Logit Bias: -10.142 Contrastive_loss: 6.441013 (6.800828) Sigreg: 0.035156 (0.040078) Loss: 6.476170 (
+6.840906)
+2026-04-14,14:45:56 | INFO | Train Epoch: 4 [2375680/3145728 (76%)] Data (t): 0.694 Batch (t): 2.260, 7251.02/s, 906.377/s/gpu LR:
+0.000349 Logit Scale: 11.969 Logit Bias: -10.142 Contrastive_loss: 6.370866 (6.797863) Sigreg: 0.037598 (0.040061) Loss: 6.408463 (
+6.837923)
+2026-04-14,14:45:59 | INFO | Train Epoch: 4 [2392064/3145728 (76%)] Data (t): 0.629 Batch (t): 2.278, 7192.94/s, 899.118/s/gpu LR:
+0.000348 Logit Scale: 11.973 Logit Bias: -10.142 Contrastive_loss: 6.388490 (6.795059) Sigreg: 0.036377 (0.040036) Loss: 6.424867 (
+6.835094)
+2026-04-14,14:46:01 | INFO | Train Epoch: 4 [2408448/3145728 (77%)] Data (t): 0.777 Batch (t): 2.341, 6999.68/s, 874.959/s/gpu LR:
+0.000348 Logit Scale: 11.978 Logit Bias: -10.143 Contrastive_loss: 6.367319 (6.792149) Sigreg: 0.035645 (0.040006) Loss: 6.402963 (
+6.832155)
+2026-04-14,14:46:03 | INFO | Train Epoch: 4 [2424832/3145728 (77%)] Data (t): 0.807 Batch (t): 2.372, 6908.33/s, 863.541/s/gpu LR:
+0.000348 Logit Scale: 11.982 Logit Bias: -10.143 Contrastive_loss: 6.394547 (6.789462) Sigreg: 0.034912 (0.039971) Loss: 6.429459 (
+6.829434)
+2026-04-14,14:46:06 | INFO | Train Epoch: 4 [2441216/3145728 (78%)] Data (t): 0.820 Batch (t): 2.387, 6863.15/s, 857.894/s/gpu LR:
+0.000348 Logit Scale: 11.986 Logit Bias: -10.143 Contrastive_loss: 6.500023 (6.787520) Sigreg: 0.036865 (0.039951) Loss: 6.536888 (
+6.827470)
+2026-04-14,14:46:08 | INFO | Train Epoch: 4 [2457600/3145728 (78%)] Data (t): 0.828 Batch (t): 2.393, 6845.24/s, 855.654/s/gpu LR:
+0.000348 Logit Scale: 11.991 Logit Bias: -10.144 Contrastive_loss: 6.465813 (6.785375) Sigreg: 0.040771 (0.039956) Loss: 6.506584 (
+6.825331)
+2026-04-14,14:46:11 | INFO | Train Epoch: 4 [2473984/3145728 (79%)] Data (t): 0.822 Batch (t): 2.388, 6860.60/s, 857.575/s/gpu LR:
+0.000348 Logit Scale: 11.995 Logit Bias: -10.144 Contrastive_loss: 6.534578 (6.783714) Sigreg: 0.035156 (0.039924) Loss: 6.569735 (
+6.823638)
+2026-04-14,14:46:13 | INFO | Train Epoch: 4 [2490368/3145728 (79%)] Data (t): 0.696 Batch (t): 2.261, 7246.33/s, 905.791/s/gpu LR:
+0.000348 Logit Scale: 11.999 Logit Bias: -10.144 Contrastive_loss: 6.599725 (6.782504) Sigreg: 0.038086 (0.039912) Loss: 6.637811 (
+6.822416)
+2026-04-14,14:46:15 | INFO | Train Epoch: 4 [2506752/3145728 (80%)] Data (t): 0.641 Batch (t): 2.224, 7366.15/s, 920.769/s/gpu LR:
+0.000348 Logit Scale: 12.003 Logit Bias: -10.145 Contrastive_loss: 6.516189 (6.780763) Sigreg: 0.033936 (0.039873) Loss: 6.550124 (
+6.820636)
+2026-04-14,14:46:17 | INFO | Train Epoch: 4 [2523136/3145728 (80%)] Data (t): 0.720 Batch (t): 2.284, 7172.27/s, 896.533/s/gpu LR:
+0.000348 Logit Scale: 12.007 Logit Bias: -10.145 Contrastive_loss: 6.528750 (6.779127) Sigreg: 0.039062 (0.039868) Loss: 6.567812 (
+6.818994)
+2026-04-14,14:46:20 | INFO | Train Epoch: 4 [2539520/3145728 (81%)] Data (t): 0.685 Batch (t): 2.264, 7236.07/s, 904.509/s/gpu LR:
+0.000347 Logit Scale: 12.012 Logit Bias: -10.145 Contrastive_loss: 6.530200 (6.777521) Sigreg: 0.041504 (0.039878) Loss: 6.571703 (
+6.817399)
+2026-04-14,14:46:22 | INFO | Train Epoch: 4 [2555904/3145728 (81%)] Data (t): 0.798 Batch (t): 2.359, 6946.34/s, 868.293/s/gpu LR:
+0.000347 Logit Scale: 12.016 Logit Bias: -10.145 Contrastive_loss: 6.520949 (6.775876) Sigreg: 0.038086 (0.039867) Loss: 6.559035 (
+6.815743)
+2026-04-14,14:46:24 | INFO | Train Epoch: 4 [2572288/3145728 (82%)] Data (t): 0.770 Batch (t): 2.334, 7019.23/s, 877.404/s/gpu LR:
+0.000347 Logit Scale: 12.020 Logit Bias: -10.146 Contrastive_loss: 6.564169 (6.774527) Sigreg: 0.037598 (0.039852) Loss: 6.601767 (
+6.814380)
+2026-04-14,14:46:27 | INFO | Train Epoch: 4 [2588672/3145728 (82%)] Data (t): 0.816 Batch (t): 2.379, 6885.51/s, 860.689/s/gpu LR:
+0.000347 Logit Scale: 12.024 Logit Bias: -10.146 Contrastive_loss: 6.501948 (6.772802) Sigreg: 0.038086 (0.039841) Loss: 6.540034 (
+6.812644)
+2026-04-14,14:46:29 | INFO | Train Epoch: 4 [2605056/3145728 (83%)] Data (t): 0.766 Batch (t): 2.332, 7027.11/s, 878.389/s/gpu LR:
+0.000347 Logit Scale: 12.029 Logit Bias: -10.146 Contrastive_loss: 6.544423 (6.771366) Sigreg: 0.036377 (0.039819) Loss: 6.580800 (
+6.811185)
+2026-04-14,14:46:31 | INFO | Train Epoch: 4 [2621440/3145728 (83%)] Data (t): 0.752 Batch (t): 2.316, 7073.08/s, 884.134/s/gpu LR:
+0.000347 Logit Scale: 12.033 Logit Bias: -10.147 Contrastive_loss: 6.465966 (6.769457) Sigreg: 0.039062 (0.039815) Loss: 6.505028 (
+6.809272)
+2026-04-14,14:46:34 | INFO | Train Epoch: 4 [2637824/3145728 (84%)] Data (t): 0.697 Batch (t): 2.269, 7221.70/s, 902.713/s/gpu LR:
+0.000347 Logit Scale: 12.037 Logit Bias: -10.147 Contrastive_loss: 6.504512 (6.767812) Sigreg: 0.040771 (0.039821) Loss: 6.545283 (
+6.807632)
+2026-04-14,14:46:36 | INFO | Train Epoch: 4 [2654208/3145728 (84%)] Data (t): 0.663 Batch (t): 2.250, 7280.41/s, 910.051/s/gpu LR:
+0.000347 Logit Scale: 12.041 Logit Bias: -10.147 Contrastive_loss: 6.556758 (6.766509) Sigreg: 0.038086 (0.039810) Loss: 6.594844 (
+6.806319)
+2026-04-14,14:46:38 | INFO | Train Epoch: 4 [2670592/3145728 (85%)] Data (t): 0.696 Batch (t): 2.258, 7257.40/s, 907.175/s/gpu LR:
+0.000347 Logit Scale: 12.045 Logit Bias: -10.148 Contrastive_loss: 6.562566 (6.765258) Sigreg: 0.037109 (0.039793) Loss: 6.599675 (
+6.805051)
+2026-04-14,14:46:40 | INFO | Train Epoch: 4 [2686976/3145728 (85%)] Data (t): 0.767 Batch (t): 2.328, 7037.10/s, 879.638/s/gpu LR:
+0.000346 Logit Scale: 12.049 Logit Bias: -10.148 Contrastive_loss: 6.490858 (6.763584) Sigreg: 0.035400 (0.039767) Loss: 6.526258 (
+6.803351)
+2026-04-14,14:46:43 | INFO | Train Epoch: 4 [2703360/3145728 (86%)] Data (t): 0.759 Batch (t): 2.321, 7058.58/s, 882.323/s/gpu LR:
+0.000346 Logit Scale: 12.053 Logit Bias: -10.148 Contrastive_loss: 6.346291 (6.761055) Sigreg: 0.037109 (0.039751) Loss: 6.383400 (
+6.800806)
+2026-04-14,14:46:45 | INFO | Train Epoch: 4 [2719744/3145728 (86%)] Data (t): 0.739 Batch (t): 2.298, 7128.15/s, 891.018/s/gpu LR:
+0.000346 Logit Scale: 12.057 Logit Bias: -10.149 Contrastive_loss: 6.433836 (6.759084) Sigreg: 0.039307 (0.039748) Loss: 6.473143 (
+6.798832)
+2026-04-14,14:46:47 | INFO | Train Epoch: 4 [2736128/3145728 (87%)] Data (t): 0.687 Batch (t): 2.285, 7171.63/s, 896.453/s/gpu LR:
+0.000346 Logit Scale: 12.062 Logit Bias: -10.149 Contrastive_loss: 6.462907 (6.757311) Sigreg: 0.037598 (0.039735) Loss: 6.500505 (
+6.797046)
+2026-04-14,14:46:50 | INFO | Train Epoch: 4 [2752512/3145728 (88%)] Data (t): 0.761 Batch (t): 2.327, 7040.97/s, 880.121/s/gpu LR:
+0.000346 Logit Scale: 12.066 Logit Bias: -10.149 Contrastive_loss: 6.372673 (6.755021) Sigreg: 0.038330 (0.039727) Loss: 6.411003 (
+6.794748)
+2026-04-14,14:46:52 | INFO | Train Epoch: 4 [2768896/3145728 (88%)] Data (t): 0.703 Batch (t): 2.267, 7227.46/s, 903.432/s/gpu LR:
+0.000346 Logit Scale: 12.070 Logit Bias: -10.150 Contrastive_loss: 6.400025 (6.752921) Sigreg: 0.035889 (0.039704) Loss: 6.435914 (
+6.792625)
+2026-04-14,14:46:54 | INFO | Train Epoch: 4 [2785280/3145728 (89%)] Data (t): 0.737 Batch (t): 2.299, 7125.32/s, 890.664/s/gpu LR:
+0.000346 Logit Scale: 12.074 Logit Bias: -10.150 Contrastive_loss: 6.314082 (6.750339) Sigreg: 0.036865 (0.039687) Loss: 6.350947 (
+6.790026)
+2026-04-14,14:46:56 | INFO | Train Epoch: 4 [2801664/3145728 (89%)] Data (t): 0.617 Batch (t): 2.285, 7170.65/s, 896.331/s/gpu LR:
+0.000346 Logit Scale: 12.078 Logit Bias: -10.150 Contrastive_loss: 6.364357 (6.748082) Sigreg: 0.035645 (0.039664) Loss: 6.400002 (
+6.787746)
+2026-04-14,14:46:59 | INFO | Train Epoch: 4 [2818048/3145728 (90%)] Data (t): 0.794 Batch (t): 2.354, 6959.18/s, 869.897/s/gpu LR:
+0.000346 Logit Scale: 12.083 Logit Bias: -10.151 Contrastive_loss: 6.438163 (6.746280) Sigreg: 0.035645 (0.039640) Loss: 6.473807 (
+6.785920)
+2026-04-14,14:47:01 | INFO | Train Epoch: 4 [2834432/3145728 (90%)] Data (t): 0.762 Batch (t): 2.323, 7053.32/s, 881.666/s/gpu LR:
+0.000345 Logit Scale: 12.087 Logit Bias: -10.151 Contrastive_loss: 6.382938 (6.744180) Sigreg: 0.033936 (0.039607) Loss: 6.416874 (
+6.783787)
+2026-04-14,14:47:03 | INFO | Train Epoch: 4 [2850816/3145728 (91%)] Data (t): 0.775 Batch (t): 2.337, 7010.10/s, 876.262/s/gpu LR:
+0.000345 Logit Scale: 12.091 Logit Bias: -10.151 Contrastive_loss: 6.436790 (6.742413) Sigreg: 0.037842 (0.039597) Loss: 6.474631 (
+6.782010)
+2026-04-14,14:47:06 | INFO | Train Epoch: 4 [2867200/3145728 (91%)] Data (t): 0.747 Batch (t): 2.310, 7091.87/s, 886.484/s/gpu LR:
+0.000345 Logit Scale: 12.095 Logit Bias: -10.152 Contrastive_loss: 6.428483 (6.740619) Sigreg: 0.038086 (0.039588) Loss: 6.466569 (
+6.780208)
+2026-04-14,14:47:08 | INFO | Train Epoch: 4 [2883584/3145728 (92%)] Data (t): 0.712 Batch (t): 2.275, 7200.39/s, 900.049/s/gpu LR:
+0.000345 Logit Scale: 12.099 Logit Bias: -10.152 Contrastive_loss: 6.436121 (6.738889) Sigreg: 0.035645 (0.039566) Loss: 6.471765 (
+6.778455)
+2026-04-14,14:47:10 | INFO | Train Epoch: 4 [2899968/3145728 (92%)] Data (t): 0.848 Batch (t): 2.416, 6780.17/s, 847.522/s/gpu LR:
+0.000345 Logit Scale: 12.104 Logit Bias: -10.152 Contrastive_loss: 6.395351 (6.736948) Sigreg: 0.035889 (0.039545) Loss: 6.431240 (
+6.776494)
+2026-04-14,14:47:13 | INFO | Train Epoch: 4 [2916352/3145728 (93%)] Data (t): 0.617 Batch (t): 2.247, 7291.26/s, 911.407/s/gpu LR:
+0.000345 Logit Scale: 12.108 Logit Bias: -10.153 Contrastive_loss: 6.348820 (6.734768) Sigreg: 0.038330 (0.039538) Loss: 6.387150 (
+6.774306)
+2026-04-14,14:47:15 | INFO | Train Epoch: 4 [2932736/3145728 (93%)] Data (t): 0.679 Batch (t): 2.242, 7308.62/s, 913.578/s/gpu LR:
+0.000345 Logit Scale: 12.112 Logit Bias: -10.153 Contrastive_loss: 6.499970 (6.733456) Sigreg: 0.039062 (0.039536) Loss: 6.539032 (
+6.772992)
+2026-04-14,14:47:17 | INFO | Train Epoch: 4 [2949120/3145728 (94%)] Data (t): 0.702 Batch (t): 2.264, 7236.88/s, 904.610/s/gpu LR:
+0.000345 Logit Scale: 12.116 Logit Bias: -10.153 Contrastive_loss: 6.294670 (6.731018) Sigreg: 0.036865 (0.039521) Loss: 6.331535 (
+6.770539)
+2026-04-14,14:47:20 | INFO | Train Epoch: 4 [2965504/3145728 (94%)] Data (t): 0.704 Batch (t): 2.267, 7227.22/s, 903.402/s/gpu LR:
+0.000345 Logit Scale: 12.120 Logit Bias: -10.154 Contrastive_loss: 6.391297 (6.729142) Sigreg: 0.036865 (0.039506) Loss: 6.428163 (
+6.768648)
+2026-04-14,14:47:22 | INFO | Train Epoch: 4 [2981888/3145728 (95%)] Data (t): 0.711 Batch (t): 2.296, 7136.45/s, 892.057/s/gpu LR:
+0.000344 Logit Scale: 12.125 Logit Bias: -10.154 Contrastive_loss: 6.321311 (6.726901) Sigreg: 0.035889 (0.039486) Loss: 6.357200 (
+6.766387)
+2026-04-14,14:47:24 | INFO | Train Epoch: 4 [2998272/3145728 (95%)] Data (t): 0.794 Batch (t): 2.354, 6958.75/s, 869.844/s/gpu LR:
+0.000344 Logit Scale: 12.129 Logit Bias: -10.154 Contrastive_loss: 6.403593 (6.725134) Sigreg: 0.035889 (0.039467) Loss: 6.439482 (
+6.764601)
+2026-04-14,14:47:27 | INFO | Train Epoch: 4 [3014656/3145728 (96%)] Data (t): 0.793 Batch (t): 2.352, 6965.86/s, 870.732/s/gpu LR:
+0.000344 Logit Scale: 12.133 Logit Bias: -10.154 Contrastive_loss: 6.274548 (6.722685) Sigreg: 0.034424 (0.039439) Loss: 6.308972 (
+6.762125)
+2026-04-14,14:47:29 | INFO | Train Epoch: 4 [3031040/3145728 (96%)] Data (t): 0.741 Batch (t): 2.300, 7123.05/s, 890.382/s/gpu LR:
+0.000344 Logit Scale: 12.137 Logit Bias: -10.155 Contrastive_loss: 6.287065 (6.720330) Sigreg: 0.038330 (0.039433) Loss: 6.325395 (
+6.759764)
+2026-04-14,14:47:31 | INFO | Train Epoch: 4 [3047424/3145728 (97%)] Data (t): 0.750 Batch (t): 2.310, 7091.20/s, 886.400/s/gpu LR:
+0.000344 Logit Scale: 12.141 Logit Bias: -10.155 Contrastive_loss: 6.356137 (6.718372) Sigreg: 0.036865 (0.039420) Loss: 6.393003 (
+6.757792)
+2026-04-14,14:47:33 | INFO | Train Epoch: 4 [3063808/3145728 (97%)] Data (t): 0.765 Batch (t): 2.327, 7039.55/s, 879.944/s/gpu LR:
+0.000344 Logit Scale: 12.146 Logit Bias: -10.155 Contrastive_loss: 6.381659 (6.716572) Sigreg: 0.038818 (0.039416) Loss: 6.420477 (
+6.755988)
+2026-04-14,14:47:36 | INFO | Train Epoch: 4 [3080192/3145728 (98%)] Data (t): 0.794 Batch (t): 2.354, 6961.05/s, 870.132/s/gpu LR:
+0.000344 Logit Scale: 12.150 Logit Bias: -10.156 Contrastive_loss: 6.317820 (6.714451) Sigreg: 0.036133 (0.039399) Loss: 6.353952 (
+6.753850)
+2026-04-14,14:47:38 | INFO | Train Epoch: 4 [3096576/3145728 (98%)] Data (t): 0.663 Batch (t): 2.220, 7379.41/s, 922.426/s/gpu LR:
+0.000344 Logit Scale: 12.154 Logit Bias: -10.156 Contrastive_loss: 6.318832 (6.712358) Sigreg: 0.034180 (0.039371) Loss: 6.353012 (
+6.751729)
+2026-04-14,14:47:40 | INFO | Train Epoch: 4 [3112960/3145728 (99%)] Data (t): 0.786 Batch (t): 2.345, 6988.08/s, 873.510/s/gpu LR:
+0.000343 Logit Scale: 12.158 Logit Bias: -10.156 Contrastive_loss: 6.305008 (6.710214) Sigreg: 0.039307 (0.039371) Loss: 6.344315 (
+6.749585)
+2026-04-14,14:47:43 | INFO | Train Epoch: 4 [3129344/3145728 (99%)] Data (t): 0.746 Batch (t): 2.302, 7115.84/s, 889.480/s/gpu LR:
+0.000343 Logit Scale: 12.162 Logit Bias: -10.157 Contrastive_loss: 6.291593 (6.708022) Sigreg: 0.038086 (0.039364) Loss: 6.329679 (
+6.747386)
+2026-04-14,14:47:45 | INFO | Train Epoch: 4 [3145728/3145728 (100%)] Data (t): 0.806 Batch (t): 2.364, 6930.78/s, 866.348/s/gpu LR:
+ 0.000343 Logit Scale: 12.167 Logit Bias: -10.157 Contrastive_loss: 6.390426 (6.706368) Sigreg: 0.040039 (0.039368) Loss: 6.430465
+(6.745735)
+2026-04-14,14:47:45 | INFO | Eval: Starting validation on 0 samples...
+2026-04-14,14:47:46 | WARNING | Handling webdataset error (ReadError('invalid header', <_io.BufferedReader name='/root/paddlejob/wo
+rkspace/env_run/penghaotian/datas/coco/annotations/clip_val.tsv'>, '/root/paddlejob/workspace/env_run/penghaotian/datas/coco/annota
+tions/clip_val.tsv')). Ignoring.
+2026-04-14,14:47:46 | INFO | Eval: Computing retrieval metrics on 0 image-text pairs...
+2026-04-14,14:47:46 | INFO | Eval:   Step 1/3 - Computing similarity matrix [25010, 25010]...
+[rank0]: Traceback (most recent call last):
+[rank0]:   File "<frozen runpy>", line 198, in _run_module_as_main
+[rank0]:   File "<frozen runpy>", line 88, in _run_code
+[rank0]:   File "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/src/open_clip_train/main.py", line 597, in
+<module>
+[rank0]:     main(sys.argv[1:])
+[rank0]:   File "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/src/open_clip_train/main.py", line 514, in
+main
+[rank0]:     evaluate(model, data, completed_epoch, args, tb_writer=writer, tokenizer=tokenizer)
+[rank0]:   File "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/src/open_clip_train/train.py", line 399, in
+ evaluate
+[rank0]:     image_features=torch.cat(all_image_features),
+[rank0]:                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[rank0]: ValueError: torch.cat(): expected a non-empty list of Tensors
+[rank0]:I0414 06:47:46.478000 171192 torch/_dynamo/eval_frame.py:666] TorchDynamo attempted to trace the following frames: [
+[rank0]:I0414 06:47:46.478000 171192 torch/_dynamo/eval_frame.py:666]
+[rank0]:I0414 06:47:46.478000 171192 torch/_dynamo/eval_frame.py:666] ]
+[rank0]:I0414 06:47:46.479000 171192 torch/_dynamo/utils.py:860] TorchDynamo compilation metrics:
+[rank0]:I0414 06:47:46.479000 171192 torch/_dynamo/utils.py:860] Function, Runtimes (s)
+[rank0]:I0414 06:47:46.507000 171192 torch/_subclasses/fake_tensor.py:3335] FakeTensor cache stats:
+[rank0]:I0414 06:47:46.507000 171192 torch/_subclasses/fake_tensor.py:3336]   cache_hits: 0
+[rank0]:I0414 06:47:46.507000 171192 torch/_subclasses/fake_tensor.py:3337]   cache_misses: 0
+[rank0]:[W414 06:47:47.384181289 ProcessGroupNCCL.cpp:1553] Warning: WARNING: destroy_process_group() was not called before program
+ exit, which can leak resources. For more info, please see https://pytorch.org/docs/stable/distributed.html#shutdown (function oper
+ator())
+[rank0]:[E414 06:56:26.613116119 ProcessGroupNCCL.cpp:1890] [PG ID 0 PG GUID 0(default_pg) Rank 0] ProcessGroupNCCL's watchdog got
+stuck for 480 seconds without making progress in monitoring enqueued collectives. This typically indicates a NCCL/CUDA API (e.g., C
+udaEventDestroy) hang blocking the watchdog, and could be triggered by another thread holding the GIL inside a CUDA api (for exampl
+e, CudaEventDestroy), or other deadlock-prone behaviors.If you suspect the watchdog is not actually stuck and a longer timeout woul
+d help, you can either increase the timeout (TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC) to a larger value or disable the heartbeat monitor (
+TORCH_NCCL_ENABLE_MONITORING=0).If either of aforementioned helps, feel free to file an issue to PyTorch about the short timeout or
+ false positive abort; otherwise, please attempt to debug the hang.
+[rank0]:[E414 06:56:26.613400907 ProcessGroupNCCL.cpp:1606] [PG ID 0 PG GUID 0(default_pg) Rank 0] ProcessGroupNCCL preparing to du
+mp debug info. Include stack trace: 1, only active collectives: 0
+[rank3]:[E414 06:57:45.517717841 ProcessGroupNCCL.cpp:688] [Rank 3] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=5
+8529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600022 milliseconds before timing out.
+[rank4]:[E414 06:57:45.518885133 ProcessGroupNCCL.cpp:688] [Rank 4] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=5
+8529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600010 milliseconds before timing out.
+[rank3]:[E414 06:57:45.519194818 ProcessGroupNCCL.cpp:2277] [PG ID 0 PG GUID 0(default_pg) Rank 3]  failure detected by watchdog at
+ work sequence id: 58529 PG status: last enqueued work: 58529, last completed work: 58528
+[rank3]:[E414 06:57:45.519219211 ProcessGroupNCCL.cpp:735] Stack trace of the failed collective not found, potentially because Flig
+htRecorder is disabled. You can enable it by setting TORCH_NCCL_TRACE_BUFFER_SIZE to a non-zero value.
+[rank3]:[E414 06:57:45.519296437 ProcessGroupNCCL.cpp:2610] [PG ID 0 PG GUID 0(default_pg) Rank 3] First PG on this rank to signal
+dumping.
+[rank4]:[E414 06:57:45.519408235 ProcessGroupNCCL.cpp:2277] [PG ID 0 PG GUID 0(default_pg) Rank 4]  failure detected by watchdog at
+ work sequence id: 58529 PG status: last enqueued work: 58529, last completed work: 58528
+[rank4]:[E414 06:57:45.519429141 ProcessGroupNCCL.cpp:735] Stack trace of the failed collective not found, potentially because Flig
+htRecorder is disabled. You can enable it by setting TORCH_NCCL_TRACE_BUFFER_SIZE to a non-zero value.
+[rank4]:[E414 06:57:45.519499895 ProcessGroupNCCL.cpp:2610] [PG ID 0 PG GUID 0(default_pg) Rank 4] First PG on this rank to signal
+dumping.
+[rank2]:[E414 06:57:45.543004715 ProcessGroupNCCL.cpp:688] [Rank 2] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=5
+8529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600015 milliseconds before timing out.
+[rank2]:[E414 06:57:45.543270172 ProcessGroupNCCL.cpp:2277] [PG ID 0 PG GUID 0(default_pg) Rank 2]  failure detected by watchdog at
+ work sequence id: 58529 PG status: last enqueued work: 58529, last completed work: 58528
+[rank2]:[E414 06:57:45.543285297 ProcessGroupNCCL.cpp:735] Stack trace of the failed collective not found, potentially because Flig
+htRecorder is disabled. You can enable it by setting TORCH_NCCL_TRACE_BUFFER_SIZE to a non-zero value.
+[rank2]:[E414 06:57:45.543357846 ProcessGroupNCCL.cpp:2610] [PG ID 0 PG GUID 0(default_pg) Rank 2] First PG on this rank to signal
+dumping.
+[rank3]:[E414 06:57:45.555548258 ProcessGroupNCCL.cpp:1890] [PG ID 0 PG GUID 0(default_pg) Rank 3] Received a dump signal due to a
+collective timeout from this local rank and we will try our best to dump the debug info. Last enqueued NCCL work: 58529, last compl
+eted NCCL work: 58528.This is most likely caused by incorrect usages of collectives, e.g., wrong sizes used across ranks, the order
+ of collectives is not same for all ranks or the scheduled collective, for some reason, didn't run. Additionally, this can be cause
+d by GIL deadlock or other reasons such as network errors or bugs in the communications library (e.g. NCCL), etc.
+[rank3]:[E414 06:57:45.555805068 ProcessGroupNCCL.cpp:1606] [PG ID 0 PG GUID 0(default_pg) Rank 3] ProcessGroupNCCL preparing to du
+mp debug info. Include stack trace: 1, only active collectives: 0
+[rank5]:[E414 06:57:45.566008619 ProcessGroupNCCL.cpp:1825] [PG ID 0 PG GUID 0(default_pg) Rank 5] Observed flight recorder dump si
+gnal from another rank via TCPStore.
+[rank5]:[E414 06:57:45.566226897 ProcessGroupNCCL.cpp:1890] [PG ID 0 PG GUID 0(default_pg) Rank 5] Received a dump signal due to a
+collective timeout from  rank 2 and we will try our best to dump the debug info. Last enqueued NCCL work: 58529, last completed NCC
+L work: 58528.This is most likely caused by incorrect usages of collectives, e.g., wrong sizes used across ranks, the order of coll
+ectives is not same for all ranks or the scheduled collective, for some reason, didn't run. Additionally, this can be caused by GIL
+ deadlock or other reasons such as network errors or bugs in the communications library (e.g. NCCL), etc.
+[rank5]:[E414 06:57:45.566573411 ProcessGroupNCCL.cpp:1606] [PG ID 0 PG GUID 0(default_pg) Rank 5] ProcessGroupNCCL preparing to du
+mp debug info. Include stack trace: 1, only active collectives: 0
+[rank1]:[E414 06:57:45.577987069 ProcessGroupNCCL.cpp:1825] [PG ID 0 PG GUID 0(default_pg) Rank 1] Observed flight recorder dump si
+gnal from another rank via TCPStore.
+[rank1]:[E414 06:57:45.578164385 ProcessGroupNCCL.cpp:1890] [PG ID 0 PG GUID 0(default_pg) Rank 1] Received a dump signal due to a
+collective timeout from  rank 2 and we will try our best to dump the debug info. Last enqueued NCCL work: 58529, last completed NCC
+L work: 58528.This is most likely caused by incorrect usages of collectives, e.g., wrong sizes used across ranks, the order of coll
+ectives is not same for all ranks or the scheduled collective, for some reason, didn't run. Additionally, this can be caused by GIL
+ deadlock or other reasons such as network errors or bugs in the communications library (e.g. NCCL), etc.
+[rank1]:[E414 06:57:45.578403983 ProcessGroupNCCL.cpp:1606] [PG ID 0 PG GUID 0(default_pg) Rank 1] ProcessGroupNCCL preparing to du
+mp debug info. Include stack trace: 1, only active collectives: 0
+[rank1]:[E414 06:57:45.585338037 ProcessGroupNCCL.cpp:688] [Rank 1] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=5
+8529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600059 milliseconds before timing out.
+[rank1]:[E414 06:57:45.585518365 ProcessGroupNCCL.cpp:2277] [PG ID 0 PG GUID 0(default_pg) Rank 1]  failure detected by watchdog at
+ work sequence id: 58529 PG status: last enqueued work: 58529, last completed work: 58528
+[rank1]:[E414 06:57:45.585529239 ProcessGroupNCCL.cpp:735] Stack trace of the failed collective not found, potentially because Flig
+htRecorder is disabled. You can enable it by setting TORCH_NCCL_TRACE_BUFFER_SIZE to a non-zero value.
+[rank7]:[E414 06:57:45.589021162 ProcessGroupNCCL.cpp:688] [Rank 7] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=5
+8529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600081 milliseconds before timing out.
+[rank7]:[E414 06:57:45.589513851 ProcessGroupNCCL.cpp:2277] [PG ID 0 PG GUID 0(default_pg) Rank 7]  failure detected by watchdog at
+ work sequence id: 58529 PG status: last enqueued work: 58529, last completed work: 58528
+[rank7]:[E414 06:57:45.589528669 ProcessGroupNCCL.cpp:735] Stack trace of the failed collective not found, potentially because Flig
+htRecorder is disabled. You can enable it by setting TORCH_NCCL_TRACE_BUFFER_SIZE to a non-zero value.
+[rank7]:[E414 06:57:45.589591980 ProcessGroupNCCL.cpp:2610] [PG ID 0 PG GUID 0(default_pg) Rank 7] First PG on this rank to signal
+dumping.
+[rank6]:[E414 06:57:45.608646021 ProcessGroupNCCL.cpp:688] [Rank 6] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=5
+8529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600080 milliseconds before timing out.
+[rank6]:[E414 06:57:45.609214234 ProcessGroupNCCL.cpp:2277] [PG ID 0 PG GUID 0(default_pg) Rank 6]  failure detected by watchdog at
+ work sequence id: 58529 PG status: last enqueued work: 58529, last completed work: 58528
+[rank6]:[E414 06:57:45.609236581 ProcessGroupNCCL.cpp:735] Stack trace of the failed collective not found, potentially because Flig
+htRecorder is disabled. You can enable it by setting TORCH_NCCL_TRACE_BUFFER_SIZE to a non-zero value.
+[rank6]:[E414 06:57:45.609322576 ProcessGroupNCCL.cpp:2610] [PG ID 0 PG GUID 0(default_pg) Rank 6] First PG on this rank to signal
+dumping.
+[rank5]:[E414 06:57:45.619122806 ProcessGroupNCCL.cpp:688] [Rank 5] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=5
+8529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600091 milliseconds before timing out.
+[rank5]:[E414 06:57:45.619447018 ProcessGroupNCCL.cpp:2277] [PG ID 0 PG GUID 0(default_pg) Rank 5]  failure detected by watchdog at
+ work sequence id: 58529 PG status: last enqueued work: 58529, last completed work: 58528
+[rank5]:[E414 06:57:45.619458153 ProcessGroupNCCL.cpp:735] Stack trace of the failed collective not found, potentially because Flig
+htRecorder is disabled. You can enable it by setting TORCH_NCCL_TRACE_BUFFER_SIZE to a non-zero value.
+[rank7]:[E414 06:57:46.199006678 ProcessGroupNCCL.cpp:1890] [PG ID 0 PG GUID 0(default_pg) Rank 7] Received a dump signal due to a
+collective timeout from this local rank and we will try our best to dump the debug info. Last enqueued NCCL work: 58529, last compl
+eted NCCL work: 58528.This is most likely caused by incorrect usages of collectives, e.g., wrong sizes used across ranks, the order
+ of collectives is not same for all ranks or the scheduled collective, for some reason, didn't run. Additionally, this can be cause
+d by GIL deadlock or other reasons such as network errors or bugs in the communications library (e.g. NCCL), etc.
+[rank7]:[E414 06:57:46.199274323 ProcessGroupNCCL.cpp:1606] [PG ID 0 PG GUID 0(default_pg) Rank 7] ProcessGroupNCCL preparing to du
+mp debug info. Include stack trace: 1, only active collectives: 0
+[rank4]:[E414 06:57:46.488876782 ProcessGroupNCCL.cpp:1890] [PG ID 0 PG GUID 0(default_pg) Rank 4] Received a dump signal due to a
+collective timeout from this local rank and we will try our best to dump the debug info. Last enqueued NCCL work: 58529, last compl
+eted NCCL work: 58528.This is most likely caused by incorrect usages of collectives, e.g., wrong sizes used across ranks, the order
+ of collectives is not same for all ranks or the scheduled collective, for some reason, didn't run. Additionally, this can be cause
+d by GIL deadlock or other reasons such as network errors or bugs in the communications library (e.g. NCCL), etc.
+[rank2]:[E414 06:57:46.488894545 ProcessGroupNCCL.cpp:1890] [PG ID 0 PG GUID 0(default_pg) Rank 2] Received a dump signal due to a
+collective timeout from this local rank and we will try our best to dump the debug info. Last enqueued NCCL work: 58529, last compl
+eted NCCL work: 58528.This is most likely caused by incorrect usages of collectives, e.g., wrong sizes used across ranks, the order
+ of collectives is not same for all ranks or the scheduled collective, for some reason, didn't run. Additionally, this can be cause
+d by GIL deadlock or other reasons such as network errors or bugs in the communications library (e.g. NCCL), etc.
+[rank4]:[E414 06:57:46.489111438 ProcessGroupNCCL.cpp:1606] [PG ID 0 PG GUID 0(default_pg) Rank 4] ProcessGroupNCCL preparing to du
+mp debug info. Include stack trace: 1, only active collectives: 0
+[rank2]:[E414 06:57:46.489231334 ProcessGroupNCCL.cpp:1606] [PG ID 0 PG GUID 0(default_pg) Rank 2] ProcessGroupNCCL preparing to du
+mp debug info. Include stack trace: 1, only active collectives: 0
+[rank6]:[E414 06:57:46.510464541 ProcessGroupNCCL.cpp:1890] [PG ID 0 PG GUID 0(default_pg) Rank 6] Received a dump signal due to a
+collective timeout from this local rank and we will try our best to dump the debug info. Last enqueued NCCL work: 58529, last compl
+eted NCCL work: 58528.This is most likely caused by incorrect usages of collectives, e.g., wrong sizes used across ranks, the order
+ of collectives is not same for all ranks or the scheduled collective, for some reason, didn't run. Additionally, this can be cause
+d by GIL deadlock or other reasons such as network errors or bugs in the communications library (e.g. NCCL), etc.
+[rank6]:[E414 06:57:46.510697153 ProcessGroupNCCL.cpp:1606] [PG ID 0 PG GUID 0(default_pg) Rank 6] ProcessGroupNCCL preparing to du
+mp debug info. Include stack trace: 1, only active collectives: 0
+[rank0]:[E414 06:57:47.384425140 ProcessGroupNCCL.cpp:1367] [PG ID 0 PG GUID 0(default_pg) Rank 0] Future for ProcessGroup abort ti
+med out after 600000 ms
+[rank3]:[E414 06:58:45.584939960 ProcessGroupNCCL.cpp:749] [Rank 3] Some NCCL operations have failed or timed out. Due to the async
+hronous nature of CUDA kernels, subsequent GPU operations might run on corrupted/incomplete data.
+[rank3]:[E414 06:58:45.584961902 ProcessGroupNCCL.cpp:763] [Rank 3] To avoid data inconsistency, we are taking the entire process d
+own.
+[rank3]:[E414 06:58:45.586058004 ProcessGroupNCCL.cpp:2093] [PG ID 0 PG GUID 0(default_pg) Rank 3] Process group watchdog thread te
+rminated with exception: [Rank 3] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1,
+ NumelOut=1, Timeout(ms)=600000) ran for 600022 milliseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fc9120ddfdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7fc7f8abcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7fc7f8ac1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7fc7f8ac25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7fc9133a1253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7fc916812ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7fc9168a4850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+terminate called after throwing an instance of 'c10::DistBackendError'
+  what():  [PG ID 0 PG GUID 0(default_pg) Rank 3] Process group watchdog thread terminated with exception: [Rank 3] Watchdog caught
+ collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600022 m
+illiseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fc9120ddfdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7fc7f8abcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7fc7f8ac1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7fc7f8ac25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7fc9133a1253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7fc916812ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7fc9168a4850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+Exception raised from run at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:2099 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fc9120ddfdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x9bbbc8 (0x7fc7f8328bc8 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_cuda.so)
+frame #2: <unknown function> + 0xdc253 (0x7fc9133a1253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #3: <unknown function> + 0x94ac3 (0x7fc916812ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #4: <unknown function> + 0x126850 (0x7fc9168a4850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+terminate called after throwing an instance of 'c10::DistBackendError'
+  what():  [PG ID 0 PG GUID 0(default_pg) Rank 0] Future for ProcessGroup abort timed out after 600000 ms
+Exception raised from waitForFutureOrTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:1370 (most recent call fi
+rst):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7f4fb62ddfdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x9b9e67 (0x7f4e9c526e67 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_cuda.so)
+frame #2: c10d::ProcessGroupNCCL::abort() + 0x2a8 (0x7f4e9ccbe298 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/py
+thon3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::~ProcessGroupNCCL() + 0xb1 (0x7f4e9ccc46a1 in /root/paddlejob/workspace/env_run/penghaotian/envs/
+dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: c10d::ProcessGroupNCCL::~ProcessGroupNCCL() + 0x9 (0x7f4e9ccc4dc9 in /root/paddlejob/workspace/env_run/penghaotian/envs/d
+ino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #5: c10d::ProcessGroup::release_resources() + 0xb4 (0x7f4edfb747e4 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino
+/lib/python3.11/site-packages/torch/lib/libtorch_cpu.so)
+frame #6: <unknown function> + 0xeb6daa (0x7f4eef4c7daa in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_python.so)
+frame #7: <unknown function> + 0xe52c99 (0x7f4eef463c99 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_python.so)
+frame #8: <unknown function> + 0x40c6e1 (0x7f4eeea1d6e1 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_python.so)
+frame #9: <unknown function> + 0x40d04e (0x7f4eeea1e04e in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_python.so)
+frame #10: <unknown function> + 0x35d5a9 (0x556e243d35a9 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/python3)
+frame #11: PyDict_SetItem + 0xa45 (0x556e2427ba95 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/python3)
+frame #12: _PyModule_ClearDict + 0x16b (0x556e2450219b in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/python3)
+frame #13: <unknown function> + 0x4fe1b3 (0x556e245741b3 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/python3)
+frame #14: Py_FinalizeEx + 0x250 (0x556e24572600 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/python3)
+frame #15: Py_RunMain + 0x1c5 (0x556e245810c5 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/python3)
+frame #16: <unknown function> + 0x50bc0d (0x556e24581c0d in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/python3)
+frame #17: <unknown function> + 0x43742c (0x556e244ad42c in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/python3)
+frame #18: <unknown function> + 0x29d90 (0x7f4fba92fd90 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #19: __libc_start_main + 0x80 (0x7f4fba92fe40 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #20: <unknown function> + 0x43733d (0x556e244ad33d in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/python3)
+
+[rank2]:[E414 06:58:46.880657742 ProcessGroupNCCL.cpp:749] [Rank 2] Some NCCL operations have failed or timed out. Due to the async
+hronous nature of CUDA kernels, subsequent GPU operations might run on corrupted/incomplete data.
+[rank2]:[E414 06:58:46.880683342 ProcessGroupNCCL.cpp:763] [Rank 2] To avoid data inconsistency, we are taking the entire process d
+own.
+[rank2]:[E414 06:58:46.881702310 ProcessGroupNCCL.cpp:2093] [PG ID 0 PG GUID 0(default_pg) Rank 2] Process group watchdog thread te
+rminated with exception: [Rank 2] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1,
+ NumelOut=1, Timeout(ms)=600000) ran for 600015 milliseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fdfedaddfdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7fded44bcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7fded44c1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7fded44c25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7fdfeed77253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7fdff21e8ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7fdff227a850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+terminate called after throwing an instance of 'c10::DistBackendError'
+  what():  [PG ID 0 PG GUID 0(default_pg) Rank 2] Process group watchdog thread terminated with exception: [Rank 2] Watchdog caught
+ collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600015 m
+illiseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fdfedaddfdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7fded44bcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7fded44c1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7fded44c25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7fdfeed77253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7fdff21e8ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7fdff227a850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+Exception raised from run at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:2099 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fdfedaddfdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x9bbbc8 (0x7fded3d28bc8 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_cuda.so)
+frame #2: <unknown function> + 0xdc253 (0x7fdfeed77253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #3: <unknown function> + 0x94ac3 (0x7fdff21e8ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #4: <unknown function> + 0x126850 (0x7fdff227a850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+[rank4]:[E414 06:58:46.973346612 ProcessGroupNCCL.cpp:749] [Rank 4] Some NCCL operations have failed or timed out. Due to the async
+hronous nature of CUDA kernels, subsequent GPU operations might run on corrupted/incomplete data.
+[rank4]:[E414 06:58:46.973369188 ProcessGroupNCCL.cpp:763] [Rank 4] To avoid data inconsistency, we are taking the entire process d
+own.
+[rank4]:[E414 06:58:46.974366457 ProcessGroupNCCL.cpp:2093] [PG ID 0 PG GUID 0(default_pg) Rank 4] Process group watchdog thread te
+rminated with exception: [Rank 4] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1,
+ NumelOut=1, Timeout(ms)=600000) ran for 600010 milliseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fb686cddfdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7fb56d6bcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7fb56d6c1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7fb56d6c25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7fb687f8f253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7fb68b400ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7fb68b492850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+terminate called after throwing an instance of 'c10::DistBackendError'
+  what():  [PG ID 0 PG GUID 0(default_pg) Rank 4] Process group watchdog thread terminated with exception: [Rank 4] Watchdog caught
+ collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600010 m
+illiseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fb686cddfdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7fb56d6bcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7fb56d6c1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7fb56d6c25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7fb687f8f253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7fb68b400ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7fb68b492850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+Exception raised from run at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:2099 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fb686cddfdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x9bbbc8 (0x7fb56cf28bc8 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_cuda.so)
+frame #2: <unknown function> + 0xdc253 (0x7fb687f8f253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #3: <unknown function> + 0x94ac3 (0x7fb68b400ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #4: <unknown function> + 0x126850 (0x7fb68b492850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+[rank6]:[E414 06:58:46.992480992 ProcessGroupNCCL.cpp:749] [Rank 6] Some NCCL operations have failed or timed out. Due to the async
+hronous nature of CUDA kernels, subsequent GPU operations might run on corrupted/incomplete data.
+[rank6]:[E414 06:58:46.992501261 ProcessGroupNCCL.cpp:763] [Rank 6] To avoid data inconsistency, we are taking the entire process d
+own.
+[rank6]:[E414 06:58:46.993454505 ProcessGroupNCCL.cpp:2093] [PG ID 0 PG GUID 0(default_pg) Rank 6] Process group watchdog thread te
+rminated with exception: [Rank 6] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1,
+ NumelOut=1, Timeout(ms)=600000) ran for 600080 milliseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7f4776772fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7f46986bcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7f46986c1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7f46986c25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7f47b2ee5253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7f47b6356ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7f47b63e8850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+terminate called after throwing an instance of 'c10::DistBackendError'
+  what():  [PG ID 0 PG GUID 0(default_pg) Rank 6] Process group watchdog thread terminated with exception: [Rank 6] Watchdog caught
+ collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600080 m
+illiseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7f4776772fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7f46986bcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7f46986c1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7f46986c25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7f47b2ee5253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7f47b6356ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7f47b63e8850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+Exception raised from run at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:2099 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7f4776772fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x9bbbc8 (0x7f4697f28bc8 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_cuda.so)
+frame #2: <unknown function> + 0xdc253 (0x7f47b2ee5253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #3: <unknown function> + 0x94ac3 (0x7f47b6356ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #4: <unknown function> + 0x126850 (0x7f47b63e8850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+[rank7]:[E414 06:58:46.174458890 ProcessGroupNCCL.cpp:749] [Rank 7] Some NCCL operations have failed or timed out. Due to the async
+hronous nature of CUDA kernels, subsequent GPU operations might run on corrupted/incomplete data.
+[rank7]:[E414 06:58:46.174488087 ProcessGroupNCCL.cpp:763] [Rank 7] To avoid data inconsistency, we are taking the entire process d
+own.
+[rank7]:[E414 06:58:46.175674127 ProcessGroupNCCL.cpp:2093] [PG ID 0 PG GUID 0(default_pg) Rank 7] Process group watchdog thread te
+rminated with exception: [Rank 7] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1,
+ NumelOut=1, Timeout(ms)=600000) ran for 600081 milliseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7f6895572fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7f677bebcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7f677bec1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7f677bec25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7f68967d5253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7f6899c46ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7f6899cd8850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+terminate called after throwing an instance of 'c10::DistBackendError'
+  what():  [PG ID 0 PG GUID 0(default_pg) Rank 7] Process group watchdog thread terminated with exception: [Rank 7] Watchdog caught
+ collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600081 m
+illiseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7f6895572fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7f677bebcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7f677bec1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7f677bec25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7f68967d5253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7f6899c46ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7f6899cd8850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+Exception raised from run at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:2099 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7f6895572fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x9bbbc8 (0x7f677b728bc8 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_cuda.so)
+frame #2: <unknown function> + 0xdc253 (0x7f68967d5253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #3: <unknown function> + 0x94ac3 (0x7f6899c46ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #4: <unknown function> + 0x126850 (0x7f6899cd8850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+[rank1]:[E414 06:58:46.231718198 ProcessGroupNCCL.cpp:749] [Rank 1] Some NCCL operations have failed or timed out. Due to the async
+hronous nature of CUDA kernels, subsequent GPU operations might run on corrupted/incomplete data.
+[rank1]:[E414 06:58:46.231742763 ProcessGroupNCCL.cpp:763] [Rank 1] To avoid data inconsistency, we are taking the entire process d
+own.
+[rank1]:[E414 06:58:46.232738651 ProcessGroupNCCL.cpp:2093] [PG ID 0 PG GUID 0(default_pg) Rank 1] Process group watchdog thread te
+rminated with exception: [Rank 1] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1,
+ NumelOut=1, Timeout(ms)=600000) ran for 600059 milliseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7f6a8fd72fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7f69766bcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7f69766c1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7f69766c25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7f6a90fcf253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7f6a94440ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7f6a944d2850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+terminate called after throwing an instance of 'c10::DistBackendError'
+[rank5]:[E414 06:58:46.232940762 ProcessGroupNCCL.cpp:749] [Rank 5] Some NCCL operations have failed or timed out. Due to the async
+hronous nature of CUDA kernels, subsequent GPU operations might run on corrupted/incomplete data.
+[rank5]:[E414 06:58:46.232963840 ProcessGroupNCCL.cpp:763] [Rank 5] To avoid data inconsistency, we are taking the entire process d
+own.
+  what():  [PG ID 0 PG GUID 0(default_pg) Rank 1] Process group watchdog thread terminated with exception: [Rank 1] Watchdog caught
+ collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600059 m
+illiseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7f6a8fd72fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7f69766bcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7f69766c1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7f69766c25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7f6a90fcf253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7f6a94440ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7f6a944d2850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+Exception raised from run at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:2099 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7f6a8fd72fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x9bbbc8 (0x7f6975f28bc8 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_cuda.so)
+frame #2: <unknown function> + 0xdc253 (0x7f6a90fcf253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #3: <unknown function> + 0x94ac3 (0x7f6a94440ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #4: <unknown function> + 0x126850 (0x7f6a944d2850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+[rank5]:[E414 06:58:46.233956651 ProcessGroupNCCL.cpp:2093] [PG ID 0 PG GUID 0(default_pg) Rank 5] Process group watchdog thread te
+rminated with exception: [Rank 5] Watchdog caught collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1,
+ NumelOut=1, Timeout(ms)=600000) ran for 600091 milliseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fe4b2972fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7fe3992bcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7fe3992c1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7fe3992c25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7fe4b3c02253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7fe4b7073ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7fe4b7105850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+terminate called after throwing an instance of 'c10::DistBackendError'
+  what():  [PG ID 0 PG GUID 0(default_pg) Rank 5] Process group watchdog thread terminated with exception: [Rank 5] Watchdog caught
+ collective operation timeout: WorkNCCL(SeqNum=58529, OpType=ALLREDUCE, NumelIn=1, NumelOut=1, Timeout(ms)=600000) ran for 600091 m
+illiseconds before timing out.
+Exception raised from checkTimeout at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:691 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fe4b2972fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: c10d::ProcessGroupNCCL::WorkNCCL::checkTimeout(std::optional<std::chrono::duration<long, std::ratio<1l, 1000l> > >) + 0x2
+6a (0x7fe3992bcd7a in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.
+so)
+frame #2: c10d::ProcessGroupNCCL::Watchdog::runLoop() + 0x16a1 (0x7fe3992c1261 in /root/paddlejob/workspace/env_run/penghaotian/env
+s/dino/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #3: c10d::ProcessGroupNCCL::Watchdog::run() + 0x105 (0x7fe3992c25a5 in /root/paddlejob/workspace/env_run/penghaotian/envs/din
+o/lib/python3.11/site-packages/torch/lib/libtorch_cuda.so)
+frame #4: <unknown function> + 0xdc253 (0x7fe4b3c02253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #5: <unknown function> + 0x94ac3 (0x7fe4b7073ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #6: <unknown function> + 0x126850 (0x7fe4b7105850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+Exception raised from run at /pytorch/torch/csrc/distributed/c10d/ProcessGroupNCCL.cpp:2099 (most recent call first):
+frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) +
+ 0x9d (0x7fe4b2972fdd in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/lib/libc10.so)
+frame #1: <unknown function> + 0x9bbbc8 (0x7fe398b28bc8 in /root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/s
+ite-packages/torch/lib/libtorch_cuda.so)
+frame #2: <unknown function> + 0xdc253 (0x7fe4b3c02253 in /usr/lib/x86_64-linux-gnu/libstdc++.so.6)
+frame #3: <unknown function> + 0x94ac3 (0x7fe4b7073ac3 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+frame #4: <unknown function> + 0x126850 (0x7fe4b7105850 in /usr/lib/x86_64-linux-gnu/libc.so.6)
+
+W0414 06:58:50.373000 171013 torch/distributed/elastic/multiprocessing/api.py:1010] Sending process 171192 closing signal SIGTERM
+W0414 06:58:50.375000 171013 torch/distributed/elastic/multiprocessing/api.py:1010] Sending process 171193 closing signal SIGTERM
+W0414 06:58:50.376000 171013 torch/distributed/elastic/multiprocessing/api.py:1010] Sending process 171194 closing signal SIGTERM
+W0414 06:58:50.379000 171013 torch/distributed/elastic/multiprocessing/api.py:1010] Sending process 171196 closing signal SIGTERM
+W0414 06:58:50.381000 171013 torch/distributed/elastic/multiprocessing/api.py:1010] Sending process 171197 closing signal SIGTERM
+W0414 06:58:50.382000 171013 torch/distributed/elastic/multiprocessing/api.py:1010] Sending process 171198 closing signal SIGTERM
+W0414 06:58:50.384000 171013 torch/distributed/elastic/multiprocessing/api.py:1010] Sending process 171199 closing signal SIGTERM
+E0414 06:58:58.078000 171013 torch/distributed/elastic/multiprocessing/api.py:984] failed (exitcode: -6) local_rank: 3 (pid: 171195
+) of binary: /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/python3
+Traceback (most recent call last):
+  File "/root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/torchrun", line 10, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/distributed/elastic/multiprocess
+ing/errors/__init__.py", line 362, in wrapper
+    return f(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^
+  File "/root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/distributed/run.py", line 991, i
+n main
+    run(args)
+  File "/root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/distributed/run.py", line 982, i
+n run
+    elastic_launch(
+  File "/root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/distributed/launcher/api.py", li
+ne 170, in __call__
+    return launch_agent(self._config, self._entrypoint, list(args))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/paddlejob/workspace/env_run/penghaotian/envs/dino/lib/python3.11/site-packages/torch/distributed/launcher/api.py", li
+ne 317, in launch_agent
+    raise ChildFailedError(
+torch.distributed.elastic.multiprocessing.errors.ChildFailedError:
+============================================================
+open_clip_train.main FAILED
+------------------------------------------------------------
+Failures:
+[1]:
+  time      : 2026-04-14_06:58:58
+  host      : tjdm-inf-sci-k8s-hzz1-he2ni7-0549.tjdm.baidu.com
+  rank      : 0 (local_rank: 0)
+  exitcode  : -6 (pid: 171192)
+  error_file: <N/A>
+  traceback : Signal 6 (SIGABRT) received by PID 171192
+[2]:
+  time      : 2026-04-14_06:58:58
+  host      : tjdm-inf-sci-k8s-hzz1-he2ni7-0549.tjdm.baidu.com
+  rank      : 1 (local_rank: 1)
+  exitcode  : -6 (pid: 171193)
+  error_file: <N/A>
+  traceback : Signal 6 (SIGABRT) received by PID 171193
+[3]:
+  time      : 2026-04-14_06:58:58
+  host      : tjdm-inf-sci-k8s-hzz1-he2ni7-0549.tjdm.baidu.com
+  rank      : 2 (local_rank: 2)
+  exitcode  : -6 (pid: 171194)
+  error_file: <N/A>
+  traceback : Signal 6 (SIGABRT) received by PID 171194
+[4]:
+  time      : 2026-04-14_06:58:58
+  host      : tjdm-inf-sci-k8s-hzz1-he2ni7-0549.tjdm.baidu.com
+  rank      : 4 (local_rank: 4)
+  exitcode  : -6 (pid: 171196)
+  error_file: <N/A>
+  traceback : Signal 6 (SIGABRT) received by PID 171196
+[5]:
+  time      : 2026-04-14_06:58:58
+  host      : tjdm-inf-sci-k8s-hzz1-he2ni7-0549.tjdm.baidu.com
+  rank      : 5 (local_rank: 5)
+  exitcode  : -6 (pid: 171197)
+  error_file: <N/A>
+  traceback : Signal 6 (SIGABRT) received by PID 171197
+[6]:
+  time      : 2026-04-14_06:58:58
+  host      : tjdm-inf-sci-k8s-hzz1-he2ni7-0549.tjdm.baidu.com
+  rank      : 6 (local_rank: 6)
+  exitcode  : -6 (pid: 171198)
+  error_file: <N/A>
+  traceback : Signal 6 (SIGABRT) received by PID 171198
+[7]:
+  time      : 2026-04-14_06:58:58
+  host      : tjdm-inf-sci-k8s-hzz1-he2ni7-0549.tjdm.baidu.com
+  rank      : 7 (local_rank: 7)
+  exitcode  : -6 (pid: 171199)
+  error_file: <N/A>
+  traceback : Signal 6 (SIGABRT) received by PID 171199
+------------------------------------------------------------
+Root Cause (first observed failure):
+[0]:
+  time      : 2026-04-14_06:58:50
+  host      : tjdm-inf-sci-k8s-hzz1-he2ni7-0549.tjdm.baidu.com
+  rank      : 3 (local_rank: 3)
+  exitcode  : -6 (pid: 171195)
+  error_file: <N/A>
+  traceback : Signal 6 (SIGABRT) received by PID 171195
+============================================================
+[quick] 清理 /dev/shm/cc3m_wds ...
+(dino) root:open_clip$ time
+
+real    0m0.000s
+user    0m0.000s
+sys     0m0.000s
+(dino) root:open_clip$ date
+Tue Apr 14 07:49:59 Asia 2026
+(dino) root:open_clip$ tmux capture-pane -S -1000 -p > output.txt
+

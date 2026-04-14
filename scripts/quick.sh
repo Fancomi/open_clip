@@ -27,33 +27,62 @@
 #   --lejepa-num-slices: 随机切片数，默认 256
 #   --lejepa-proj-dim : projector 输出维度（仅 --lejepa-proj 模式）
 
+source /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/activate
+
 set -e
 export PYTHONPATH="./src:${PYTHONPATH}"
 export TZ='Asia/Shanghai'  # Use Beijing time for timestamps
 
 TS=$(date +%m%d_%H%M)
 
+
 COCO="/root/paddlejob/workspace/env_run/penghaotian/datas/coco/annotations"
 TRAIN="${COCO}/clip_train_dedup.tsv"
 VAL="${COCO}/clip_val.tsv"
 
-CC3M="/root/paddlejob/workspace/env_run/penghaotian/datas/LLaVA-ReCap-CC3M/wds"
+# ============ CC3M 数据加载到内存 ============
+CC3M_SRC="/root/paddlejob/workspace/env_run/penghaotian/datas/LLaVA-ReCap-CC3M/wds"
+CC3M="/dev/shm/cc3m_wds"
+
+_cleanup() {
+    echo "[quick] 清理 /dev/shm/cc3m_wds ..."
+    rm -rf /dev/shm/cc3m_wds
+}
+trap _cleanup EXIT INT TERM
+
+if [ ! -d "${CC3M}" ]; then
+    echo "[quick] 将 CC3M 数据加载到内存 (${CC3M_SRC} -> ${CC3M}) ..."
+    cp -r "${CC3M_SRC}" "${CC3M}"
+    echo "[quick] 加载完成，共 $(du -sh ${CC3M} | cut -f1)"
+else
+    echo "[quick] 检测到 ${CC3M} 已存在，跳过复制"
+fi
+
 CC3M_TRAIN="${CC3M}/{00000..00280}.tar"
 CC3M_N_TRAIN=2857622
 
-BASE="--precision amp_bf16 --workers 6 --epochs 30 --batch-size 2048 \
-    --lr 2e-4 --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 --warmup 20 \
+# GPU2 - BS2048 - 30Epoch - Best LR: 2e-4
+# GPU8 - BS4096 - 20Epoch - Best LR: ?
+GPUS=8
+PreGpuBS=2048
+GlobalBS=$(python3 -c "print(${PreGpuBS} * ${GPUS})")
+LR=$(python3 -c "import math; print(2e-4 * math.sqrt(($GlobalBS) / (2 * 2048)))")
+
+BASE="--precision amp_bf16 --workers 32 --epochs 20 --batch-size ${PreGpuBS} \
+    --lr ${LR} --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 \
     --save-frequency 0 \
     --grad-checkpointing --log-every-n-steps 1 --val-frequency 5"
 
-COMMON="${BASE} --dataset-type csv --csv-img-key filepath --csv-caption-key caption"
-COMMON_WDS="${BASE} --dataset-type webdataset --train-num-samples ${CC3M_N_TRAIN}"
+COMMON="--warmup 20 ${BASE} \
+    --dataset-type csv --csv-img-key filepath --csv-caption-key caption"
+COMMON_WDS="--warmup 20 ${BASE} \
+    --dataset-type webdataset --train-num-samples ${CC3M_N_TRAIN}"
 
 run() {
     local TAG=$1 MODEL=$2 PORT=$3 EXTRA=$4
     local NAME="quick_${TAG}_${TS}"
     echo "======== [quick] ${TAG} => ${NAME} ========"
-    torchrun --nproc_per_node=2 --master_port=${PORT} \
+    torchrun --nproc_per_node=${GPUS} --master_port=${PORT} \
         -m open_clip_train.main \
         --model "${MODEL}" \
         --train-data "${TRAIN}" \
@@ -67,7 +96,7 @@ run_cc3m() {
     local TAG=$1 MODEL=$2 PORT=$3 EXTRA=$4
     local NAME="cc3m_${TAG}_${TS}"
     echo "======== [cc3m] ${TAG} => ${NAME} ========"
-    torchrun --nproc_per_node=2 --master_port=${PORT} \
+    torchrun --nproc_per_node=${GPUS} --master_port=${PORT} \
         -m open_clip_train.main \
         --model "${MODEL}" \
         --train-data "${CC3M_TRAIN}" \
