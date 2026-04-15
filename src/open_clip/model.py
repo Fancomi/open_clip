@@ -691,11 +691,18 @@ class CLIPLeJEPA(nn.Module):
             or getattr(clip_model, 'embed_dim', None)
         )
         if embed_dim is None:
-            # 通过 visual.head 最后一层 Linear 推断
-            for m in reversed(list(clip_model.visual.head.modules())):
-                if isinstance(m, nn.Linear):
-                    embed_dim = m.out_features
-                    break
+            # TimmModel: 通过 forward probe 推断（trunk 的 num_features 不等于最终 output_dim）
+            if isinstance(clip_model.visual, TimmModel):
+                import torch
+                with torch.no_grad():
+                    _dummy = torch.zeros(1, 3, 224, 224, device=next(clip_model.visual.parameters()).device)
+                    embed_dim = clip_model.visual(_dummy).shape[-1]
+            else:
+                # 通过 visual.head 最后一层 Linear 推断
+                for m in reversed(list(clip_model.visual.head.modules())):
+                    if isinstance(m, nn.Linear):
+                        embed_dim = m.out_features
+                        break
         if embed_dim is None:
             raise ValueError("Cannot determine embed_dim from clip_model")
 

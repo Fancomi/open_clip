@@ -9,7 +9,7 @@
 #   ViT       + SigLIP
 #   ViT       + CLIP
 #
-# 数据：clip_train_dedup.tsv (113,287 行，去重) / clip_val.tsv (25,010 行)
+# 数据：clip_train_dedup.tsv (82,783 行，去重) / karpathy_5cap.tsv (5K图×5cap，论文标准)
 # global batch = 2048/GPU × 2 = 4096
 # steps/epoch ≈ 28, 30 epochs = 840 steps total
 # schedule: warmup 10 → cosine decay to 0
@@ -38,7 +38,7 @@ TS=$(date +%m%d_%H%M)
 
 COCO="/root/paddlejob/workspace/env_run/penghaotian/datas/coco/annotations"
 TRAIN="${COCO}/clip_train_dedup.tsv"
-VAL="${COCO}/clip_val.tsv"
+VAL="${COCO}/karpathy_5cap.tsv"       # 官方 Karpathy test split，与论文数值对齐
 
 # ============ CC3M 数据加载到内存 ============
 CC3M_SRC="/root/paddlejob/workspace/env_run/penghaotian/datas/LLaVA-ReCap-CC3M/wds"
@@ -71,12 +71,17 @@ LR=$(python3 -c "import math; print(2e-4 * math.sqrt(($GlobalBS) / (2 * 2048)))"
 BASE="--precision amp_bf16 --workers 32 --epochs 20 --batch-size ${PreGpuBS} \
     --lr ${LR} --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 \
     --save-frequency 0 \
-    --grad-checkpointing --log-every-n-steps 1 --val-frequency 5"
+    --grad-checkpointing --log-every-n-steps 1 --val-frequency 1"
 
-COMMON="--warmup 20 ${BASE} \
-    --dataset-type csv --csv-img-key filepath --csv-caption-key caption"
-COMMON_WDS="--warmup 20 ${BASE} \
-    --dataset-type webdataset --train-num-samples ${CC3M_N_TRAIN}"
+# CC3M: steps/epoch=174, total_steps(20ep)=3480, warmup=10%=348
+# COCO: steps/epoch≈28, total_steps(30ep)=840, warmup=10%=84
+COMMON="--warmup 84 ${BASE} \
+    --dataset-type csv --csv-img-key filepath --csv-caption-key caption \
+    --val-num-captions-per-image 5"
+COMMON_WDS="--warmup 348 ${BASE} \
+    --dataset-type webdataset --train-num-samples ${CC3M_N_TRAIN} \
+    --csv-img-key filepath --csv-caption-key caption \
+    --val-num-captions-per-image 5"
 
 run() {
     local TAG=$1 MODEL=$2 PORT=$3 EXTRA=$4
@@ -141,21 +146,42 @@ run_cc3m() {
 # run "pe_dinov3_siglip_lejepa_proj_e-2" "PE-Core-B-16-dinov3"    29538 "--siglip --lejepa --lejepa-proj --lejepa-weight 1e-2"
 # run "pe_dinov3_siglip_lejepa_e-2"      "PE-Core-B-16-dinov3"    29539 "--siglip --lejepa --lejepa-weight 1e-2"
 
+# run_cc3m "pe_cls_leproj"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa --lejepa-proj"
+# run_cc3m "pe_cls_le"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa"
+# run_cc3m "pe_cls"      "PE-Core-B-16-cls"    29514 "--siglip"
+
+
+MODEL_DIR="/root/paddlejob/workspace/env_run/penghaotian/models/timm"
 
 # ============ CC3M 实验 ============
-run_cc3m "vit_leproj"         "ViT-B-16-exp"        29513 "--siglip --lejepa --lejepa-proj"
-run_cc3m "pe_cls_leproj"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa --lejepa-proj"
 run_cc3m "pe_dinov3_leproj"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa --lejepa-proj"
+
+
+# ---- finetune from pretrained: visual+text 双塔全部从预训练权重初始化 ----
+# PE-Core-B-16: COCO I2T R@1 71.0
+# --pretrained 直接传本地 safetensors，factory.py 检测到 isfile() 后直接加载，跳过 HF 下载
+PE_CKPT="${MODEL_DIR}/PE-Core-B-16/open_clip_model.safetensors"
+run_cc3m "pe_core_leproj"     "PE-Core-B-16"        29518 "--siglip --lejepa --lejepa-proj --pretrained ${PE_CKPT}"
+run_cc3m "pe_core_le"         "PE-Core-B-16"        29519 "--siglip --lejepa --pretrained ${PE_CKPT}"
+run_cc3m "pe_core"            "PE-Core-B-16"        29520 "--siglip --pretrained ${PE_CKPT}"
+
+# ViT-B-16-SigLIP2: COCO I2T R@1 68.9；visual+text 双塔均已对齐
+SIG2_CKPT="${MODEL_DIR}/ViT-B-16-SigLIP2/open_clip_model.safetensors"
+run_cc3m "siglip2_leproj"     "ViT-B-16-SigLIP2"   29521 "--siglip --lejepa --lejepa-proj --pretrained ${SIG2_CKPT}"
+run_cc3m "siglip2_le"         "ViT-B-16-SigLIP2"   29522 "--siglip --lejepa --pretrained ${SIG2_CKPT}"
+run_cc3m "siglip2"            "ViT-B-16-SigLIP2"   29523 "--siglip --pretrained ${SIG2_CKPT}"
+
+
+run_cc3m "vit_leproj"         "ViT-B-16-exp"        29513 "--siglip --lejepa --lejepa-proj"
 run_cc3m "dinov3_leproj"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa --lejepa-proj"
 
 run_cc3m "vit_le"         "ViT-B-16-exp"        29513 "--siglip --lejepa"
-run_cc3m "pe_cls_le"      "PE-Core-B-16-cls"    29514 "--siglip --lejepa"
 run_cc3m "pe_dinov3_le"   "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa"
 run_cc3m "dinov3_le"    "DINOv3-B-16-ape"       29517 "--siglip --lejepa"
 
 run_cc3m "vit"         "ViT-B-16-exp"        29513 "--siglip"
-run_cc3m "pe_cls"      "PE-Core-B-16-cls"    29514 "--siglip"
 run_cc3m "pe_dinov3"   "PE-Core-B-16-dinov3" 29515 "--siglip"
 run_cc3m "dinov3"    "DINOv3-B-16-ape"       29517 "--siglip"
+
 
 echo "======== quick 全部完成 ========"

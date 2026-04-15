@@ -361,11 +361,17 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
 
                     # Use the same loss function as training
                     if args.siglip:
-                        # SigLIP sigmoid pairwise loss
                         logits_per_image = logit_scale * image_features @ text_features.t()
                         logits_per_text = logits_per_image.t()
-                        # Sigmoid loss for each pair
-                        labels_binary = torch.eye(batch_size, device=device)
+                        # 5cap 协议：同一张图的 n_caps 条 caption 互为正样本，
+                        # label matrix 为块对角；1cap 时退化为 eye
+                        n_caps_val = getattr(args, 'val_num_captions_per_image', 1) or 1
+                        if n_caps_val > 1 and batch_size % n_caps_val == 0:
+                            n_img_batch = batch_size // n_caps_val
+                            block = torch.ones(n_caps_val, n_caps_val, device=device)
+                            labels_binary = torch.block_diag(*([block] * n_img_batch))
+                        else:
+                            labels_binary = torch.eye(batch_size, device=device)
                         loss_i2t = F.binary_cross_entropy_with_logits(
                             logits_per_image, labels_binary, reduction='mean')
                         loss_t2i = F.binary_cross_entropy_with_logits(
@@ -393,12 +399,18 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
                         logging.info(
                             f"Generative Loss: {cumulative_gen_loss / num_samples:.6f}\t")
 
-            logging.info(f"Eval: Computing retrieval metrics on {len(all_image_features)} image-text pairs...")
-            logging.info(f"Eval:   Step 1/3 - Computing similarity matrix [25010, 25010]...")
+            logging.info(f"Eval: Computing retrieval metrics on {len(all_image_features)} batches...")
+            n_caps = getattr(args, 'val_num_captions_per_image', 1) or 1
+            all_img = torch.cat(all_image_features)   # [n_img * n_caps, d]  or  [n_img, d]
+            all_txt = torch.cat(all_text_features)    # [n_img * n_caps, d]
+            if n_caps > 1:
+                # 每 n_caps 行对应同一张图，取第 0 行代表该图的特征
+                all_img = all_img[::n_caps]           # [n_img, d]
             val_metrics = get_clip_metrics(
-                image_features=torch.cat(all_image_features),
-                text_features=torch.cat(all_text_features),
+                image_features=all_img,
+                text_features=all_txt,
                 logit_scale=logit_scale.cpu(),
+                num_captions_per_image=n_caps,
             )
             logging.info(f"Eval:   Step 3/3 - Metrics computed.")
             loss = cumulative_loss / num_samples
@@ -443,26 +455,71 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
     return metrics
 
 
-def get_clip_metrics(image_features, text_features, logit_scale):
+def get_clip_metrics(image_features, text_features, logit_scale,
+                     num_captions_per_image: int = 1):
+    """计算检索指标，支持 1:1 和 1:N（论文标准 COCO 5cap）两种协议。
+
+    num_captions_per_image=1  : 标准 1:1，ground_truth[i] = i
+    num_captions_per_image=N  : 1:N，TSV 行排列为 img0_cap0..capN-1, img1_cap0...
+                                 - I2T: 每张图对应第 i*N..(i+1)*N-1 条文本
+                                 - T2I: 每条文本对应第 i//N 张图
+    """
     metrics = {}
-    logging.info(f"Eval:   Step 1/3 - Computing similarity matrix [{len(image_features)}, {len(text_features)}]...")
+    n_caps = num_captions_per_image
+    n_img  = len(image_features)          # 图数 = total_pairs / n_caps
+    n_txt  = len(text_features)           # 文本数 = n_img * n_caps
+
+    logging.info(f"Eval:   Step 1/3 - Computing similarity matrix "
+                 f"[{n_img} imgs, {n_txt} texts, {n_caps} caps/img]...")
+    # image_features: [n_img, d]  text_features: [n_txt, d]
     logits_per_image = (logit_scale * image_features @ text_features.t()).detach().cpu()
-    logging.info(f"Eval:   Step 2/3 - Sorting similarity matrix (this may take time for large datasets)...")
-    logits_per_text = logits_per_image.t().detach().cpu()
+    # [n_img, n_txt]
+    logits_per_text  = logits_per_image.t().detach().cpu()
+    # [n_txt, n_img]
 
-    logits = {"image_to_text": logits_per_image, "text_to_image": logits_per_text}
-    ground_truth = torch.arange(len(text_features)).view(-1, 1)
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    for i, (name, logit) in enumerate(logits.items()):
-        logging.info(f"Eval:     Sorting {i+1}/2 - {name}...")
-        ranking = torch.argsort(logit, descending=True)
-        logging.info(f"Eval:     Computing ranks for {name}...")
-        preds = torch.where(ranking == ground_truth)[1]
-        preds = preds.detach().cpu().numpy()
-        metrics[f"{name}_mean_rank"] = preds.mean() + 1
-        metrics[f"{name}_median_rank"] = np.floor(np.median(preds)) + 1
-        for k in [1, 5, 10]:
-            metrics[f"{name}_R@{k}"] = np.mean(preds < k)
+    # ---------- I2T ----------
+    logging.info("Eval:     Computing ranks 1/2 - image_to_text...")
+    logit_gpu = logits_per_image.to(device)   # [n_img, n_txt]
+    if n_caps == 1:
+        gt_scores = logit_gpu.diagonal().unsqueeze(1)          # [n_img, 1]
+        ranks_i2t = (logit_gpu > gt_scores).sum(dim=1).cpu().numpy()
+    else:
+        # 每张图的正确 caption 是列 [i*n_caps .. (i+1)*n_caps - 1]
+        # rank = 有多少条非正确文本的分数 > 该图所有正确文本中最高分
+        ranks_i2t = np.zeros(n_img, dtype=np.int64)
+        for i in range(n_img):
+            pos_cols = slice(i * n_caps, (i + 1) * n_caps)
+            best_pos_score = logit_gpu[i, pos_cols].max()
+            # 非正确文本中有多少分数更高
+            neg_mask = torch.ones(n_txt, dtype=torch.bool, device=device)
+            neg_mask[pos_cols] = False
+            ranks_i2t[i] = (logit_gpu[i][neg_mask] > best_pos_score).sum().item()
+    del logit_gpu
+
+    metrics["image_to_text_mean_rank"]   = ranks_i2t.mean() + 1
+    metrics["image_to_text_median_rank"] = np.floor(np.median(ranks_i2t)) + 1
+    for k in [1, 5, 10]:
+        metrics[f"image_to_text_R@{k}"] = np.mean(ranks_i2t < k)
+
+    # ---------- T2I ----------
+    logging.info("Eval:     Computing ranks 2/2 - text_to_image...")
+    logit_gpu = logits_per_text.to(device)    # [n_txt, n_img]
+    if n_caps == 1:
+        gt_scores = logit_gpu.diagonal().unsqueeze(1)          # [n_txt, 1]
+        ranks_t2i = (logit_gpu > gt_scores).sum(dim=1).cpu().numpy()
+    else:
+        # 每条 caption 的正确图是第 i//n_caps 张
+        gt_img_idx = torch.arange(n_txt, device=device) // n_caps  # [n_txt]
+        gt_scores  = logit_gpu[torch.arange(n_txt, device=device), gt_img_idx].unsqueeze(1)
+        ranks_t2i  = (logit_gpu > gt_scores).sum(dim=1).cpu().numpy()
+    del logit_gpu
+
+    metrics["text_to_image_mean_rank"]   = ranks_t2i.mean() + 1
+    metrics["text_to_image_median_rank"] = np.floor(np.median(ranks_t2i)) + 1
+    for k in [1, 5, 10]:
+        metrics[f"text_to_image_R@{k}"] = np.mean(ranks_t2i < k)
 
     return metrics
 

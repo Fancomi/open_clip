@@ -65,14 +65,25 @@ LOG_DIR=/root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/
 # /root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/LR2e-4_epoch30_lejepa_all/quick_dinov3_le_0409_2205/out.log \
 #  --names vit vit_le pe_cls pe_cls_le pe_dinov3 pe_dinov3_le dinov3 dinov3_le --output logs/compare_siglip_202604101404
 
-# 对比全部的无attnres和有attnres
 python scripts/plot_logs.py --logs \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_vit_0411_1146/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_vit_attnres2_0412_1802/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_pe_cls_0411_1146/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_pe_cls_attnres2_0412_1802/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_pe_dinov3_0411_1146/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_pe_dinov3_attnres2_0412_1802/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_dinov3_0411_1146/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_dinov3_attnres2_0412_1802/out.log \
-  --names vit vit_attnres pe_cls pe_cls_attnres pe_dinov3 pe_dinov3_attnres dinov3 dinov3_attnres --output logs/compare_siglip_202604121720
+/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_vit_le_0414_2322/out.log \
+/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_vit_leproj_0414_2322/out.log \
+/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_pe_dinov3_le_0414_2322/out.log \
+/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_pe_dinov3_leproj_0414_2322/out.log \
+/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_dinov3_le_0414_2322/out.log \
+/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_dinov3_leproj_0414_2322/out.log \
+--names vit vit_le pe_dinov3 pe_dinov3_le dinov3 dinov3_le --output logs/compare_siglip_202604151801
+
+
+
+# # 对比全部的无attnres和有attnres
+# python scripts/plot_logs.py --logs \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_vit_0411_1146/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_vit_attnres2_0412_1802/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_pe_cls_0411_1146/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_pe_cls_attnres2_0412_1802/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_pe_dinov3_0411_1146/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_pe_dinov3_attnres2_0412_1802/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_dinov3_0411_1146/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/quick_dinov3_attnres2_0412_1802/out.log \
+#   --names vit vit_attnres pe_cls pe_cls_attnres pe_dinov3 pe_dinov3_attnres dinov3 dinov3_attnres --output logs/compare_siglip_202604121720

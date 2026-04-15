@@ -192,6 +192,11 @@ def parse_args(args):
         "--val-frequency", type=int, default=1, help="How often to run evaluation with val data."
     )
     parser.add_argument(
+        "--val-num-captions-per-image", type=int, default=1,
+        help="论文标准多caption eval: 设为5时使用 clip_val_coco5k.tsv（每张图5条caption），"
+             "get_clip_metrics 自动处理 1-to-5 ground truth。默认 1 (1:1 匹配)。"
+    )
+    parser.add_argument(
         "--resume",
         default=None,
         type=str,
