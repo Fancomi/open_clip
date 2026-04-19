@@ -330,6 +330,65 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
     assert input_shards is not None
     resampled = getattr(args, 'dataset_resampled', False) and is_train
 
+    # DINOv3 multi-crop mode: use DataAugmentationDINO as transform and custom collate
+    use_dinov3 = is_train and getattr(args, 'dinov3', False)
+    if use_dinov3:
+        from open_clip_train.dino_transform import DataAugmentationDINO, MaskingGenerator, collate_dino_batch
+        from open_clip.model import get_model_preprocess_cfg
+        # Retrieve mean/std from preprocess config (attached to model.visual by factory)
+        # preprocess_img is the standard transform; extract mean/std from it
+        _mean = getattr(preprocess_img, 'image_mean', None)
+        _std  = getattr(preprocess_img, 'image_std',  None)
+        if _mean is None:
+            # fallback: extract from Normalize in transforms list
+            for t in getattr(preprocess_img, 'transforms', []):
+                if hasattr(t, 'mean') and hasattr(t, 'std'):
+                    _mean = tuple(t.mean)
+                    _std  = tuple(t.std)
+                    break
+        if _mean is None:
+            _mean = (0.485, 0.456, 0.406)
+            _std  = (0.229, 0.224, 0.225)
+
+        # Determine global crop size from preprocess_img
+        global_size = 224
+        for t in getattr(preprocess_img, 'transforms', []):
+            if hasattr(t, 'size'):
+                sz = t.size
+                global_size = sz[0] if isinstance(sz, (list, tuple)) else sz
+                break
+
+        dino_transform = DataAugmentationDINO(
+            global_crops_scale=tuple(getattr(args, 'dino_global_crops_scale', [0.32, 1.0])),
+            local_crops_scale=tuple(getattr(args, 'dino_local_crops_scale', [0.05, 0.32])),
+            local_crops_number=getattr(args, 'dino_local_crops_number', 8),
+            global_crops_size=global_size,
+            local_crops_size=getattr(args, 'dino_local_crops_size', 96),
+            mean=_mean,
+            std=_std,
+        )
+        n_tokens = (global_size // 16) ** 2  # assumes patch_size=16
+        mask_gen = MaskingGenerator(
+            input_size=global_size // 16,
+            num_masking_patches=int(n_tokens * getattr(args, 'ibot_mask_ratio_max', 0.5)),
+        )
+        _mask_ratio = (
+            getattr(args, 'ibot_mask_ratio_min', 0.1),
+            getattr(args, 'ibot_mask_ratio_max', 0.5),
+        )
+        _mask_prob = getattr(args, 'ibot_mask_sample_prob', 0.5)
+
+        def _collate_dino(samples):
+            return collate_dino_batch(
+                samples,
+                mask_ratio_tuple=_mask_ratio,
+                mask_probability=_mask_prob,
+                n_tokens=n_tokens,
+                mask_generator=mask_gen,
+            )
+
+        preprocess_img = dino_transform
+
     num_shards = None
     if is_train:
         if args.train_num_samples is not None:
@@ -392,7 +451,8 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
         wds.rename(image="jpg;png;jpeg;webp", text="txt"),
         wds.map_dict(image=preprocess_img, text=lambda text: tokenizer(text)[0]),
         wds.to_tuple("image", "text"),
-        wds.batched(args.batch_size, partial=not is_train)
+        wds.batched(args.batch_size, partial=not is_train,
+                    collation_fn=_collate_dino if use_dinov3 else wds.filters.default_collation_fn)
     ])
 
     dataset = wds.DataPipeline(*pipeline)

@@ -11,10 +11,10 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from .convert import convert_state_dict
-from .model import CLIP, CustomTextCLIP, CLIPLeJEPA, convert_weights_to_lp, convert_to_custom_text_state_dict,\
+from .model import CLIP, CustomTextCLIP, CLIPLeJEPA, CLIPWithDINO, convert_weights_to_lp, convert_to_custom_text_state_dict,\
     resize_pos_embed, get_cast_dtype, resize_text_pos_embed, set_model_preprocess_cfg
 from .coca_model import CoCa
-from .loss import ClipLoss, DistillClipLoss, CoCaLoss, SigLipLoss, ClipLeJEPALoss
+from .loss import ClipLoss, DistillClipLoss, CoCaLoss, SigLipLoss, ClipLeJEPALoss, CLIPWithDINOLoss
 from .pretrained import is_pretrained_cfg, get_pretrained_cfg, download_pretrained,\
     list_pretrained_tags_by_model, download_pretrained_from_hf
 from .transform import image_transform_v2, AugmentationCfg, PreprocessCfg, merge_preprocess_dict, merge_preprocess_kwargs
@@ -819,6 +819,22 @@ def create_loss(args):
             rank=args.rank,
             world_size=args.world_size,
             use_horovod=args.horovod,
+            dist_impl=getattr(args, 'loss_dist_impl', None),
+        )
+    elif getattr(args, 'dinov3', False):
+        # CLIPWithDINOLoss：需要从 model 中读取 embed_dim，由 main.py 传入
+        dino_out_dim  = getattr(args, 'dino_head_prototypes', 65536)
+        ibot_out_dim  = getattr(args, 'ibot_head_prototypes', None) or dino_out_dim
+        return CLIPWithDINOLoss(
+            dino_out_dim=dino_out_dim,
+            ibot_out_dim=ibot_out_dim,
+            student_temp=getattr(args, 'dino_student_temp', 0.1),
+            dino_loss_weight=getattr(args, 'dino_loss_weight', 1.0),
+            ibot_loss_weight=getattr(args, 'ibot_loss_weight', 1.0),
+            koleo_loss_weight=getattr(args, 'koleo_loss_weight', 0.1),
+            use_siglip=getattr(args, 'siglip', False),
+            rank=args.rank,
+            world_size=args.world_size,
             dist_impl=getattr(args, 'loss_dist_impl', None),
         )
     elif args.siglip:

@@ -988,3 +988,294 @@ def get_model_tokenize_cfg(model):
     if vocab_size is not None:
         cfg['vocab_size'] = vocab_size
     return cfg
+
+
+# ============================================================
+# CLIPWithDINO: contrastive + DINOv3 self-distillation
+# ============================================================
+
+class CLIPWithDINO(nn.Module):
+    """Wraps a CLIP model (CLIP or CustomTextCLIP) with DINOv3-style student-teacher
+    self-distillation on the visual backbone.
+
+    The student visual backbone is **shared** with the CLIP contrastive tower.
+    The teacher is an EMA copy of the student backbone (no text tower needed).
+
+    Student produces:
+      - image_features / text_features  (normalized, for SigLIP/CLIP loss)
+      - student_cls_tokens              (DINO head logits, all crops concatenated)
+      - student_patch_tokens_masked     (iBOT head logits, masked positions only)
+      - student_cls_tokens_raw          (pre-head backbone CLS, for KoLeo)
+
+    Teacher produces (no_grad):
+      - teacher_cls_tokens              (DINO head logits, global crops only)
+      - teacher_patch_tokens_masked     (iBOT head logits, masked positions only)
+
+    Args:
+        clip_model:         A CLIP or CustomTextCLIP instance.
+        embed_dim:          Visual backbone output dimension (before CLIP projection).
+        dino_head_out_dim:  Number of DINO prototypes.
+        ibot_head_out_dim:  Number of iBOT prototypes.
+        dino_head_nlayers:  Depth of DINO MLP head.
+        dino_head_hidden:   Hidden dim of DINO MLP head.
+        dino_head_bottleneck: Bottleneck dim of DINO MLP head.
+        n_global_crops:     Number of global crops (default 2).
+        output_dict:        If True, forward() returns a dict.
+    """
+    output_dict: torch.jit.Final[bool]
+
+    def __init__(
+        self,
+        clip_model: nn.Module,
+        embed_dim: int,
+        dino_head_out_dim: int = 65536,
+        ibot_head_out_dim: int = 65536,
+        dino_head_nlayers: int = 3,
+        dino_head_hidden: int = 2048,
+        dino_head_bottleneck: int = 256,
+        n_global_crops: int = 2,
+        output_dict: bool = True,
+    ):
+        super().__init__()
+        self.output_dict = output_dict
+        self.n_global_crops = n_global_crops
+
+        # ---- student side: shared backbone + heads ----
+        self.clip_model = clip_model
+        # expose common attributes so train.py can call lock/grad-ckpt on wrapper
+        self.visual = clip_model.visual
+        self.logit_scale = clip_model.logit_scale
+        self.logit_bias = getattr(clip_model, 'logit_bias', None)
+
+        from .dino_head import DINOHead as _DINOHead
+        self.student_dino_head = _DINOHead(
+            in_dim=embed_dim,
+            out_dim=dino_head_out_dim,
+            nlayers=dino_head_nlayers,
+            hidden_dim=dino_head_hidden,
+            bottleneck_dim=dino_head_bottleneck,
+        )
+        self.student_ibot_head = _DINOHead(
+            in_dim=embed_dim,
+            out_dim=ibot_head_out_dim,
+            nlayers=dino_head_nlayers,
+            hidden_dim=dino_head_hidden,
+            bottleneck_dim=dino_head_bottleneck,
+        )
+
+        # ---- teacher side: EMA copy of visual backbone + heads ----
+        self.teacher_backbone = copy.deepcopy(clip_model.visual)
+        self.teacher_dino_head = copy.deepcopy(self.student_dino_head)
+        self.teacher_ibot_head = copy.deepcopy(self.student_ibot_head)
+
+        # teacher has no gradients
+        self.teacher_backbone.requires_grad_(False)
+        self.teacher_dino_head.requires_grad_(False)
+        self.teacher_ibot_head.requires_grad_(False)
+
+        # init weights
+        self.student_dino_head.init_weights()
+        self.student_ibot_head.init_weights()
+        self.teacher_dino_head.init_weights()
+        self.teacher_ibot_head.init_weights()
+        # sync teacher = student at start
+        self.teacher_dino_head.load_state_dict(self.student_dino_head.state_dict())
+        self.teacher_ibot_head.load_state_dict(self.student_ibot_head.state_dict())
+
+    # ------------------------------------------------------------------
+    # Helpers delegated to the inner CLIP model
+    # ------------------------------------------------------------------
+    def lock_image_tower(self, unlocked_groups=0, freeze_bn_stats=False):
+        self.clip_model.lock_image_tower(unlocked_groups, freeze_bn_stats)
+
+    def lock_text_tower(self, unlocked_layers: int = 0, freeze_layer_norm: bool = True):
+        self.clip_model.lock_text_tower(unlocked_layers, freeze_layer_norm)
+
+    @torch.jit.ignore
+    def set_grad_checkpointing(self, enable=True):
+        self.clip_model.set_grad_checkpointing(enable)
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        return self.clip_model.no_weight_decay() if hasattr(self.clip_model, 'no_weight_decay') else set()
+
+    # ------------------------------------------------------------------
+    # EMA teacher update
+    # ------------------------------------------------------------------
+    @torch.no_grad()
+    def update_ema(self, momentum: float) -> None:
+        """Update teacher backbone and heads via EMA.
+
+        teacher = momentum * teacher + (1 - momentum) * student
+        """
+        for param_s, param_t in zip(
+            self.visual.parameters(), self.teacher_backbone.parameters()
+        ):
+            param_t.data.mul_(momentum).add_(param_s.data, alpha=1.0 - momentum)
+
+        for param_s, param_t in zip(
+            self.student_dino_head.parameters(), self.teacher_dino_head.parameters()
+        ):
+            param_t.data.mul_(momentum).add_(param_s.data, alpha=1.0 - momentum)
+
+        for param_s, param_t in zip(
+            self.student_ibot_head.parameters(), self.teacher_ibot_head.parameters()
+        ):
+            param_t.data.mul_(momentum).add_(param_s.data, alpha=1.0 - momentum)
+
+    # ------------------------------------------------------------------
+    # train() override: teacher stays in eval mode
+    # ------------------------------------------------------------------
+    def train(self, mode: bool = True):
+        super().train(mode)
+        # Teacher always in eval mode (no BN/Dropout updates)
+        self.teacher_backbone.eval()
+        self.teacher_dino_head.eval()
+        self.teacher_ibot_head.eval()
+        return self
+
+    # ------------------------------------------------------------------
+    # _encode_backbone: get raw pre-projection CLS + all patch tokens
+    # ------------------------------------------------------------------
+    def _encode_backbone_with_patches(self, visual_module, images: torch.Tensor):
+        """Run backbone and return (cls_raw, all_patch_tokens).
+
+        Uses trunk.forward_features for TimmModel to get pre-projection patch tokens.
+        Falls back to cls-only if not available.
+        NOTE: only valid for the model's native input size (e.g. 224px global crops).
+        """
+        if hasattr(visual_module, 'trunk') and hasattr(visual_module.trunk, 'forward_features'):
+            # TimmModel wrapping — get raw tokens before attention-pool / head
+            feats = visual_module.trunk.forward_features(images)  # [B, 1+N, D]
+            cls_raw = feats[:, 0]        # CLS token  [B, D]
+            patch_tokens = feats[:, 1:]  # patch tokens [B, N, D]
+            return cls_raw, patch_tokens
+        # Generic: only cls available
+        cls_raw = visual_module(images)  # [B, D] (pooled)
+        return cls_raw, None
+
+    def _encode_cls_only(self, visual_module, images: torch.Tensor,
+                         target_size: int = 224):
+        """Run backbone and return only the raw CLS token (pre-attention-pool).
+
+        For backbones with fixed positional embeddings (e.g. EVA with RoPE),
+        local crops at a different resolution are resized to target_size before
+        being passed through the backbone.  Returns the same 'embed_dim'-dimensional
+        CLS token as _encode_backbone_with_patches (feats[:, 0]), so that DINO head
+        in_dim matches.
+        """
+        if images.shape[-1] != target_size:
+            images = F.interpolate(
+                images, size=(target_size, target_size),
+                mode='bicubic', align_corners=False,
+            )
+        if hasattr(visual_module, 'trunk') and hasattr(visual_module.trunk, 'forward_features'):
+            feats = visual_module.trunk.forward_features(images)  # [B, 1+N, D]
+            return feats[:, 0]   # raw CLS token [B, D], same dim as _encode_backbone_with_patches
+        # Generic fallback (non-TimmModel)
+        return visual_module(images)
+
+    # ------------------------------------------------------------------
+    # Forward
+    # ------------------------------------------------------------------
+    def forward(
+        self,
+        global_crops: torch.Tensor,       # [n_global * B, C, H, W]
+        local_crops: torch.Tensor,         # [n_local * B, C, H, W] (may be None)
+        texts: torch.Tensor,              # [B, L]
+        student_masks: Optional[torch.Tensor] = None,   # [B, N] bool
+        masks_weight: Optional[torch.Tensor] = None,    # [n_masked] float
+    ):
+        """
+        Returns:
+            dict with keys:
+              image_features, text_features, logit_scale, [logit_bias]  -- contrastive
+              student_cls_tokens      -- [n_crops * B, out_dim] DINO head output
+              teacher_cls_tokens      -- [n_global * B, out_dim] teacher DINO head output
+              student_cls_tokens_raw  -- [n_global * B, embed_dim] pre-head backbone CLS
+              student_patch_tokens    -- [B, n_masked, out_dim] iBOT head output (masked only)
+              teacher_patch_tokens    -- [B, n_masked, out_dim] teacher iBOT head output (masked only)
+              student_masks           -- pass-through
+              masks_weight            -- pass-through
+        """
+        n_global = self.n_global_crops
+        B_global = global_crops.shape[0]
+        B = B_global // n_global          # local batch size
+
+        # ---- 1. Contrastive: encode first global crop as image_features ----
+        # Use only global crop 1 for the contrastive loss (memory-efficient)
+        image_features = self.clip_model.encode_image(global_crops[:B], normalize=True)
+        text_features = self.clip_model.encode_text(texts, normalize=True)
+
+        # ---- 2. Student: global and local crops through backbone separately ----
+        # Global and local crops have different spatial sizes (e.g. 224 vs 96),
+        # so they CANNOT be cat'd — encode each resolution independently.
+
+        # Global crops
+        student_global_cls_raw, student_patch_all = self._encode_backbone_with_patches(
+            self.visual, global_crops
+        )
+        # student_global_cls_raw: [n_global * B, embed_dim]
+
+        # Local crops (may be None or empty)
+        # Local crops have smaller spatial size (e.g. 96px); use _encode_cls_only
+        # which resizes to the backbone's native size before forwarding.
+        global_size = global_crops.shape[-1]  # native input size (e.g. 224)
+        if local_crops is not None and local_crops.shape[0] > 0:
+            student_local_cls_raw = self._encode_cls_only(
+                self.visual, local_crops, target_size=global_size
+            )
+            # student_local_cls_raw: [n_local * B, embed_dim]
+            student_cls_raw_all = torch.cat([student_global_cls_raw, student_local_cls_raw], dim=0)
+        else:
+            student_cls_raw_all = student_global_cls_raw
+
+        # DINO head: forward on all student CLS tokens
+        student_cls_tokens = self.student_dino_head(student_cls_raw_all)
+        # [n_all_crops * B, dino_out_dim]
+
+        # iBOT head: forward on masked student patches (global crops only)
+        student_patch_tokens_masked = None
+        mask_idx = None
+        if student_patch_all is not None and student_masks is not None:
+            # student_patch_all: patches from global crops [n_global * B, N, D]
+            # Take first global crop's patches for iBOT
+            patch_tokens_first_view = student_patch_all[:B]   # [B, N, D]
+            # Gather masked tokens
+            mask_idx = student_masks.flatten().nonzero(as_tuple=False).squeeze(-1)  # [n_masked]
+            flat_patches = patch_tokens_first_view.reshape(B * patch_tokens_first_view.shape[1], -1)
+            masked_patches = flat_patches[mask_idx]  # [n_masked, D]
+            student_patch_tokens_masked = self.student_ibot_head(masked_patches)  # [n_masked, K_ibot]
+
+        # ---- 3. Teacher: global crops only (no_grad) ----
+        with torch.no_grad():
+            teacher_cls_raw, teacher_patch_all = self._encode_backbone_with_patches(
+                self.teacher_backbone, global_crops
+            )
+            teacher_cls_tokens = self.teacher_dino_head(teacher_cls_raw)
+            # [n_global * B, dino_out_dim]
+
+            teacher_patch_tokens_masked = None
+            if teacher_patch_all is not None and student_masks is not None and mask_idx is not None:
+                patch_tokens_teacher = teacher_patch_all[:B]  # [B, N, D]
+                flat_t = patch_tokens_teacher.reshape(B * patch_tokens_teacher.shape[1], -1)
+                masked_t = flat_t[mask_idx]
+                teacher_patch_tokens_masked = self.teacher_ibot_head(masked_t)
+
+        out = {
+            "image_features": image_features,
+            "text_features": text_features,
+            "logit_scale": self.logit_scale.exp(),
+            # DINO
+            "student_cls_tokens": student_cls_tokens,
+            "teacher_cls_tokens": teacher_cls_tokens,
+            "student_cls_tokens_raw": student_cls_raw_all[:B_global],  # global crops raw cls
+            # iBOT
+            "student_patch_tokens": student_patch_tokens_masked,
+            "teacher_patch_tokens": teacher_patch_tokens_masked,
+            "student_masks": student_masks,
+            "masks_weight": masks_weight,
+        }
+        if self.logit_bias is not None:
+            out["logit_bias"] = self.logit_bias
+        return out

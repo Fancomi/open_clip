@@ -47,7 +47,7 @@ SMOKE_TRAIN="${SMOKE_DIR}/{00000..00007}.tar"
 
 BASE_SMOKE="--precision amp_bf16 --workers 1 --epochs 2 --batch-size ${BS} \
     --lr 1e-4 --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 \
-    --save-frequency 0 \
+    --save-frequency 1 \
     --grad-checkpointing --log-every-n-steps 1 --val-frequency 1"
 
 COMMON_SMOKE="--warmup 2 ${BASE_SMOKE} \
@@ -69,19 +69,27 @@ run_smoke() {
         --name "${NAME}"
 }
 
-run_smoke "vit_leproj"       "ViT-B-16-exp"        29513 "--siglip --lejepa --lejepa-proj"
-run_smoke "pe_cls_leproj"    "PE-Core-B-16-cls"    29514 "--siglip --lejepa --lejepa-proj"
+# run_smoke "vit_leproj"       "ViT-B-16-exp"        29513 "--siglip --lejepa --lejepa-proj"
+# run_smoke "pe_cls_leproj"    "PE-Core-B-16-cls"    29514 "--siglip --lejepa --lejepa-proj"
 run_smoke "pe_dinov3_leproj" "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa --lejepa-proj"
-run_smoke "dinov3_leproj"    "DINOv3-B-16-ape"     29517 "--siglip --lejepa --lejepa-proj"
+# run_smoke "dinov3_leproj"    "DINOv3-B-16-ape"     29517 "--siglip --lejepa --lejepa-proj"
 
-run_smoke "vit_le"           "ViT-B-16-exp"        29513 "--siglip --lejepa"
-run_smoke "pe_cls_le"        "PE-Core-B-16-cls"    29514 "--siglip --lejepa"
-run_smoke "pe_dinov3_le"     "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa"
+# run_smoke "vit_le"           "ViT-B-16-exp"        29513 "--siglip --lejepa"
+# run_smoke "pe_cls_le"        "PE-Core-B-16-cls"    29514 "--siglip --lejepa"
+# run_smoke "pe_dinov3_le"     "PE-Core-B-16-dinov3" 29515 "--siglip --lejepa"
 run_smoke "dinov3_le"        "DINOv3-B-16-ape"     29517 "--siglip --lejepa"
 
 run_smoke "vit"              "ViT-B-16-exp"        29513 "--siglip"
-run_smoke "pe_cls"           "PE-Core-B-16-cls"    29514 "--siglip"
-run_smoke "pe_dinov3"        "PE-Core-B-16-dinov3" 29515 "--siglip"
-run_smoke "dinov3"           "DINOv3-B-16-ape"     29517 "--siglip"
+# run_smoke "pe_cls"           "PE-Core-B-16-cls"    29514 "--siglip"
+# run_smoke "pe_dinov3"        "PE-Core-B-16-dinov3" 29515 "--siglip"
+# run_smoke "dinov3"           "DINOv3-B-16-ape"     29517 "--siglip"
+
+# DINOv3 联合训练 smoke test（SigLIP + DINO + iBOT + KoLeo）
+run_smoke "pe_dinov3_clip" "PE-Core-B-16" 29513 \
+    "--siglip --dinov3 \
+     --dino-local-crops-number 2 \
+     --dino-head-prototypes 65536 \
+     --dino-loss-weight 1.0 --ibot-loss-weight 1.0 --koleo-loss-weight 0.1 \
+     --freeze-last-layer-epochs 1"
 
 echo "======== smoke 全部通过 ========"

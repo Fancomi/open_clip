@@ -1,6 +1,60 @@
 source /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/activate
 
-LOG_DIR=/root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs
+LOG_DIR=/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs
+
+
+# python scripts/plot_logs.py --logs \
+# $LOG_DIR/abl_T20_base_0416_1735/out.log \
+# $LOG_DIR/abl_T20_wd0_0416_1735/out.log \
+# $LOG_DIR/abl_T20_lr1_0416_1735/out.log \
+# $LOG_DIR/abl_T20_lr1wd0_0416_1735/out.log \
+# --names T20_lr2 T20_lr2wd0 T20_lr1 T20_lr1wd0   --output logs/compare_abl_0416
+
+
+
+# python scripts/plot_logs.py --logs \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_0416_0031/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e10_0416_1344/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e12_warm384_0416_2010/out.log \
+# --names pe_dinov3_leproj pe_dinov3_leproj_e10 pe_dinov3_leproj_e12_warm384   --output logs/compare_abl_0416_cc3m
+
+# python scripts/plot_logs.py --logs \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_0416_0031/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e9_warm512_0417_1014/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e10_0416_1344/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm512_0417_1014/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm512_LR121_0417_1014/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm512_LR151_0417_1014/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e12_warm384_0416_2010/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e12_warm512_0416_2010/out.log \
+# --names basic e9 e10 e10w512 e10w512LR121 e10w512LR151 e12w384 e12w512  --output logs/compare_pe_dino_leproj_0417_cc3m
+
+python scripts/plot_logs.py --logs \
+$LOG_DIR/cc3m_siglip2_LR110_0419_0024/out.log \
+$LOG_DIR/cc3m_siglip2_LR150_0419_0024/out.log \
+$LOG_DIR/cc3m_siglip2_LR1100_0419_0024/out.log \
+--names LR110 LR150 LR1100 --output logs/compare_siglip2_0419_cc3m
+
+
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm512_LR171_0419_0024/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm512_LR201_0419_0024/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm512_LR251_0419_0024/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm1024_LR251_0419_0024/out.log \
+#  e10_warm512_LR171 e10_warm512_LR201 e10_warm512_LR251 e10_warm1024_LR251
+python scripts/plot_logs.py --logs \
+$LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm384_LR151_0419_0024/out.log \
+$LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm512_LR151_0419_0024/out.log \
+$LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm512_LR171_0419_0024/out.log \
+$LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm768_LR151_0419_0024/out.log \
+--names e8_warm384_LR151 e8_warm512_LR151 e8_warm512_LR171 e8_warm768_LR151  --output logs/compare_pe_dino_leproj_0419_cc3m
+
+exit
+python scripts/plot_logs.py --logs \
+$LOG_DIR/cc3m_pe_core_LR110_0419_0024/out.log \
+$LOG_DIR/cc3m_pe_core_LR150_0419_0024/out.log \
+$LOG_DIR/cc3m_pe_core_LR1100_0419_0024/out.log \
+--names LR110 LR150 LR1100 --output logs/compare_pe_0419_cc3m
+
 
 # # SigLIP对比图
 # python scripts/plot_logs.py --logs \
@@ -65,14 +119,15 @@ LOG_DIR=/root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/
 # /root/paddlejob/workspace/env_run/penghaotian/vision_encoders/open_clip/logs/LR2e-4_epoch30_lejepa_all/quick_dinov3_le_0409_2205/out.log \
 #  --names vit vit_le pe_cls pe_cls_le pe_dinov3 pe_dinov3_le dinov3 dinov3_le --output logs/compare_siglip_202604101404
 
-python scripts/plot_logs.py --logs \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_vit_le_0414_2322/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_vit_leproj_0414_2322/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_pe_dinov3_le_0414_2322/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_pe_dinov3_leproj_0414_2322/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_dinov3_le_0414_2322/out.log \
-/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_dinov3_leproj_0414_2322/out.log \
---names vit vit_le pe_dinov3 pe_dinov3_le dinov3 dinov3_le --output logs/compare_siglip_202604151801
+# python scripts/plot_logs.py --logs \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_vit_le_0414_2322/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_vit_leproj_0414_2322/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_pe_dinov3_le_0414_2322/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_pe_dinov3_leproj_0414_2322/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_dinov3_le_0414_2322/out.log \
+# /root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/cc3m_20260414/cc3m_dinov3_leproj_0414_2322/out.log \
+# --names vit vit_le pe_dinov3 pe_dinov3_le dinov3 dinov3_le --output logs/compare_siglip_202604151801
+
 
 
 

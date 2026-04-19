@@ -1,6 +1,7 @@
 import copy
 import glob
 import logging
+import math
 import os
 import re
 import subprocess
@@ -29,7 +30,7 @@ except ImportError:
     hvd = None
 
 from open_clip import create_model_and_transforms, trace_model, get_tokenizer, create_loss
-from open_clip.model import CLIPLeJEPA
+from open_clip.model import CLIPLeJEPA, CLIPWithDINO
 from open_clip_train.data import get_data
 from open_clip_train.distributed import is_master, init_distributed_device, broadcast_object
 from open_clip_train.logger import setup_logging
@@ -256,6 +257,37 @@ def main(args):
         )
         model = model.to(device)
 
+    # DINOv3: 包装模型，增加 student-teacher 自蒸馏
+    if getattr(args, 'dinov3', False):
+        # 推断 visual backbone 的 embed_dim
+        _visual = model.visual
+        embed_dim = (
+            getattr(_visual, 'output_dim', None)
+            or getattr(model, 'embed_dim', None)
+        )
+        if embed_dim is None:
+            if hasattr(_visual, 'trunk'):
+                embed_dim = _visual.trunk.num_features
+            else:
+                raise RuntimeError("Cannot determine embed_dim for CLIPWithDINO wrapping.")
+        ibot_out = getattr(args, 'ibot_head_prototypes', None) or getattr(args, 'dino_head_prototypes', 65536)
+        logging.info(
+            f"=> Wrapping model with CLIPWithDINO "
+            f"(embed_dim={embed_dim}, dino_proto={args.dino_head_prototypes}, ibot_proto={ibot_out})"
+        )
+        model = CLIPWithDINO(
+            clip_model=model,
+            embed_dim=embed_dim,
+            dino_head_out_dim=getattr(args, 'dino_head_prototypes', 65536),
+            ibot_head_out_dim=ibot_out,
+            dino_head_nlayers=getattr(args, 'dino_head_nlayers', 3),
+            dino_head_hidden=getattr(args, 'dino_head_hidden_dim', 2048),
+            dino_head_bottleneck=getattr(args, 'dino_head_bottleneck_dim', 256),
+            n_global_crops=2,
+            output_dict=True,
+        )
+        model = model.to(device)
+
     if args.distill:
         # FIXME: currently assumes the model you're distilling from has the same tokenizer & transforms.
         dist_model, _, _ = create_model_and_transforms(
@@ -312,8 +344,15 @@ def main(args):
             model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
         ddp_args = {}
         if args.ddp_static_graph:
-            # this doesn't exist in older PyTorch, arg only added if enabled
             ddp_args['static_graph'] = True
+        if getattr(args, 'dinov3', False):
+            # The visual backbone is shared between the contrastive and DINO paths,
+            # causing parameters to appear multiple times in the backward graph.
+            # static_graph=True tells DDP the graph is fixed across iterations,
+            # which also handles teacher parameters (requires_grad=False).
+            # Note: static_graph and find_unused_parameters are mutually exclusive.
+            ddp_args['static_graph'] = True
+            ddp_args.pop('find_unused_parameters', None)
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
     
         if args.distill:
@@ -409,7 +448,15 @@ def main(args):
             logging.info(f"=> loaded checkpoint '{args.resume}' (epoch {start_epoch})")
 
     # initialize datasets
-    tokenizer = get_tokenizer(args.model, cache_dir=args.cache_dir, context_length=args.force_context_length)
+    # If pretrained weights are loaded from a local file, use the same directory for the
+    # tokenizer (avoids HuggingFace network requests in offline environments).
+    _tokenizer_model = args.model
+    if args.pretrained and os.path.isfile(args.pretrained):
+        _local_model_dir = os.path.dirname(args.pretrained)
+        if os.path.isfile(os.path.join(_local_model_dir, 'tokenizer.json')):
+            _tokenizer_model = f'local-dir:{_local_model_dir}'
+            logging.info(f"Using local tokenizer from: {_local_model_dir}")
+    tokenizer = get_tokenizer(_tokenizer_model, cache_dir=args.cache_dir, context_length=args.force_context_length)
     data = get_data(
         args,
         (preprocess_train, preprocess_val),
@@ -502,12 +549,45 @@ def main(args):
         return
 
     loss = create_loss(args)
+    loss = loss.to(device)
+
+    # DINOv3 调度：teacher temperature warmup + EMA momentum cosine schedule
+    dino_schedules = None
+    if getattr(args, 'dinov3', False) and 'train' in data:
+        total_steps = (data["train"].dataloader.num_batches // args.accum_freq) * args.epochs
+        steps_per_epoch = data["train"].dataloader.num_batches // args.accum_freq
+        warmup_temp_epochs = getattr(args, 'dino_warmup_teacher_temp_epochs', 30)
+        warmup_temp_steps  = warmup_temp_epochs * steps_per_epoch
+        start_temp = getattr(args, 'dino_warmup_teacher_temp', 0.04)
+        end_temp   = getattr(args, 'dino_teacher_temp', 0.07)
+        start_mom  = getattr(args, 'dino_teacher_momentum', 0.992)
+
+        def _teacher_temp_schedule(step):
+            if step < warmup_temp_steps:
+                return start_temp + (end_temp - start_temp) * step / max(warmup_temp_steps, 1)
+            return end_temp
+
+        def _ema_momentum_schedule(step):
+            # cosine from start_mom to 1.0 over total_steps
+            return 1.0 - (1.0 - start_mom) * (
+                math.cos(math.pi * step / max(total_steps, 1)) * 0.5 + 0.5
+            )
+
+        dino_schedules = {
+            'teacher_temp': _teacher_temp_schedule,
+            'ema_momentum': _ema_momentum_schedule,
+        }
+        logging.info(
+            f"DINOv3 schedules: teacher_temp {start_temp}->{end_temp} over {warmup_temp_epochs} epochs, "
+            f"EMA momentum {start_mom}->1.0 over {args.epochs} epochs"
+        )
 
     for epoch in range(start_epoch, args.epochs):
         if is_master(args):
             logging.info(f'Start epoch {epoch}')
 
-        train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist_model, args, tb_writer=writer)
+        train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist_model, args,
+                        tb_writer=writer, dino_schedules=dino_schedules)
         completed_epoch = epoch + 1
 
         if any(v in data for v in ('val', 'imagenet-val', 'imagenet-v2')):

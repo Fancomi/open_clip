@@ -523,6 +523,144 @@ def parse_args(args):
         help='Projector layers (only with --lejepa-proj).'
     )
 
+    # ============ DINOv3 自蒸馏参数 ============
+    parser.add_argument(
+        "--dinov3",
+        default=False,
+        action="store_true",
+        help="Enable DINOv3-style self-distillation (DINO + iBOT + KoLeo) alongside contrastive loss."
+    )
+    parser.add_argument(
+        "--dino-loss-weight",
+        type=float,
+        default=1.0,
+        help="Weight for DINO CLS token self-distillation loss."
+    )
+    parser.add_argument(
+        "--ibot-loss-weight",
+        type=float,
+        default=1.0,
+        help="Weight for iBOT masked patch token self-distillation loss."
+    )
+    parser.add_argument(
+        "--koleo-loss-weight",
+        type=float,
+        default=0.1,
+        help="Weight for KoLeo nearest-neighbor entropy regularizer."
+    )
+    parser.add_argument(
+        "--dino-head-prototypes",
+        type=int,
+        default=65536,
+        help="Number of prototypes in DINO head (out_dim)."
+    )
+    parser.add_argument(
+        "--ibot-head-prototypes",
+        type=int,
+        default=65536,
+        help="Number of prototypes in iBOT head (out_dim). Defaults to --dino-head-prototypes."
+    )
+    parser.add_argument(
+        "--dino-head-nlayers",
+        type=int,
+        default=3,
+        help="Number of MLP layers in DINO/iBOT projection heads."
+    )
+    parser.add_argument(
+        "--dino-head-hidden-dim",
+        type=int,
+        default=2048,
+        help="Hidden dimension of DINO/iBOT MLP heads."
+    )
+    parser.add_argument(
+        "--dino-head-bottleneck-dim",
+        type=int,
+        default=256,
+        help="Bottleneck dimension of DINO/iBOT MLP heads (before L2-norm)."
+    )
+    parser.add_argument(
+        "--dino-student-temp",
+        type=float,
+        default=0.1,
+        help="Student temperature for DINO/iBOT cross-entropy."
+    )
+    parser.add_argument(
+        "--dino-teacher-temp",
+        type=float,
+        default=0.07,
+        help="Final teacher temperature (after warmup)."
+    )
+    parser.add_argument(
+        "--dino-warmup-teacher-temp",
+        type=float,
+        default=0.04,
+        help="Starting teacher temperature during warmup."
+    )
+    parser.add_argument(
+        "--dino-warmup-teacher-temp-epochs",
+        type=int,
+        default=30,
+        help="Number of epochs to warm up teacher temperature."
+    )
+    parser.add_argument(
+        "--dino-teacher-momentum",
+        type=float,
+        default=0.992,
+        help="Starting EMA momentum for teacher (cosine-scheduled to 1.0)."
+    )
+    parser.add_argument(
+        "--dino-local-crops-number",
+        type=int,
+        default=8,
+        help="Number of local crops for DINO. Set 0 to disable local crops."
+    )
+    parser.add_argument(
+        "--dino-local-crops-size",
+        type=int,
+        default=96,
+        help="Pixel size of local crops."
+    )
+    parser.add_argument(
+        "--dino-global-crops-scale",
+        type=float,
+        nargs=2,
+        default=[0.32, 1.0],
+        metavar=('MIN', 'MAX'),
+        help="Scale range for global RandomResizedCrop."
+    )
+    parser.add_argument(
+        "--dino-local-crops-scale",
+        type=float,
+        nargs=2,
+        default=[0.05, 0.32],
+        metavar=('MIN', 'MAX'),
+        help="Scale range for local RandomResizedCrop."
+    )
+    parser.add_argument(
+        "--ibot-mask-ratio-min",
+        type=float,
+        default=0.1,
+        help="Minimum iBOT mask ratio (fraction of patches masked)."
+    )
+    parser.add_argument(
+        "--ibot-mask-ratio-max",
+        type=float,
+        default=0.5,
+        help="Maximum iBOT mask ratio."
+    )
+    parser.add_argument(
+        "--ibot-mask-sample-prob",
+        type=float,
+        default=0.5,
+        help="Fraction of samples per batch that receive an iBOT mask."
+    )
+    parser.add_argument(
+        "--freeze-last-layer-epochs",
+        type=int,
+        default=1,
+        help="Freeze the last linear layer of DINO/iBOT heads for this many epochs."
+    )
+
     args = parser.parse_args(args)
 
     if 'timm' not in args.opt:

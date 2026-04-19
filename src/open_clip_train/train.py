@@ -15,6 +15,7 @@ except ImportError:
     wandb = None
 
 from open_clip import get_input_dtype, CLIP, CustomTextCLIP
+from open_clip.model import CLIPLeJEPA, CLIPWithDINO
 from open_clip_train.distributed import is_master
 from open_clip_train.zero_shot import zero_shot_eval
 from open_clip_train.precision import get_autocast
@@ -61,10 +62,15 @@ def backward(total_loss, scaler):
         total_loss.backward()
 
 
-def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist_model, args, tb_writer=None):
+def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist_model, args,
+                    tb_writer=None, dino_schedules=None):
     device = torch.device(args.device)
     autocast = get_autocast(args.precision, device_type=device.type)
     input_dtype = get_input_dtype(args.precision)
+
+    # Detect DINOv3 mode
+    _unwrapped = unwrap_model(model)
+    is_dinov3 = isinstance(_unwrapped, CLIPWithDINO)
 
     model.train()
     if args.distill:
@@ -75,7 +81,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
     num_batches_per_epoch = dataloader.num_batches // args.accum_freq
     sample_digits = math.ceil(math.log(dataloader.num_samples + 1, 10))
 
-    if args.accum_freq > 1:
+    if args.accum_freq > 1 and not is_dinov3:
         accum_images, accum_texts, accum_features = [], [], {}
 
     losses_m = {}
@@ -89,16 +95,51 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
         if not args.skip_scheduler:
             scheduler(step)
 
-        images, texts = batch
-        images = images.to(device=device, dtype=input_dtype, non_blocking=True)
-        texts = texts.to(device=device, non_blocking=True)
+        # ---- Batch unpacking: DINOv3 vs standard ----
+        if is_dinov3:
+            # batch = (batch_dict, texts)
+            # batch_dict: {global_crops, local_crops, collated_masks, masks_weight, mask_indices}
+            batch_dict, texts = batch
+            global_crops = batch_dict["global_crops"].to(device=device, dtype=input_dtype, non_blocking=True)
+            local_crops  = batch_dict["local_crops"].to(device=device, dtype=input_dtype, non_blocking=True) \
+                if batch_dict["local_crops"].numel() > 0 else None
+            collated_masks = batch_dict["collated_masks"].to(device=device, non_blocking=True)
+            masks_weight   = batch_dict["masks_weight"].to(device=device, non_blocking=True)
+            texts = texts.to(device=device, non_blocking=True)
+
+            # teacher temperature and EMA momentum from schedules
+            teacher_temp = dino_schedules['teacher_temp'](step) if dino_schedules else 0.07
+            ema_momentum = dino_schedules['ema_momentum'](step) if dino_schedules else 0.992
+
+            # freeze last layer of DINO/iBOT heads for first N epochs
+            # NOTE: we do NOT use requires_grad_(False) here because that changes
+            # the DDP computation graph, which is incompatible with static_graph=True.
+            # Instead we zero out the gradient *after* backward (see below, after backward()).
+            freeze_epochs = getattr(args, 'freeze_last_layer_epochs', 1)
+            freeze_last = (epoch < freeze_epochs)
+        else:
+            images, texts = batch
+            images = images.to(device=device, dtype=input_dtype, non_blocking=True)
+            texts  = texts.to(device=device, non_blocking=True)
+            teacher_temp = None
+            ema_momentum = None
 
         data_time_m.update(time.time() - end)
         optimizer.zero_grad()
 
         if args.accum_freq == 1:
             with autocast():
-                model_out = model(images, texts)
+                if is_dinov3:
+                    model_out = model(
+                        global_crops=global_crops,
+                        local_crops=local_crops,
+                        texts=texts,
+                        student_masks=collated_masks,
+                        masks_weight=masks_weight,
+                    )
+                    model_out["teacher_temp"] = teacher_temp
+                else:
+                    model_out = model(images, texts)
                 logit_scale = model_out["logit_scale"]
                 logit_bias = model_out.get("logit_bias", None)
                 if args.distill:
@@ -111,6 +152,13 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 losses["loss"] = total_loss
 
             backward(total_loss, scaler)
+
+            # freeze last layer: zero grads after backward so the graph stays
+            # constant across epochs (static_graph=True requires unchanged graph).
+            if is_dinov3 and freeze_last:
+                for head in [_unwrapped.student_dino_head, _unwrapped.student_ibot_head]:
+                    if head.last_layer.weight.grad is not None:
+                        head.last_layer.weight.grad.zero_()
 
             # === DIAG: print key grad/feature stats for first 5 steps ===
             if is_master(args) and i_accum < 5:
@@ -129,6 +177,9 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                     + (f"  sim_pos={( (img_f * txt_f).sum(-1).mean().item()):.4f}" if img_f is not None else "")
                 )
         else:
+            # accum_freq > 1 path: not supported for DINOv3 multi-crop
+            # (is_dinov3 always uses accum_freq=1 path above)
+            assert not is_dinov3, "accum_freq > 1 is not supported with --dinov3"
             # First, cache the features without any gradient tracking.
             with torch.no_grad():
                 with autocast():
@@ -230,8 +281,12 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 logging.info(f"  [diag3] visual[0] param_delta={delta:.6f}")
 
         # reset gradient accum, if enabled
-        if args.accum_freq > 1:
+        if args.accum_freq > 1 and not is_dinov3:
             accum_images, accum_texts, accum_features = [], [], {}
+
+        # DINOv3: EMA update of teacher after optimizer step
+        if is_dinov3 and ema_momentum is not None:
+            unwrap_model(model).update_ema(ema_momentum)
 
         # Note: we clamp to 4.6052 = ln(100), as in the original paper.
         with torch.no_grad():
@@ -241,7 +296,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
         end = time.time()
         batch_count = i_accum + 1
         if is_master(args) and (i_accum % args.log_every_n_steps == 0 or batch_count == num_batches_per_epoch):
-            batch_size = len(images)
+            batch_size = args.batch_size if is_dinov3 else len(images)
             num_samples = batch_count * batch_size * args.accum_freq * args.world_size
 
             # Grad norm diagnostics (first 3 steps only to avoid overhead)
@@ -327,6 +382,9 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
         # unwrap DDP for single process eval
         if args.distributed and not args.horovod:
             model = model.module
+        # For CLIPWithDINO, eval uses the inner CLIP model (standard image/text interface)
+        if isinstance(model, CLIPWithDINO):
+            model = model.clip_model
         dataloader = data['val'].dataloader
         num_samples = 0
         samples_per_val = dataloader.num_samples

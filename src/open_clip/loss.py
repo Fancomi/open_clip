@@ -550,6 +550,345 @@ class SIGReg(nn.Module):
         return (err @ weights).mean() * N * world_size
 
 
+
+# ============================================================
+# DINOv3 Self-distillation Losses
+# Ported from Meta AI DINOv3, removing dinov3.distributed deps.
+# ============================================================
+
+def _dino_all_reduce(x: torch.Tensor) -> torch.Tensor:
+    """In-place all-reduce sum across GPUs. No-op if not distributed."""
+    if has_distributed and dist.is_available() and dist.is_initialized():
+        dist.all_reduce(x)
+    return x
+
+
+def _dino_world_size() -> int:
+    if has_distributed and dist.is_available() and dist.is_initialized():
+        return dist.get_world_size()
+    return 1
+
+
+class SinkhornKnopp(nn.Module):
+    """Sinkhorn-Knopp centering for teacher outputs (used by DINO and iBOT).
+
+    Converts raw teacher logits to soft assignment probabilities via iterative
+    row/column normalization, ensuring balanced cluster assignments.
+    """
+
+    @torch.no_grad()
+    def forward(
+        self,
+        teacher_output: torch.Tensor,
+        teacher_temp: float,
+        n_samples: Optional[torch.Tensor] = None,
+        n_iterations: int = 3,
+    ) -> torch.Tensor:
+        """
+        Args:
+            teacher_output: [B, K] teacher logits (before temperature).
+            teacher_temp:   Teacher sharpening temperature.
+            n_samples:      Total number of samples across all GPUs (scalar tensor).
+                            If None, uses local batch size * world_size.
+            n_iterations:   Number of Sinkhorn iterations.
+
+        Returns:
+            Q: [B, K] soft assignment matrix (rows sum to ~1).
+        """
+        teacher_output = teacher_output.float()
+        Q = torch.exp(teacher_output / teacher_temp).t()  # [K, B]
+        world_size = _dino_world_size()
+        B = Q.shape[1] * world_size if n_samples is None else n_samples.float()
+        K = Q.shape[0]
+
+        sum_Q = Q.sum()
+        _dino_all_reduce(sum_Q)
+        Q /= sum_Q
+
+        for _ in range(n_iterations):
+            sum_rows = Q.sum(dim=1, keepdim=True)
+            _dino_all_reduce(sum_rows)
+            Q /= sum_rows
+            Q /= K
+            Q /= Q.sum(dim=0, keepdim=True)
+            Q /= B
+
+        Q *= B
+        return Q.t()  # [B, K]
+
+
+class DINOClsTokenLoss(nn.Module):
+    """CLS-token self-distillation loss (DINO-style).
+
+    Student learns to match Sinkhorn-Knopp-centered teacher outputs.
+
+    Args:
+        out_dim:          Number of prototypes (head output dim).
+        student_temp:     Student temperature (default: 0.1).
+        center_momentum:  EMA momentum for center (default: 0.9).
+    """
+
+    def __init__(
+        self,
+        out_dim: int,
+        student_temp: float = 0.1,
+        center_momentum: float = 0.9,
+    ):
+        super().__init__()
+        self.student_temp = student_temp
+        self.center_momentum = center_momentum
+        self.sinkhorn = SinkhornKnopp()
+        self.register_buffer("center", torch.zeros(1, out_dim))
+
+    def forward(
+        self,
+        student_cls_tokens: torch.Tensor,
+        teacher_cls_tokens: torch.Tensor,
+        teacher_temp: float,
+        ignore_diagonal: bool = True,
+    ) -> torch.Tensor:
+        """
+        Args:
+            student_cls_tokens: [n_student_crops * B, out_dim] student head logits.
+            teacher_cls_tokens: [n_teacher_crops * B, out_dim] teacher head logits (raw).
+            teacher_temp:       Current teacher temperature (scheduled externally).
+            ignore_diagonal:    Exclude same-view pairs (student_i vs teacher_i).
+
+        Returns:
+            Scalar loss.
+        """
+        B_s = student_cls_tokens.shape[0]
+        B_t = teacher_cls_tokens.shape[0]
+
+        # B_t must evenly divide B_s (n_student_crops >= n_teacher_crops)
+        assert B_s % B_t == 0, f"B_s={B_s} must be divisible by B_t={B_t}"
+        local_B = B_t  # per-crop batch size = total teacher tokens
+        n_s = B_s // local_B  # number of student crops per image... wait
+        # Actually: B_t = n_t * BS, B_s = n_s * BS, so local_B = BS
+        # We need to find BS.  B_t = n_t * BS. Simplest: GCD approach.
+        # In practice n_t=2 (global crops), so BS = B_t // 2.
+        # But we don't want to hardcode n_t.  Use: iterate over teacher crops.
+        # Split teacher into n_t crops of size BS each:
+        #   teacher_probs[i*BS:(i+1)*BS] corresponds to teacher crop i
+        # Then for each teacher crop t, average cross-entropy over all student crops.
+
+        # Sinkhorn-Knopp centering on teacher
+        teacher_probs = self.sinkhorn(teacher_cls_tokens - self.center, teacher_temp)  # [B_t, K]
+
+        # Student log-softmax
+        student_logsoft = F.log_softmax(student_cls_tokens.float() / self.student_temp, dim=-1)  # [B_s, K]
+
+        # Cross-entropy: iterate over teacher crops to avoid [B_s, B_t, K] expansion.
+        # B_t = n_t * BS,  B_s = n_s * BS.  We don't know BS, but GCD(B_s,B_t)=BS*gcd(n_s,n_t).
+        # Safest: infer BS as B_t (treat each teacher token as one "crop"), iterate over each.
+        # This is equivalent to the reference DINOv2 implementation which loops over teacher views.
+        #
+        # Reference pattern (DINOv2 facebookresearch):
+        #   total_loss = 0
+        #   for t in teacher_crops:
+        #       for s in student_crops (skip same-view):
+        #           total_loss += -sum(t * log(s))
+        #
+        # Here B_t rows = n_t * BS, so we iterate chunk-wise.
+        # We need BS to know chunk boundaries. Infer: assume n_t=2 global crops.
+        n_t = 2  # always 2 global teacher crops
+        BS = B_t // n_t
+        n_s_crops = B_s // BS
+
+        total_loss = 0.0
+        n_pairs = 0
+        for t_idx in range(n_t):
+            t_probs = teacher_probs[t_idx * BS: (t_idx + 1) * BS]  # [BS, K]
+            for s_idx in range(n_s_crops):
+                if ignore_diagonal and s_idx == t_idx:
+                    continue  # skip same-view pair
+                s_logsoft = student_logsoft[s_idx * BS: (s_idx + 1) * BS]  # [BS, K]
+                total_loss += -(t_probs * s_logsoft).sum(dim=-1).mean()
+                n_pairs += 1
+
+        return total_loss / max(n_pairs, 1)
+
+    @torch.no_grad()
+    def update_center(self, teacher_output: torch.Tensor) -> None:
+        """EMA update of the centering buffer from teacher CLS tokens."""
+        batch_center = teacher_output.mean(dim=0, keepdim=True)
+        _dino_all_reduce(batch_center)
+        batch_center /= _dino_world_size()
+        self.center = self.center * self.center_momentum + batch_center * (1 - self.center_momentum)
+
+
+class iBOTPatchLoss(nn.Module):
+    """Masked patch token self-distillation loss (iBOT-style).
+
+    Computes cross-entropy between student masked patches and teacher patches,
+    weighted by per-sample inverse mask count.
+
+    Args:
+        out_dim:          Head output dim (number of prototypes).
+        student_temp:     Student temperature (default: 0.1).
+        center_momentum:  EMA momentum for center (default: 0.9).
+    """
+
+    def __init__(
+        self,
+        out_dim: int,
+        student_temp: float = 0.1,
+        center_momentum: float = 0.9,
+    ):
+        super().__init__()
+        self.student_temp = student_temp
+        self.center_momentum = center_momentum
+        self.sinkhorn = SinkhornKnopp()
+        self.register_buffer("center", torch.zeros(1, 1, out_dim))
+
+    def forward(
+        self,
+        student_patch_tokens: torch.Tensor,
+        teacher_patch_tokens: torch.Tensor,
+        student_masks: torch.Tensor,
+        teacher_temp: float,
+        masks_weight: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """
+        Args:
+            student_patch_tokens:  [B, N, out_dim] student head logits on all patches.
+            teacher_patch_tokens:  [B, N, out_dim] teacher head logits (raw) on all patches.
+            student_masks:         [B, N] bool mask (True = masked in student, predict these).
+            teacher_temp:          Current teacher temperature.
+            masks_weight:          [n_masked] optional per-token weight; if None, computed from masks.
+
+        Returns:
+            Scalar loss.
+        """
+        B, N, K = student_patch_tokens.shape
+
+        # Teacher centering (subtract center, then Sinkhorn)
+        # Flatten [B, N, K] -> [B*N, K] for SK, then reshape back
+        teacher_flat = teacher_patch_tokens.reshape(B * N, K)
+        teacher_centered = teacher_flat - self.center.reshape(1, K)
+        teacher_probs_flat = self.sinkhorn(teacher_centered, teacher_temp)  # [B*N, K]
+        teacher_probs = teacher_probs_flat.reshape(B, N, K)
+
+        # Student log-softmax
+        student_logsoft = F.log_softmax(
+            student_patch_tokens.float() / self.student_temp, dim=-1
+        )  # [B, N, K]
+
+        # Per-token cross-entropy, then mask and normalize per sample
+        per_token_ce = -(teacher_probs * student_logsoft).sum(dim=-1)  # [B, N]
+
+        if masks_weight is not None:
+            # Use pre-computed flat weights for masked tokens
+            masked_ce = per_token_ce[student_masks]  # [n_masked]
+            loss = (masked_ce * masks_weight).sum() / B
+        else:
+            n_masked_per_sample = student_masks.float().sum(dim=-1).clamp(min=1.0)  # [B]
+            loss = (per_token_ce * student_masks.float()).sum(dim=-1)  # [B]
+            loss = (loss / n_masked_per_sample).mean()
+
+        return -loss if loss > 0 else loss  # CE should already be positive; sign correction
+
+    def forward_masked(
+        self,
+        student_patch_tokens_masked: torch.Tensor,
+        teacher_patch_tokens_masked: torch.Tensor,
+        student_masks: torch.Tensor,
+        teacher_temp: float,
+        n_masked_patches: Optional[int] = None,
+        masks_weight: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Efficient variant operating on pre-gathered masked tokens.
+
+        Args:
+            student_patch_tokens_masked:  [n_masked, K] student tokens at mask positions.
+            teacher_patch_tokens_masked:  [n_masked, K] teacher tokens at mask positions.
+            student_masks:                [B, N] bool mask (used for weight computation if needed).
+            teacher_temp:                 Current teacher temperature.
+            n_masked_patches:             If set, truncate to first n_masked_patches tokens.
+            masks_weight:                 [n_masked] per-token weight.
+
+        Returns:
+            Scalar loss.
+        """
+        B = student_masks.shape[0]
+
+        teacher_centered = teacher_patch_tokens_masked - self.center.reshape(1, teacher_patch_tokens_masked.shape[-1])
+        n_samples = torch.tensor(
+            teacher_patch_tokens_masked.shape[0] * _dino_world_size(),
+            dtype=torch.long, device=teacher_patch_tokens_masked.device
+        )
+        teacher_probs = self.sinkhorn(teacher_centered, teacher_temp, n_samples=n_samples)  # [n_masked, K]
+        student_logsoft = F.log_softmax(
+            student_patch_tokens_masked.float() / self.student_temp, dim=-1
+        )  # [n_masked, K]
+
+        loss = -(teacher_probs * student_logsoft).sum(dim=-1)  # [n_masked]
+
+        if n_masked_patches is not None:
+            loss = loss[:n_masked_patches]
+
+        if masks_weight is None:
+            masks_weight = (
+                (1.0 / student_masks.float().sum(dim=-1).clamp(min=1.0))
+                .unsqueeze(-1)
+                .expand_as(student_masks)[student_masks]
+            )
+        loss = (loss * masks_weight).sum() / B
+        return loss
+
+    @torch.no_grad()
+    def update_center(self, teacher_patch_tokens: torch.Tensor) -> None:
+        """EMA update of the patch centering buffer.
+
+        Args:
+            teacher_patch_tokens: [B, N, K] or [B*N, K] teacher patch head outputs.
+        """
+        if teacher_patch_tokens.dim() == 3:
+            batch_center = teacher_patch_tokens.mean(dim=1).mean(dim=0, keepdim=True)  # [1, K]
+        else:
+            batch_center = teacher_patch_tokens.mean(dim=0, keepdim=True)
+        _dino_all_reduce(batch_center)
+        batch_center /= _dino_world_size()
+        self.center = self.center * self.center_momentum + batch_center.unsqueeze(0) * (1 - self.center_momentum)
+
+
+class KoLeoLoss(nn.Module):
+    """Kozachenko-Leonenko nearest-neighbor entropic regularizer.
+
+    Encourages uniform spreading of embeddings by penalizing
+    small distances to the nearest neighbor.
+
+    Reference: Sablayrolles et al. 2018 "Spreading vectors for similarity search"
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.pdist = nn.PairwiseDistance(2, eps=1e-8)
+
+    def _pairwise_nn_inner(self, x: torch.Tensor) -> torch.Tensor:
+        """Find nearest neighbor indices via max inner product (for L2-normalized vectors)."""
+        dots = torch.mm(x, x.t())  # [N, N]
+        n = x.shape[0]
+        dots.view(-1)[:: (n + 1)].fill_(-1)  # fill diagonal with -1
+        _, indices = torch.max(dots, dim=1)
+        return indices
+
+    def forward(self, student_output: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+        """
+        Args:
+            student_output: [B, D] backbone (pre-head) CLS token features.
+
+        Returns:
+            Scalar KoLeo loss.
+        """
+        with torch.autocast("cuda", enabled=False):
+            x = F.normalize(student_output.float(), p=2, dim=-1, eps=eps)
+            indices = self._pairwise_nn_inner(x)
+            distances = self.pdist(x, x[indices])  # [B]
+            loss = -torch.log(distances + eps).mean()
+        return loss
+
+
 class ClipLeJEPALoss(nn.Module):
     """LeJEPA SIGReg 正则化 + CLIP/SigLIP 主损失
 
@@ -606,3 +945,114 @@ class ClipLeJEPALoss(nn.Module):
         if output_dict:
             return {"contrastive_loss": main_loss, "sigreg": weighted_reg}
         return main_loss + weighted_reg
+
+
+class CLIPWithDINOLoss(nn.Module):
+    """Combined contrastive + self-distillation loss for CLIPWithDINO.
+
+    L = w_contrast * L_siglip
+      + w_dino    * L_dino      (CLS token self-distillation)
+      + w_ibot    * L_ibot      (masked patch token self-distillation)
+      + w_koleo   * L_koleo     (nearest-neighbor entropy regularizer)
+
+    The contrastive part uses SigLipLoss (default) or ClipLoss.
+    """
+
+    def __init__(
+        self,
+        dino_out_dim: int,
+        ibot_out_dim: int,
+        student_temp: float = 0.1,
+        center_momentum: float = 0.9,
+        dino_loss_weight: float = 1.0,
+        ibot_loss_weight: float = 1.0,
+        koleo_loss_weight: float = 0.1,
+        use_siglip: bool = True,
+        rank: int = 0,
+        world_size: int = 1,
+        dist_impl: Optional[str] = None,
+    ):
+        super().__init__()
+        self.dino_loss_weight = dino_loss_weight
+        self.ibot_loss_weight = ibot_loss_weight
+        self.koleo_loss_weight = koleo_loss_weight
+
+        if use_siglip:
+            self.contrastive_loss = SigLipLoss(
+                rank=rank, world_size=world_size, dist_impl=dist_impl
+            )
+        else:
+            self.contrastive_loss = ClipLoss(
+                rank=rank, world_size=world_size, cache_labels=True
+            )
+
+        self.dino_loss = DINOClsTokenLoss(
+            out_dim=dino_out_dim,
+            student_temp=student_temp,
+            center_momentum=center_momentum,
+        )
+        self.ibot_loss = iBOTPatchLoss(
+            out_dim=ibot_out_dim,
+            student_temp=student_temp,
+            center_momentum=center_momentum,
+        )
+        self.koleo_loss = KoLeoLoss()
+
+    def forward(
+        self,
+        # contrastive inputs
+        image_features: torch.Tensor,
+        text_features: torch.Tensor,
+        logit_scale: torch.Tensor,
+        logit_bias: Optional[torch.Tensor] = None,
+        # DINO inputs
+        student_cls_tokens: Optional[torch.Tensor] = None,
+        teacher_cls_tokens: Optional[torch.Tensor] = None,
+        student_cls_tokens_raw: Optional[torch.Tensor] = None,
+        # iBOT inputs
+        student_patch_tokens: Optional[torch.Tensor] = None,
+        teacher_patch_tokens: Optional[torch.Tensor] = None,
+        student_masks: Optional[torch.Tensor] = None,
+        masks_weight: Optional[torch.Tensor] = None,
+        # teacher temperature (scheduled outside)
+        teacher_temp: float = 0.07,
+        output_dict: bool = False,
+    ) -> dict:
+        losses = {}
+
+        # 1. Contrastive loss (SigLIP / CLIP)
+        contrast = self.contrastive_loss(
+            image_features, text_features, logit_scale, logit_bias, output_dict=True
+        )
+        losses.update(contrast)
+
+        # 2. DINO CLS token loss
+        if student_cls_tokens is not None and teacher_cls_tokens is not None:
+            dino = self.dino_loss(student_cls_tokens, teacher_cls_tokens, teacher_temp)
+            self.dino_loss.update_center(teacher_cls_tokens)
+            losses["dino_loss"] = self.dino_loss_weight * dino
+
+        # 3. iBOT patch token loss
+        if (
+            student_patch_tokens is not None
+            and teacher_patch_tokens is not None
+            and student_masks is not None
+        ):
+            ibot = self.ibot_loss.forward_masked(
+                student_patch_tokens,
+                teacher_patch_tokens,
+                student_masks,
+                teacher_temp=teacher_temp,
+                masks_weight=masks_weight,
+            )
+            self.ibot_loss.update_center(teacher_patch_tokens)
+            losses["ibot_loss"] = self.ibot_loss_weight * ibot
+
+        # 4. KoLeo loss on student CLS token (pre-head backbone features)
+        if student_cls_tokens_raw is not None and self.koleo_loss_weight > 0:
+            koleo = self.koleo_loss(student_cls_tokens_raw)
+            losses["koleo_loss"] = self.koleo_loss_weight * koleo
+
+        if output_dict:
+            return losses
+        return sum(losses.values())
