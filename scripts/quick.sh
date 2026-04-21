@@ -5,8 +5,7 @@ source /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/activate
 set -e
 export PYTHONPATH="./src:${PYTHONPATH}"
 export TZ='Asia/Shanghai'  # Use Beijing time for timestamps
-export LANG=en_US.UTF-8
-export LC_ALL=en_US.UTF-8
+source /etc/default/locale
 
 TS=$(date +%m%d_%H%M)
 
@@ -58,7 +57,7 @@ run() {
         --val-data "${VAL}" \
         ${COMMON} \
         ${EXTRA} \
-        --name "${NAME}"
+        --name "${NAME}" < /dev/null
 }
 
 COMMON_WDS="--warmup 512 ${BASE} --epochs 10 \
@@ -76,7 +75,7 @@ run_cc3m() {
         --val-data "${VAL}" \
         ${COMMON_WDS} \
         ${EXTRA} \
-        --name "${NAME}"
+        --name "${NAME}" < /dev/null
 }
 
 # ============ CC3M 数据加载到内存 ============
@@ -118,31 +117,31 @@ LR_1_5=$(python3 -c "print($LR / 5)")
 LR_1_3=$(python3 -c "print($LR / 3)")
 LR_1_2=$(python3 -c "print($LR / 2)")
 
-# run_cc3m "pe_dinov3_e10_warm768_LR171_dinov3" "PE-Core-B-16-dinov3" 29540  "--siglip --epochs 10 --warmup 768 --lr ${LR_17_1} --dinov3 --dino-local-crops-number 2 --dino-head-prototypes 8192"
+# # run_cc3m "pe_dinov3_e10_warm768_LR171_dinov3" "PE-Core-B-16-dinov3" 29540  "--siglip --epochs 10 --warmup 768 --lr ${LR_17_1} --dinov3 --dino-local-crops-number 2 --dino-head-prototypes 8192"
 
-# Bestv0:  e20 warm384 LR*1.0 (basic = 2e-4 ... bs )
-# BestNow: e10 warm512 LR*1.7 lejepa-weight: 1e-4
-run_cc3m "pe_dinov3_leproj_e8_warm768_LR171" "PE-Core-B-16-dinov3" 29541  "--siglip --lejepa --lejepa-proj --epochs 8 --warmup 768  --lr ${LR_17_1} "
-run_cc3m "pe_dinov3_leproj_e10_warm768_LR171" "PE-Core-B-16-dinov3" 29542  "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 768  --lr ${LR_17_1} "
+# # Bestv0:  e20 warm384 LR*1.0 (basic = 2e-4 ... bs )
+# # BestNow: e10 warm512 LR*1.7 lejepa-weight: 1e-4
+# # run_cc3m "pe_dinov3_leproj_e8_warm768_LR171" "PE-Core-B-16-dinov3" 29541  "--siglip --lejepa --lejepa-proj --epochs 8 --warmup 768  --lr ${LR_17_1}"
+# run_cc3m "pe_dinov3_leproj_e10_warm768_LR171" "PE-Core-B-16-dinov3" 29542  "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 768  --lr ${LR_17_1}"
 
-run_cc3m "pe_dinov3_leproj_e10_warm512_LR171_LE2e-4" "PE-Core-B-16-dinov3" 29544  "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} --lejepa-weight 2e-4"
-run_cc3m "pe_dinov3_leproj_e10_warm512_LR171_LE4e-4" "PE-Core-B-16-dinov3" 29544  "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} --lejepa-weight 4e-4"
-run_cc3m "pe_dinov3_leproj_e10_warm512_LR171_LE5e-5" "PE-Core-B-16-dinov3" 29544  "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} --lejepa-weight 5e-5"
-
-
-# # ViT-B-16-SigLIP2: COCO I2T R@1 68.9；visual+text 双塔均已对齐
-# # BestNow: e10 LR / 100
-run_cc3m "siglip2_LR1100"          "ViT-B-16-SigLIP2"   29548 "--siglip --pretrained ${SIG2_CKPT}  --wd 0.0 --lr ${LR_1_100} --epochs 10"
-run_cc3m "siglip2_LR150"           "ViT-B-16-SigLIP2"   29549 "--siglip --pretrained ${SIG2_CKPT}  --wd 0.0 --lr ${LR_1_50} --epochs 10"
+# run_cc3m "pe_dinov3_leproj_e10_warm512_LR171_LE2e-4" "PE-Core-B-16-dinov3" 29544  "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} --lejepa-weight 2e-4"
+# run_cc3m "pe_dinov3_leproj_e10_warm512_LR171_LE4e-4" "PE-Core-B-16-dinov3" 29544  "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} --lejepa-weight 4e-4"
+# run_cc3m "pe_dinov3_leproj_e10_warm512_LR171_LE5e-5" "PE-Core-B-16-dinov3" 29544  "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} --lejepa-weight 5e-5"
 
 
-# PE-Core-B-16: COCO I2T R@1 71.0
-run_cc3m "pe_core_LR1100"          "PE-Core-B-16"        29551 "--siglip --pretrained ${PE_CKPT}  --wd 0.0 --lr ${LR_1_100} --epochs 10"
-run_cc3m "pe_core_LR150"           "PE-Core-B-16"        29552 "--siglip --pretrained ${PE_CKPT}  --wd 0.0 --lr ${LR_1_50} --epochs 10"
+# # # ViT-B-16-SigLIP2: COCO I2T R@1 68.9；visual+text 双塔均已对齐
+# # # BestNow: e10 LR / 100
+# run_cc3m "siglip2_LR1100"          "ViT-B-16-SigLIP2"   29548 "--siglip --pretrained ${SIG2_CKPT}  --wd 0.0 --lr ${LR_1_100} --epochs 10"
+# run_cc3m "siglip2_LR150"           "ViT-B-16-SigLIP2"   29549 "--siglip --pretrained ${SIG2_CKPT}  --wd 0.0 --lr ${LR_1_50} --epochs 10"
+
+
+# # PE-Core-B-16: COCO I2T R@1 71.0
+# run_cc3m "pe_core_LR1100"          "PE-Core-B-16"        29551 "--siglip --pretrained ${PE_CKPT}  --wd 0.0 --lr ${LR_1_100} --epochs 10"
+# run_cc3m "pe_core_LR150"           "PE-Core-B-16"        29552 "--siglip --pretrained ${PE_CKPT}  --wd 0.0 --lr ${LR_1_50} --epochs 10"
 
 # ===
 # ORI
-run_cc3m "pe_dinov3_le"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
+# run_cc3m "pe_dinov3_le"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
 run_cc3m "vit_leproj"         "ViT-B-16-exp"        29557 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
 run_cc3m "dinov3_leproj"    "DINOv3-B-16-ape"       29558 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
 
