@@ -120,7 +120,7 @@ LR_1_2=$(python3 -c "print($LR / 2)")
 # # run_cc3m "pe_dinov3_e10_warm768_LR171_dinov3" "PE-Core-B-16-dinov3" 29540  "--siglip --epochs 10 --warmup 768 --lr ${LR_17_1} --dinov3 --dino-local-crops-number 2 --dino-head-prototypes 8192"
 
 # # Bestv0:  e20 warm384 LR*1.0 (basic = 2e-4 ... bs )
-# # BestNow: e10 warm512 LR*1.7 lejepa-weight: 1e-4
+# # BestNow: e10 warm512 LR*1.7 lejepa-weight: 2e-4(from 1e-4)
 # # run_cc3m "pe_dinov3_leproj_e8_warm768_LR171" "PE-Core-B-16-dinov3" 29541  "--siglip --lejepa --lejepa-proj --epochs 8 --warmup 768  --lr ${LR_17_1}"
 # run_cc3m "pe_dinov3_leproj_e10_warm768_LR171" "PE-Core-B-16-dinov3" 29542  "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 768  --lr ${LR_17_1}"
 
@@ -141,17 +141,18 @@ LR_1_2=$(python3 -c "print($LR / 2)")
 
 # ===
 # ORI
-# run_cc3m "pe_dinov3_le"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
+
+run_cc3m "vit"         "ViT-B-16-exp"        29562 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
+run_cc3m "pe_dinov3"   "PE-Core-B-16-dinov3" 29563 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
+run_cc3m "dinov3"    "DINOv3-B-16-ape"       29564 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
+
+run_cc3m "pe_dinov3_leproj"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
 run_cc3m "vit_leproj"         "ViT-B-16-exp"        29557 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
 run_cc3m "dinov3_leproj"    "DINOv3-B-16-ape"       29558 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
 
 run_cc3m "vit_le"         "ViT-B-16-exp"        29559 "--siglip --lejepa --epochs 10 --warmup 512  --lr ${LR_17_1} "
 run_cc3m "pe_dinov3_le"   "PE-Core-B-16-dinov3" 29560 "--siglip --lejepa --epochs 10 --warmup 512  --lr ${LR_17_1} "
 run_cc3m "dinov3_le"    "DINOv3-B-16-ape"       29561 "--siglip --lejepa --epochs 10 --warmup 512  --lr ${LR_17_1} "
-
-run_cc3m "vit"         "ViT-B-16-exp"        29562 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
-run_cc3m "pe_dinov3"   "PE-Core-B-16-dinov3" 29563 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
-run_cc3m "dinov3"    "DINOv3-B-16-ape"       29564 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
 
 
 echo "======== quick all done ========"

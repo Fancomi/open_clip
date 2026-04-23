@@ -29,11 +29,11 @@ LOG_DIR=/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/l
 # $LOG_DIR/cc3m_pe_dinov3_leproj_e12_warm512_0416_2010/out.log \
 # --names basic e9 e10 e10w512 e10w512LR121 e10w512LR151 e12w384 e12w512  --output logs/compare_pe_dino_leproj_0417_cc3m
 
-python scripts/plot_logs.py --logs \
-$LOG_DIR/cc3m_siglip2_LR110_0419_0024/out.log \
-$LOG_DIR/cc3m_siglip2_LR150_0419_0024/out.log \
-$LOG_DIR/cc3m_siglip2_LR1100_0419_0024/out.log \
---names LR110 LR150 LR1100 --output logs/compare_siglip2_0419_cc3m
+# python scripts/plot_logs.py --logs \
+# $LOG_DIR/cc3m_siglip2_LR110_0419_0024/out.log \
+# $LOG_DIR/cc3m_siglip2_LR150_0419_0024/out.log \
+# $LOG_DIR/cc3m_siglip2_LR1100_0419_0024/out.log \
+# --names LR110 LR150 LR1100 --output logs/compare_siglip2_0419_cc3m
 
 
 # $LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm512_LR171_0419_0024/out.log \
@@ -41,12 +41,27 @@ $LOG_DIR/cc3m_siglip2_LR1100_0419_0024/out.log \
 # $LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm512_LR251_0419_0024/out.log \
 # $LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm1024_LR251_0419_0024/out.log \
 #  e10_warm512_LR171 e10_warm512_LR201 e10_warm512_LR251 e10_warm1024_LR251
+# python scripts/plot_logs.py --logs \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm384_LR151_0419_0024/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm512_LR151_0419_0024/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm512_LR171_0419_0024/out.log \
+# $LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm768_LR151_0419_0024/out.log \
+# --names e8_warm384_LR151 e8_warm512_LR151 e8_warm512_LR171 e8_warm768_LR151  --output logs/compare_pe_dino_leproj_0419_cc3m
+
 python scripts/plot_logs.py --logs \
-$LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm384_LR151_0419_0024/out.log \
-$LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm512_LR151_0419_0024/out.log \
-$LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm512_LR171_0419_0024/out.log \
-$LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm768_LR151_0419_0024/out.log \
---names e8_warm384_LR151 e8_warm512_LR151 e8_warm512_LR171 e8_warm768_LR151  --output logs/compare_pe_dino_leproj_0419_cc3m
+$LOG_DIR/cc3m_pe_dinov3_leproj_0420_0939/out.log \
+$LOG_DIR/cc3m_pe_dinov3_leproj_e8_warm768_LR171_0420_0638/out.log \
+$LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm768_LR171_0420_0939/out.log \
+$LOG_DIR/cc3m_pe_dinov3_e10_warm768_LR171_dinov3_0419_2116/out.log \
+--names e10_warm512_LR171 e8_warm768_LR171  e10_warm768_LR171 dinov3  --output logs/compare_pe_dino_leproj_0421_cc3m
+
+
+python scripts/plot_logs.py --logs \
+$LOG_DIR/cc3m_pe_dinov3_leproj_0420_0939/out.log \
+$LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm512_LR171_LE2e-4_0420_0939/out.log \
+$LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm512_LR171_LE4e-4_0420_0939/out.log \
+$LOG_DIR/cc3m_pe_dinov3_leproj_e10_warm512_LR171_LE5e-5_0420_0939/out.log \
+--names e10_warm512_LR171  e10_warm512_LR171_LE2e-4 e10_warm512_LR171_LE4e-4 e10_warm512_LR171_LE5e-5  --output logs/compare_pe_dino_leproj[LE]_0421_cc3m
 
 exit
 python scripts/plot_logs.py --logs \
