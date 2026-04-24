@@ -13,6 +13,7 @@ TS=$(date +%m%d_%H%M)
 COCO="/root/paddlejob/workspace/env_run/penghaotian/datas/coco/annotations"
 TRAIN="${COCO}/clip_train_dedup.tsv"
 VAL="${COCO}/karpathy_5cap.tsv"       # 官方 Karpathy test split，与论文数值对齐
+PROBE_TSV="${COCO}/karpathy_1cap.tsv" # per-epoch feature probe dataset
 
 # ============ CC3M 数据加载到内存 ============
 CC3M_SRC="/root/paddlejob/workspace/env_run/penghaotian/datas/LLaVA-ReCap-CC3M/wds"
@@ -141,12 +142,13 @@ LR_1_2=$(python3 -c "print($LR / 2)")
 
 # ===
 # ORI
+run_cc3m "pe_dinov3_leproj_probe"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} --probe-data ${PROBE_TSV}"
 
 run_cc3m "vit"         "ViT-B-16-exp"        29562 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
 run_cc3m "pe_dinov3"   "PE-Core-B-16-dinov3" 29563 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
 run_cc3m "dinov3"    "DINOv3-B-16-ape"       29564 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
 
-run_cc3m "pe_dinov3_leproj"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
+run_cc3m "pe_dinov3_leproj"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1}"
 run_cc3m "vit_leproj"         "ViT-B-16-exp"        29557 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
 run_cc3m "dinov3_leproj"    "DINOv3-B-16-ape"       29558 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
 

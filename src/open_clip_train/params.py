@@ -661,6 +661,19 @@ def parse_args(args):
         help="Freeze the last linear layer of DINO/iBOT heads for this many epochs."
     )
 
+    parser.add_argument(
+        "--probe-data",
+        type=str,
+        default=None,
+        help="TSV file (filepath/caption columns) for per-epoch feature probe."
+    )
+    parser.add_argument(
+        "--probe-dir",
+        type=str,
+        default=None,
+        help="Output dir for probe npz files (default: <checkpoint_path>/probe)."
+    )
+
     args = parser.parse_args(args)
 
     if 'timm' not in args.opt:

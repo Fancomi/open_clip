@@ -599,6 +599,10 @@ def main(args):
                 else:
                     torch.distributed.barrier()
 
+        if is_master(args):
+            from open_clip_train.probe_hook import run_probe
+            run_probe(original_model, completed_epoch, args, preprocess_val)
+
         # Saving checkpoints.
         if args.save_logs:
             checkpoint_dict = {
