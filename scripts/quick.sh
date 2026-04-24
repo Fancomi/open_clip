@@ -142,19 +142,20 @@ LR_1_2=$(python3 -c "print($LR / 2)")
 
 # ===
 # ORI
-run_cc3m "pe_dinov3_leproj_probe"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} --probe-data ${PROBE_TSV}"
+# run_cc3m "pe_dinov3_leproj_probe"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} --probe-data ${PROBE_TSV}"
+run_cc3m "pe_dinov3_dinov3_probe" "PE-Core-B-16-dinov3" 29540  "--siglip --epochs 10 --warmup 512 --lr ${LR_17_1} --dinov3 --dino-local-crops-number 2 --dino-head-prototypes 8192  --probe-data ${PROBE_TSV}"
 
-run_cc3m "vit"         "ViT-B-16-exp"        29562 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
-run_cc3m "pe_dinov3"   "PE-Core-B-16-dinov3" 29563 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
-run_cc3m "dinov3"    "DINOv3-B-16-ape"       29564 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
+# run_cc3m "vit"         "ViT-B-16-exp"        29562 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
+# run_cc3m "pe_dinov3"   "PE-Core-B-16-dinov3" 29563 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
+# run_cc3m "dinov3"    "DINOv3-B-16-ape"       29564 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
 
-run_cc3m "pe_dinov3_leproj"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1}"
-run_cc3m "vit_leproj"         "ViT-B-16-exp"        29557 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
-run_cc3m "dinov3_leproj"    "DINOv3-B-16-ape"       29558 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
+# run_cc3m "pe_dinov3_leproj"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1}"
+# run_cc3m "vit_leproj"         "ViT-B-16-exp"        29557 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
+# run_cc3m "dinov3_leproj"    "DINOv3-B-16-ape"       29558 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} "
 
-run_cc3m "vit_le"         "ViT-B-16-exp"        29559 "--siglip --lejepa --epochs 10 --warmup 512  --lr ${LR_17_1} "
-run_cc3m "pe_dinov3_le"   "PE-Core-B-16-dinov3" 29560 "--siglip --lejepa --epochs 10 --warmup 512  --lr ${LR_17_1} "
-run_cc3m "dinov3_le"    "DINOv3-B-16-ape"       29561 "--siglip --lejepa --epochs 10 --warmup 512  --lr ${LR_17_1} "
+# run_cc3m "vit_le"         "ViT-B-16-exp"        29559 "--siglip --lejepa --epochs 10 --warmup 512  --lr ${LR_17_1} "
+# run_cc3m "pe_dinov3_le"   "PE-Core-B-16-dinov3" 29560 "--siglip --lejepa --epochs 10 --warmup 512  --lr ${LR_17_1} "
+# run_cc3m "dinov3_le"    "DINOv3-B-16-ape"       29561 "--siglip --lejepa --epochs 10 --warmup 512  --lr ${LR_17_1} "
 
 
 echo "======== quick all done ========"

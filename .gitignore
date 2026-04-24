@@ -148,6 +148,7 @@ src/misc
 .vscode
 src/debug
 core.*
+scripts/probe_out/
 
 # Allow
 !src/evaluation/misc/results_dbs/*
