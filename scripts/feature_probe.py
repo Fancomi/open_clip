@@ -160,6 +160,7 @@ extract_pe_txt = extract_clip_txt
 
 
 _DINO_TRANSFORM = T.Compose([
+    T.Resize((224, 224), interpolation=T.InterpolationMode.BICUBIC),
     T.ToTensor(),
     T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
 ])
@@ -176,10 +177,6 @@ def extract_dinov3_img(model, paths, out_path, force=False, batch_size=128):
         batch = []
         for p in paths[i:i+batch_size]:
             img = Image.open(p).convert('RGB')
-            W, H = img.size
-            W = (W // _DINO_PATCH) * _DINO_PATCH
-            H = (H // _DINO_PATCH) * _DINO_PATCH
-            img = img.crop((0, 0, W, H))
             batch.append(_DINO_TRANSFORM(img))
         x = torch.stack(batch).to(DEVICE)
         out = model.forward_features(x)
@@ -192,6 +189,10 @@ def extract_dinov3_img(model, paths, out_path, force=False, batch_size=128):
     return feat
 
 
+_RADIO_TRANSFORM = T.Compose([
+    T.Resize((224, 224), interpolation=T.InterpolationMode.BICUBIC),
+    T.ToTensor(),
+])
 _RADIO_PATCH = 16
 
 
@@ -205,10 +206,7 @@ def extract_radio_img(model, conditioner, paths, out_path, force=False, batch_si
         batch = []
         for p in paths[i:i+batch_size]:
             img = Image.open(p).convert('RGB')
-            W, H = img.size
-            W = (W // _RADIO_PATCH) * _RADIO_PATCH
-            H = (H // _RADIO_PATCH) * _RADIO_PATCH
-            batch.append(T.ToTensor()(img.crop((0, 0, W, H))))
+            batch.append(_RADIO_TRANSFORM(img))
         x = torch.stack(batch).to(DEVICE)
         if conditioner is not None:
             x = conditioner(x)
@@ -224,6 +222,7 @@ def extract_radio_img(model, conditioner, paths, out_path, force=False, batch_si
 
 
 _EUPE_TRANSFORM = T.Compose([
+    T.Resize((224, 224), interpolation=T.InterpolationMode.BICUBIC),
     T.ToTensor(),
     T.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
 ])
@@ -241,10 +240,7 @@ def extract_eupe_img(model, paths, out_path, force=False, batch_size=128):
         batch = []
         for p in paths[i:i+batch_size]:
             img = Image.open(p).convert('RGB')
-            W, H = img.size
-            W = (W // _EUPE_PATCH) * _EUPE_PATCH
-            H = (H // _EUPE_PATCH) * _EUPE_PATCH
-            batch.append(_EUPE_TRANSFORM(img.crop((0, 0, W, H))))
+            batch.append(_EUPE_TRANSFORM(img))
         x = torch.stack(batch).to(DEVICE)
         with torch.autocast(device_type=dev_type, dtype=torch.bfloat16,
                             enabled=(dev_type != 'cpu')):
@@ -343,24 +339,12 @@ def extract_wds_features(
                     acc['sig2_txt'].append(sig2_model.encode_text(st, normalize=True).cpu().float().numpy())
 
             if 'dino_img' in active:
-                batch = []
-                for im in imgs:
-                    W, H = im.size
-                    W = (W // _DINO_PATCH) * _DINO_PATCH
-                    H = (H // _DINO_PATCH) * _DINO_PATCH
-                    batch.append(_DINO_TRANSFORM(im.crop((0, 0, W, H))))
-                dx = torch.stack(batch).to(DEVICE)
+                dx = torch.stack([_DINO_TRANSFORM(im) for im in imgs]).to(DEVICE)
                 out = dino_model.forward_features(dx)
                 acc['dino_img'].append(F.normalize(out['x_norm_clstoken'], dim=-1).cpu().float().numpy())
 
             if 'radio_img' in active:
-                batch = []
-                for im in imgs:
-                    W, H = im.size
-                    W = (W // _RADIO_PATCH) * _RADIO_PATCH
-                    H = (H // _RADIO_PATCH) * _RADIO_PATCH
-                    batch.append(T.ToTensor()(im.crop((0, 0, W, H))))
-                rx = torch.stack(batch).to(DEVICE)
+                rx = torch.stack([_RADIO_TRANSFORM(im) for im in imgs]).to(DEVICE)
                 if radio_cond is not None:
                     rx = radio_cond(rx)
                 rout = radio_model(rx)
@@ -368,8 +352,7 @@ def extract_wds_features(
                 acc['radio_img'].append(F.normalize(summary, dim=-1).cpu().float().numpy())
 
             if 'eupe_img' in active:
-                batch = [_EUPE_TRANSFORM(im) for im in imgs]
-                ex = torch.stack(batch).to(DEVICE)
+                ex = torch.stack([_EUPE_TRANSFORM(im) for im in imgs]).to(DEVICE)
                 with torch.autocast(device_type=DEVICE.type, dtype=torch.bfloat16,
                                     enabled=(DEVICE.type != 'cpu')):
                     eout = eupe_model.forward_features(ex)
