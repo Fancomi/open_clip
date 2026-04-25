@@ -108,10 +108,6 @@ def run_pretrained(args):
             tips_txt = extract_tips_txt(ti_m, ti_t, caps, os.path.join(out,'tips_txt.npz'), args.force)
             del ti_m; torch.cuda.empty_cache()
 
-    # ── FPS anchors in PE space ─────────────────────────────────────────────
-    fps_idx = fps_sample(pe_img, k=5)
-    logging.info(f'FPS anchor indices (PE space): {fps_idx.tolist()}')
-
     # ── Modality gap plots (models with text towers) ────────────────────────
     plot_scatter({'PE-Core Image': pe_img, 'PE-Core Text': pe_txt},
                  'PE-Core: Image vs Text', os.path.join(out,'pe_core_modality_gap.png'),
@@ -129,8 +125,19 @@ def run_pretrained(args):
         ('DINOv3', dino_img), ('RADIO', radio_img), ('EUPE', eupe_img),
         ('TIPSv2', tips_img), ('PE-Core', pe_img),  ('SigLIP2', sig2_img),
     ] if v is not None}
+
+    # ── FPS anchors (source model selectable via --fps-model) ──────────────
+    fps_model = getattr(args, 'fps_model', 'DINOv3')
+    fps_source = img_feats.get(fps_model)
+    if fps_source is None:
+        fps_model  = list(img_feats.keys())[0]
+        fps_source = img_feats[fps_model]
+        logging.warning(f'--fps-model not found, falling back to {fps_model}')
+    fps_idx = fps_sample(fps_source, k=5)
+    logging.info(f'FPS anchor indices ({fps_model} space): {fps_idx.tolist()}')
+
     plot_scatter(img_feats,
-                 'Vision Encoder Image Features  (* = FPS anchors from PE space)',
+                 f'Vision Encoder Image Features  (* = FPS anchors from {fps_model} space)',
                  os.path.join(out, 'image_allmodels.png'),
                  n_pca=args.n_pca, fps_indices=fps_idx)
 
@@ -167,26 +174,49 @@ def run_overlap(args):
     from sklearn.decomposition import PCA
     import matplotlib.pyplot as plt
 
-    n = len(available)
-    fig, axes = plt.subplots(1, n, figsize=(5 * n, 5))
-    if n == 1:
-        axes = [axes]
-    for ax, (model, (cp, mp)) in zip(axes, available.items()):
+    # ── per-model: two separate plots (COCO-on-top / CC3M-on-top) ─────────
+    model_data = {}
+    for model, (cp, mp) in available.items():
         fa = np.load(cp)['features']
         fb = np.load(mp)['features']
         combined = np.concatenate([fa, fb])
         pca = PCA(n_components=2).fit(combined)
-        pa, pb = pca.transform(fa), pca.transform(fb)
-        ax.scatter(pa[:, 0], pa[:, 1], s=2, alpha=0.3, color='steelblue',
-                   label='COCO', rasterized=True)
-        ax.scatter(pb[:, 0], pb[:, 1], s=2, alpha=0.3, color='coral',
-                   label='CC3M', rasterized=True)
-        d = np.linalg.norm(pa.mean(0) - pb.mean(0))
-        ax.set_title(f'{model}\ncentroid dist={d:.3f}', fontsize=9)
-        ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
-        ax.legend(markerscale=4, fontsize=8)
-        plot_overlap(fa, fb, 'COCO', 'CC3M', model,
-                     os.path.join(out, f'overlap_{model.lower()}.png'))
+        pa  = pca.transform(fa)   # COCO
+        pb  = pca.transform(fb)   # CC3M
+        d   = float(np.linalg.norm(pa.mean(0) - pb.mean(0)))
+        model_data[model] = (pa, pb, d)
+
+        plot_overlap(pa, pb, 'COCO', 'CC3M', model,
+                     os.path.join(out, f'overlap_{model.lower()}_coco_top.png'),
+                     a_on_top=True,  centroid_dist=d)
+        plot_overlap(pa, pb, 'COCO', 'CC3M', model,
+                     os.path.join(out, f'overlap_{model.lower()}_cc3m_top.png'),
+                     a_on_top=False, centroid_dist=d)
+
+    # ── summary grid: n_models rows × 2 cols ──────────────────────────────
+    n = len(available)
+    fig, axes = plt.subplots(n, 2, figsize=(10, 5 * n))
+    axes = np.array(axes).reshape(n, 2)
+    col_titles = ['COCO on top', 'CC3M on top']
+    for row, (model, (pa, pb, d)) in enumerate(model_data.items()):
+        for col, a_on_top in enumerate([True, False]):
+            ax = axes[row, col]
+            if a_on_top:
+                ax.scatter(pb[:, 0], pb[:, 1], s=2, alpha=0.3, color='coral',
+                           label='CC3M', rasterized=True)
+                ax.scatter(pa[:, 0], pa[:, 1], s=2, alpha=0.3, color='steelblue',
+                           label='COCO', rasterized=True)
+            else:
+                ax.scatter(pa[:, 0], pa[:, 1], s=2, alpha=0.3, color='steelblue',
+                           label='COCO', rasterized=True)
+                ax.scatter(pb[:, 0], pb[:, 1], s=2, alpha=0.3, color='coral',
+                           label='CC3M', rasterized=True)
+            ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
+            ax.legend(markerscale=4, fontsize=8)
+            title = f'{model} — {col_titles[col]}'
+            if col == 1:
+                title += f'\ncentroid dist={d:.3f}'
+            ax.set_title(title, fontsize=9)
 
     fig.suptitle('COCO vs CC3M Feature Distribution Overlap', fontsize=11)
     plt.tight_layout()

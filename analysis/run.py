@@ -35,6 +35,9 @@ def main():
     p.add_argument('--eupe-repo',    default=CKPT['eupe_repo'])
     p.add_argument('--eupe-ckpt',    default=CKPT['eupe_ckpt'])
     p.add_argument('--tips',         default=CKPT['tips'])
+    p.add_argument('--fps-model',     default='DINOv3',
+                   help='Which model space to use for FPS anchor selection '
+                        '(default: DINOv3)')
     # Mode-specific
     p.add_argument('--probe-dir',    default=None)
     p.add_argument('--n-traj',       type=int, default=100)

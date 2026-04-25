@@ -106,23 +106,31 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None):
     print(f'[viz] {save_path}')
 
 
-def plot_overlap(feats_a, feats_b, label_a, label_b, model_name, save_path):
-    """Overlay two distributions in shared PCA space (all samples, rasterized)."""
-    combined = np.concatenate([feats_a, feats_b])
-    pca = PCA(n_components=2).fit(combined)
-    pa, pb = pca.transform(feats_a), pca.transform(feats_b)
-    d = np.linalg.norm(pa.mean(0) - pb.mean(0))
+def plot_overlap(pa, pb, label_a, label_b, model_name, save_path,
+                 a_on_top: bool = True, centroid_dist: float = None):
+    """Single-panel scatter: one dataset drawn on top of the other.
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))
-    for ax in axes:
+    pa, pb: already-projected 2-D arrays (N×2).
+    a_on_top=True  → draw B first (background), then A on top.
+    a_on_top=False → draw A first (background), then B on top.
+    """
+    fig, ax = plt.subplots(figsize=(5, 5))
+    if a_on_top:
+        ax.scatter(pb[:, 0], pb[:, 1], s=2, alpha=0.3, color='coral',
+                   label=label_b, rasterized=True)
+        ax.scatter(pa[:, 0], pa[:, 1], s=2, alpha=0.3, color='steelblue',
+                   label=label_a, rasterized=True)
+        on_top_lbl = label_a
+    else:
         ax.scatter(pa[:, 0], pa[:, 1], s=2, alpha=0.3, color='steelblue',
                    label=label_a, rasterized=True)
         ax.scatter(pb[:, 0], pb[:, 1], s=2, alpha=0.3, color='coral',
                    label=label_b, rasterized=True)
-        ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
-        ax.legend(markerscale=4, fontsize=9)
-    axes[0].set_title(f'{model_name}: {label_a} vs {label_b}', fontsize=10)
-    axes[1].set_title(f'centroid dist (PC1-2) = {d:.3f}', fontsize=9)
+        on_top_lbl = label_b
+    ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
+    ax.legend(markerscale=4, fontsize=9)
+    dist_str = f'  centroid dist={centroid_dist:.3f}' if centroid_dist is not None else ''
+    ax.set_title(f'{model_name}: {on_top_lbl} on top{dist_str}', fontsize=10)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
