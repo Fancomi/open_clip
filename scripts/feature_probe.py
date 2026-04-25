@@ -60,6 +60,42 @@ _DEFAULTS = dict(
 
 _HF_CACHE = os.path.expanduser('~/.cache/huggingface/modules/transformers_modules')
 
+# ─── Cache key → filename mapping ─────────────────────────────────────────────
+# "required" = must exist for cache hit; "optional" = loaded if present
+_REQUIRED_NPZS = {
+    'pe_img':    'pe_core_img.npz',
+    'pe_txt':    'pe_core_txt.npz',
+    'sig2_img':  'siglip2_img.npz',
+    'sig2_txt':  'siglip2_txt.npz',
+    'dino_img':  'dinov3_img.npz',
+    'radio_img': 'radio_img.npz',
+    'tips_img':  'tips_img.npz',
+    'tips_txt':  'tips_txt.npz',
+}
+_OPTIONAL_NPZS = {'eupe_img': 'eupe_img.npz'}
+
+
+def _load_from_cache(out_dir, force=False):
+    """Return feature dict if all required npz exist (and force=False), else None.
+    Also loads optional npz (eupe) if present."""
+    if force:
+        return None
+    result = {}
+    for key, fname in _REQUIRED_NPZS.items():
+        p = os.path.join(out_dir, fname)
+        if not os.path.exists(p):
+            logging.info(f'[cache] Miss: {fname} — will run inference')
+            return None
+        result[key] = np.load(p)['features']
+    for key, fname in _OPTIONAL_NPZS.items():
+        p = os.path.join(out_dir, fname)
+        if os.path.exists(p):
+            result[key] = np.load(p)['features']
+    n = sum(v.shape[0] for v in result.values())
+    logging.info(f'[cache] All required npz found in {out_dir} '
+                 f'({len(result)} files, {n} total feature rows) — skipping inference.')
+    return result
+
 
 # ─── Model loading ────────────────────────────────────────────────────────────
 
@@ -738,20 +774,25 @@ def run_pretrained(args):
     out = os.path.join(args.out_dir, 'pretrained')
     os.makedirs(out, exist_ok=True)
 
-    if args.data_type == 'wds':
-        pe_model,   pe_preproc,   pe_tok   = load_pe_core(args.pe_ckpt)
-        sig2_model, sig2_preproc, sig2_tok = load_siglip2(args.sig2_ckpt)
-        dino_model  = load_dinov3(args.dino_repo, args.dino_ckpt)
-        radio_model, radio_cond = load_radio(args.radio)
-        eupe_model  = load_eupe(args.eupe_repo, args.eupe_ckpt)
-        tips_model, tips_tok = load_tips(args.tips)
+    # ── Fast path: load everything from cache if possible ─────────────────────
+    cached = _load_from_cache(out, args.force)
 
-        feats = extract_wds_features(
-            pe_model, pe_preproc, pe_tok,
-            sig2_model, sig2_preproc, sig2_tok,
-            dino_model, radio_model, radio_cond, eupe_model, tips_model, tips_tok,
-            args.data, out, max_samples=args.max_samples, force=args.force,
-        )
+    if args.data_type == 'wds':
+        if cached is not None:
+            feats = cached
+        else:
+            pe_model,   pe_preproc,   pe_tok   = load_pe_core(args.pe_ckpt)
+            sig2_model, sig2_preproc, sig2_tok = load_siglip2(args.sig2_ckpt)
+            dino_model  = load_dinov3(args.dino_repo, args.dino_ckpt)
+            radio_model, radio_cond = load_radio(args.radio)
+            eupe_model  = load_eupe(args.eupe_repo, args.eupe_ckpt)
+            tips_model, tips_tok = load_tips(args.tips)
+            feats = extract_wds_features(
+                pe_model, pe_preproc, pe_tok,
+                sig2_model, sig2_preproc, sig2_tok,
+                dino_model, radio_model, radio_cond, eupe_model, tips_model, tips_tok,
+                args.data, out, max_samples=args.max_samples, force=args.force,
+            )
         pe_img, pe_txt     = feats['pe_img'],   feats['pe_txt']
         sig2_img, sig2_txt = feats['sig2_img'], feats['sig2_txt']
         dino_img           = feats['dino_img']
@@ -762,52 +803,60 @@ def run_pretrained(args):
 
     else:
         # ── TSV mode (COCO) ──────────────────────────────────────────────────
-        df = pd.read_csv(args.data, sep='\t')
-        paths, captions = df['filepath'].tolist(), df['caption'].tolist()
-
-        logging.info('Loading PE-Core ...')
-        pe_model, pe_preproc, pe_tok = load_pe_core(args.pe_ckpt)
-        pe_img = extract_clip_img(pe_model, paths, pe_preproc,
-                                  os.path.join(out, 'pe_core_img.npz'), args.force)
-        pe_txt = extract_clip_txt(pe_model, pe_tok, captions,
-                                  os.path.join(out, 'pe_core_txt.npz'), args.force)
-        del pe_model; torch.cuda.empty_cache()
-
-        logging.info('Loading SigLIP2 ...')
-        sig2_model, sig2_preproc, sig2_tok = load_siglip2(args.sig2_ckpt)
-        sig2_img = extract_clip_img(sig2_model, paths, sig2_preproc,
-                                    os.path.join(out, 'siglip2_img.npz'), args.force)
-        sig2_txt = extract_clip_txt(sig2_model, sig2_tok, captions,
-                                    os.path.join(out, 'siglip2_txt.npz'), args.force)
-        del sig2_model; torch.cuda.empty_cache()
-
-        logging.info('Loading DINOv3 ...')
-        dino_model = load_dinov3(args.dino_repo, args.dino_ckpt)
-        dino_img = extract_dinov3_img(dino_model, paths,
-                                      os.path.join(out, 'dinov3_img.npz'), args.force)
-        del dino_model; torch.cuda.empty_cache()
-
-        logging.info('Loading C-RADIOv4 ...')
-        radio_model, radio_cond = load_radio(args.radio)
-        radio_img = extract_radio_img(radio_model, radio_cond, paths,
-                                      os.path.join(out, 'radio_img.npz'), args.force)
-        del radio_model; torch.cuda.empty_cache()
-
-        eupe_model = load_eupe(args.eupe_repo, args.eupe_ckpt)
-        if eupe_model is not None:
-            eupe_img = extract_eupe_img(eupe_model, paths,
-                                        os.path.join(out, 'eupe_img.npz'), args.force)
-            del eupe_model; torch.cuda.empty_cache()
+        if cached is not None:
+            pe_img,   pe_txt   = cached['pe_img'],   cached['pe_txt']
+            sig2_img, sig2_txt = cached['sig2_img'], cached['sig2_txt']
+            dino_img           = cached['dino_img']
+            radio_img          = cached.get('radio_img')
+            eupe_img           = cached.get('eupe_img')
+            tips_img,  tips_txt = cached['tips_img'],  cached['tips_txt']
         else:
-            eupe_img = None
+            df = pd.read_csv(args.data, sep='\t')
+            paths, captions = df['filepath'].tolist(), df['caption'].tolist()
 
-        logging.info('Loading TIPSv2 ...')
-        tips_model, tips_tok = load_tips(args.tips)
-        tips_img = extract_tips_img(tips_model, paths,
-                                    os.path.join(out, 'tips_img.npz'), args.force)
-        tips_txt = extract_tips_txt(tips_model, tips_tok, captions,
-                                    os.path.join(out, 'tips_txt.npz'), args.force)
-        del tips_model; torch.cuda.empty_cache()
+            logging.info('Loading PE-Core ...')
+            pe_model, pe_preproc, pe_tok = load_pe_core(args.pe_ckpt)
+            pe_img = extract_clip_img(pe_model, paths, pe_preproc,
+                                      os.path.join(out, 'pe_core_img.npz'), args.force)
+            pe_txt = extract_clip_txt(pe_model, pe_tok, captions,
+                                      os.path.join(out, 'pe_core_txt.npz'), args.force)
+            del pe_model; torch.cuda.empty_cache()
+
+            logging.info('Loading SigLIP2 ...')
+            sig2_model, sig2_preproc, sig2_tok = load_siglip2(args.sig2_ckpt)
+            sig2_img = extract_clip_img(sig2_model, paths, sig2_preproc,
+                                        os.path.join(out, 'siglip2_img.npz'), args.force)
+            sig2_txt = extract_clip_txt(sig2_model, sig2_tok, captions,
+                                        os.path.join(out, 'siglip2_txt.npz'), args.force)
+            del sig2_model; torch.cuda.empty_cache()
+
+            logging.info('Loading DINOv3 ...')
+            dino_model = load_dinov3(args.dino_repo, args.dino_ckpt)
+            dino_img = extract_dinov3_img(dino_model, paths,
+                                          os.path.join(out, 'dinov3_img.npz'), args.force)
+            del dino_model; torch.cuda.empty_cache()
+
+            logging.info('Loading C-RADIOv4 ...')
+            radio_model, radio_cond = load_radio(args.radio)
+            radio_img = extract_radio_img(radio_model, radio_cond, paths,
+                                          os.path.join(out, 'radio_img.npz'), args.force)
+            del radio_model; torch.cuda.empty_cache()
+
+            eupe_model = load_eupe(args.eupe_repo, args.eupe_ckpt)
+            if eupe_model is not None:
+                eupe_img = extract_eupe_img(eupe_model, paths,
+                                            os.path.join(out, 'eupe_img.npz'), args.force)
+                del eupe_model; torch.cuda.empty_cache()
+            else:
+                eupe_img = None
+
+            logging.info('Loading TIPSv2 ...')
+            tips_model, tips_tok = load_tips(args.tips)
+            tips_img = extract_tips_img(tips_model, paths,
+                                        os.path.join(out, 'tips_img.npz'), args.force)
+            tips_txt = extract_tips_txt(tips_model, tips_tok, captions,
+                                        os.path.join(out, 'tips_txt.npz'), args.force)
+            del tips_model; torch.cuda.empty_cache()
 
     # ── FPS on PE image features ──────────────────────────────────────────────
     fps_idx = fps_sample(pe_img, k=5)

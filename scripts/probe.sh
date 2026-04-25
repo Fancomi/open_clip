@@ -4,8 +4,8 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 # 用法
 # ═══════════════════════════════════════════════════════════════════════════════
-#   bash probe.sh pretrained              # COCO TSV，随时可跑，npz 缓存则跳过推理
-#   bash probe.sh cc3m                    # CC3M WDS，100k subsample
+#   bash probe.sh coco                    # COCO TSV — 有缓存则直接出图，无需重跑推理
+#   bash probe.sh cc3m                    # CC3M WDS — 同上，有缓存则直接出图
 #   bash probe.sh epochs <probe_dir>      # epoch 演化（需先跑训练）
 #   bash probe.sh overlap                 # COCO vs CC3M 分布重合（需两边 cache）
 #   bash probe.sh anisotropy [coco|cc3m]  # 各向异性指标（纯 cache 计算，秒级）
@@ -104,12 +104,12 @@ CC3M_OUT='/root/paddlejob/workspace/env_run/penghaotian/datas/LLaVA-ReCap-CC3M/f
 CC3M_PRE="${CC3M_OUT}/pretrained"
 
 case "$MODE" in
-    pretrained)
-        echo "=== [probe] COCO pretrained analysis ==="
+    coco|pretrained)
+        echo "=== [probe] COCO analysis (cache-first) ==="
         $SCRIPT --mode pretrained
         ;;
     cc3m)
-        echo "=== [probe] CC3M pretrained analysis (wds, 100k subsample) ==="
+        echo "=== [probe] CC3M analysis (cache-first, wds 100k) ==="
         $SCRIPT --mode pretrained --data-type wds \
             --data "${CC3M_WDS}" --out-dir "${CC3M_OUT}"
         ;;
@@ -136,7 +136,7 @@ case "$MODE" in
         ;;
     *)
         echo "Usage:"
-        echo "  bash probe.sh pretrained"
+        echo "  bash probe.sh coco"
         echo "  bash probe.sh cc3m"
         echo "  bash probe.sh epochs <probe_dir>"
         echo "  bash probe.sh overlap"
