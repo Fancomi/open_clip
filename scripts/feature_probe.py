@@ -304,19 +304,24 @@ _TIPS_SIZE = 448
 
 
 @torch.no_grad()
-def extract_tips_img(model, paths, out_path, force=False, batch_size=64):
+def extract_tips_img(model, paths, out_path, force=False, batch_size=8):
+    # TIPSv2 uses 448×448 input → 1024 patches; attention is O(1024²×batch).
+    # Default batch=8 keeps memory under ~4 GB even on busy GPUs.
     feat = _npz_cache(out_path, force)
     if feat is not None:
         return feat
     feats = []
+    dev_type = DEVICE.type
     for i in range(0, len(paths), batch_size):
         batch = [_TIPS_TRANSFORM(Image.open(p).convert('RGB').resize(
             (_TIPS_SIZE, _TIPS_SIZE), Image.BICUBIC)) for p in paths[i:i+batch_size]]
         x = torch.stack(batch).to(DEVICE)
-        out = model.encode_image(x)
-        cls = F.normalize(out.cls_token.squeeze(1), dim=-1)
-        feats.append(cls.cpu().float().numpy())
-        if (i // batch_size + 1) % 5 == 0 or i + batch_size >= len(paths):
+        with torch.autocast(device_type=dev_type, dtype=torch.bfloat16,
+                            enabled=(dev_type != 'cpu')):
+            out = model.encode_image(x)
+        cls = F.normalize(out.cls_token.squeeze(1).float(), dim=-1)
+        feats.append(cls.cpu().numpy())
+        if (i // batch_size + 1) % 20 == 0 or i + batch_size >= len(paths):
             logging.info(f'  [TIPSv2] {min(i+batch_size, len(paths))}/{len(paths)}')
     feat = np.concatenate(feats, 0)
     np.savez_compressed(out_path, features=feat, paths=np.array(paths))
@@ -426,10 +431,20 @@ def extract_wds_features(
                 acc['eupe_img'].append(F.normalize(eout['x_norm_clstoken'], dim=-1).cpu().float().numpy())
 
             if 'tips_img' in active:
-                tx = torch.stack([_TIPS_TRANSFORM(
-                    im.resize((_TIPS_SIZE, _TIPS_SIZE), Image.BICUBIC)) for im in imgs]).to(DEVICE)
-                tout = tips_model.encode_image(tx)
-                acc['tips_img'].append(F.normalize(tout.cls_token.squeeze(1), dim=-1).cpu().float().numpy())
+                # TIPSv2: 448×448 → 1024 patches; attention is O(1024²×bs).
+                # Sub-batch with chunk=8 to avoid OOM on busy GPUs.
+                _TIPS_CHUNK = 8
+                tips_cls_chunks = []
+                all_tx = [_TIPS_TRANSFORM(im.resize((_TIPS_SIZE, _TIPS_SIZE), Image.BICUBIC))
+                          for im in imgs]
+                for ci in range(0, len(all_tx), _TIPS_CHUNK):
+                    tx = torch.stack(all_tx[ci:ci+_TIPS_CHUNK]).to(DEVICE)
+                    with torch.autocast(device_type=DEVICE.type, dtype=torch.bfloat16,
+                                        enabled=(DEVICE.type != 'cpu')):
+                        tout = tips_model.encode_image(tx)
+                    tips_cls_chunks.append(
+                        F.normalize(tout.cls_token.squeeze(1).float(), dim=-1).cpu().numpy())
+                acc['tips_img'].append(np.concatenate(tips_cls_chunks, 0))
 
             if 'tips_txt' in active:
                 ids, pads = tips_tok.tokenize(caps, max_len=tips_model.config.max_len)
