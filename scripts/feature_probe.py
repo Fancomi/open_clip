@@ -556,8 +556,12 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None):
         fig.suptitle(title, fontsize=12, y=1.01)
     else:
         nrows = len(labels)
-        fig, axes = plt.subplots(nrows, ncols, figsize=(4.5 * ncols, 4.5 * nrows))
-        axes = np.array(axes).reshape(nrows, ncols)
+        # Extra column: dedicated FPS-anchor panel (PC1 vs PC2, larger markers)
+        has_fps = fps_indices is not None
+        ncols_total = ncols + (1 if has_fps else 0)
+        fig, axes = plt.subplots(nrows, ncols_total,
+                                 figsize=(4.5 * ncols_total, 4.5 * nrows))
+        axes = np.array(axes).reshape(nrows, ncols_total)
         for row, (label, pca, proj, feat, c) in enumerate(
                 zip(labels, pcas, projs, feats, colors)):
             var = pca.explained_variance_ratio_
@@ -565,23 +569,34 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None):
                 ax = axes[row, col]
                 ax.scatter(proj[:, pi], proj[:, pj], s=3, alpha=0.3,
                            color=c, rasterized=True)
-                # project fps indices (computed in PE space) into this model's PCA
                 _draw_fps(ax, proj, pi, pj)
                 ax.set_xlabel(f'PC{pi+1}')
                 ax.set_ylabel(f'{label}  (dim={feat.shape[1]})\nPC{pj+1}'
                               if col == 0 else f'PC{pj+1}')
                 ax.set_title(f'PC{pi+1} vs PC{pj+1}', fontsize=9)
-            ax = axes[row, -1]
+            # variance bar
+            ax = axes[row, len(pairs)]
             ax.bar(range(1, n_pca + 1), var * 100, color=c)
             ax.set_xlabel('Component'); ax.set_ylabel('Var. explained (%)')
             ax.set_title(f'{label}  explained var.', fontsize=9)
-        fig.suptitle(title + '  [independent PCA axes]', fontsize=12, y=1.01)
-        # FPS legend in top-right corner of first row
-        if fps_indices is not None:
-            handles = [plt.scatter([], [], marker=mk, s=_FPS_SIZE, color=fc,
-                                   edgecolors='black', label=f'FPS-{fi}')
-                       for fi, (mk, fc) in enumerate(zip(_FPS_MARKERS, _FPS_COLORS))]
-            fig.legend(handles=handles, loc='upper right', fontsize=9, ncol=len(handles))
+            # FPS tracking panel: all 5 anchors highlighted in PC1 vs PC2
+            if has_fps:
+                ax = axes[row, -1]
+                ax.scatter(proj[:, 0], proj[:, 1], s=2, alpha=0.15,
+                           color=c, rasterized=True)
+                for fi, (idx, mk, fc) in enumerate(
+                        zip(fps_indices, _FPS_MARKERS, _FPS_COLORS)):
+                    ax.scatter(proj[idx, 0], proj[idx, 1],
+                               marker=mk, s=200, color=fc,
+                               edgecolors='black', linewidths=0.8, zorder=6,
+                               label=f'FPS-{fi}')
+                ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
+                ax.set_title(f'{label}  FPS anchors', fontsize=9)
+                if row == 0:
+                    ax.legend(markerscale=1, fontsize=7, loc='best',
+                              title='Same sample\nacross models')
+        fig.suptitle(title + '  [independent PCA — FPS anchors = same 5 images across all rows]',
+                     fontsize=12, y=1.01)
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
@@ -881,10 +896,9 @@ def run_overlap(args):
     for ax, (model, (cp, mp)) in zip(axes, available.items()):
         fa = np.load(cp)['features']
         fb = np.load(mp)['features']
-        # subsample for speed
-        rng = np.random.default_rng(42)
-        fa = fa[rng.choice(len(fa), min(5000, len(fa)), replace=False)]
-        fb = fb[rng.choice(len(fb), min(5000, len(fb)), replace=False)]
+        # Use ALL samples — rasterized=True keeps file size manageable.
+        # Do NOT subsample: CC3M has ~100k points, COCO ~5k; equal subsampling
+        # would make CC3M look artificially sparse relative to its true density.
         combined = np.concatenate([fa, fb], 0)
         pca = PCA(n_components=2).fit(combined)
         pa, pb = pca.transform(fa), pca.transform(fb)
@@ -897,7 +911,6 @@ def run_overlap(args):
         ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
         ax.legend(markerscale=4, fontsize=8)
 
-        # Also save individual plot
         plot_overlap(fa, fb, 'COCO', 'CC3M', model,
                      os.path.join(out, f'overlap_{model.lower()}.png'))
 

@@ -7,7 +7,7 @@ source /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/activate
 export PYTHONPATH="./src:${PYTHONPATH}"
 
 NUM_IMAGES=${1:-6}
-OUTPUT_DIR=${2:-scripts/probe_out/pca_$(date +%m%d_%H%M)}
+OUTPUT_DIR=${2:-scripts/pca_demo}
 
 IMG_DIR="/root/paddlejob/workspace/env_run/penghaotian/datas/coco/images/val2014"
 
