@@ -1,0 +1,233 @@
+"""Analysis pipeline modes: pretrained (COCO/CC3M), overlap, anisotropy, epochs."""
+import glob, logging, os
+import numpy as np
+import pandas as pd
+import torch
+
+from .models   import CKPT, load_pe_core, load_siglip2, load_dinov3, \
+                      load_radio, load_eupe, load_tips
+from .extractors import (load_from_cache,
+                          extract_clip_img, extract_clip_txt,
+                          extract_dinov3_img, extract_radio_img,
+                          extract_eupe_img, extract_tips_img, extract_tips_txt,
+                          extract_wds_features)
+from .metrics  import fps_sample, compute_anisotropy
+from .viz      import plot_scatter, plot_overlap, plot_anisotropy, plot_evolution
+
+_BASE = '/root/paddlejob/workspace/env_run/penghaotian'
+_DATA = dict(
+    data     = f'{_BASE}/datas/coco/annotations/karpathy_1cap.tsv',
+    out_dir  = f'{_BASE}/datas/coco/feature_probe',
+    coco_dir = f'{_BASE}/datas/coco/feature_probe/pretrained',
+    cc3m_wds = f'{_BASE}/datas/LLaVA-ReCap-CC3M/wds/{{00000..00280}}.tar',
+    cc3m_out = f'{_BASE}/datas/LLaVA-ReCap-CC3M/feature_probe',
+    cc3m_dir = f'{_BASE}/datas/LLaVA-ReCap-CC3M/feature_probe/pretrained',
+)
+
+# ── Anisotropy summary table helper ──────────────────────────────────────────
+
+def _log_aniso_table(aniso: dict):
+    hdr = (f"{'Model':<12} {'EffRank':>8} {'PR':>7} {'StableR':>8} {'NumRank':>8}"
+           f" {'AvgCos':>7} {'StdCos':>7} {'top4%':>6} {'top10%':>7} {'top50%':>7}")
+    logging.info('\n=== Anisotropy summary ===\n' + hdr)
+    for name, m in aniso.items():
+        logging.info(
+            f"{name:<12} {m['effective_rank']:8.1f} {m['participation_ratio']:7.4f}"
+            f" {m['stable_rank']:8.1f} {m['numerical_rank']:8d}"
+            f" {m['avg_cos_sim']:7.4f} {m['std_cos_sim']:7.4f}"
+            f" {m['pct_var_top4']:6.1f} {m['pct_var_top10']:7.1f} {m['pct_var_top50']:7.1f}")
+
+
+# ── Mode: pretrained (COCO tsv or CC3M wds) ──────────────────────────────────
+
+def run_pretrained(args):
+    out = os.path.join(args.out_dir, 'pretrained')
+    os.makedirs(out, exist_ok=True)
+
+    # ── Try cache-first (skip all model loading if hit) ────────────────────
+    cached = load_from_cache(out, args.force)
+
+    if args.data_type == 'wds':
+        if cached is None:
+            feats = extract_wds_features(
+                *load_pe_core(args.pe_ckpt),
+                *load_siglip2(args.sig2_ckpt),
+                load_dinov3(args.dino_repo, args.dino_ckpt),
+                *load_radio(args.radio),
+                load_eupe(args.eupe_repo, args.eupe_ckpt),
+                *load_tips(args.tips),
+                args.data, out, max_samples=args.max_samples, force=args.force,
+            )
+        else:
+            feats = cached
+        pe_img,   pe_txt   = feats['pe_img'],   feats['pe_txt']
+        sig2_img, sig2_txt = feats['sig2_img'], feats['sig2_txt']
+        dino_img  = feats['dino_img']
+        radio_img = feats.get('radio_img')
+        eupe_img  = feats.get('eupe_img')
+        tips_img, tips_txt = feats.get('tips_img'), feats.get('tips_txt')
+
+    else:   # tsv (COCO)
+        if cached is not None:
+            pe_img,   pe_txt   = cached['pe_img'],   cached['pe_txt']
+            sig2_img, sig2_txt = cached['sig2_img'], cached['sig2_txt']
+            dino_img  = cached['dino_img']
+            radio_img = cached.get('radio_img')
+            eupe_img  = cached.get('eupe_img')
+            tips_img, tips_txt = cached['tips_img'], cached['tips_txt']
+        else:
+            df = pd.read_csv(args.data, sep='\t')
+            paths, caps = df['filepath'].tolist(), df['caption'].tolist()
+
+            pe_m, pe_p, pe_t = load_pe_core(args.pe_ckpt)
+            pe_img = extract_clip_img(pe_m, paths, pe_p, os.path.join(out,'pe_core_img.npz'), args.force)
+            pe_txt = extract_clip_txt(pe_m, pe_t, caps, os.path.join(out,'pe_core_txt.npz'), args.force)
+            del pe_m; torch.cuda.empty_cache()
+
+            s2_m, s2_p, s2_t = load_siglip2(args.sig2_ckpt)
+            sig2_img = extract_clip_img(s2_m, paths, s2_p, os.path.join(out,'siglip2_img.npz'), args.force)
+            sig2_txt = extract_clip_txt(s2_m, s2_t, caps, os.path.join(out,'siglip2_txt.npz'), args.force)
+            del s2_m; torch.cuda.empty_cache()
+
+            dn = load_dinov3(args.dino_repo, args.dino_ckpt)
+            dino_img = extract_dinov3_img(dn, paths, os.path.join(out,'dinov3_img.npz'), args.force)
+            del dn; torch.cuda.empty_cache()
+
+            ra, ra_c = load_radio(args.radio)
+            radio_img = extract_radio_img(ra, ra_c, paths, os.path.join(out,'radio_img.npz'), args.force)
+            del ra; torch.cuda.empty_cache()
+
+            eu = load_eupe(args.eupe_repo, args.eupe_ckpt)
+            eupe_img = None
+            if eu is not None:
+                eupe_img = extract_eupe_img(eu, paths, os.path.join(out,'eupe_img.npz'), args.force)
+                del eu; torch.cuda.empty_cache()
+
+            ti_m, ti_t = load_tips(args.tips)
+            tips_img = extract_tips_img(ti_m, paths, os.path.join(out,'tips_img.npz'), args.force)
+            tips_txt = extract_tips_txt(ti_m, ti_t, caps, os.path.join(out,'tips_txt.npz'), args.force)
+            del ti_m; torch.cuda.empty_cache()
+
+    # ── FPS anchors in PE space ─────────────────────────────────────────────
+    fps_idx = fps_sample(pe_img, k=5)
+    logging.info(f'FPS anchor indices (PE space): {fps_idx.tolist()}')
+
+    # ── Modality gap plots (models with text towers) ────────────────────────
+    plot_scatter({'PE-Core Image': pe_img, 'PE-Core Text': pe_txt},
+                 'PE-Core: Image vs Text', os.path.join(out,'pe_core_modality_gap.png'),
+                 n_pca=args.n_pca)
+    plot_scatter({'SigLIP2 Image': sig2_img, 'SigLIP2 Text': sig2_txt},
+                 'SigLIP2: Image vs Text', os.path.join(out,'siglip2_modality_gap.png'),
+                 n_pca=args.n_pca)
+    if tips_img is not None and tips_txt is not None:
+        plot_scatter({'TIPSv2 Image': tips_img, 'TIPSv2 Text': tips_txt},
+                     'TIPSv2: Image vs Text', os.path.join(out,'tips_modality_gap.png'),
+                     n_pca=args.n_pca)
+
+    # ── All-model image comparison + FPS tracking ───────────────────────────
+    img_feats = {k: v for k, v in [
+        ('DINOv3', dino_img), ('RADIO', radio_img), ('EUPE', eupe_img),
+        ('TIPSv2', tips_img), ('PE-Core', pe_img),  ('SigLIP2', sig2_img),
+    ] if v is not None}
+    plot_scatter(img_feats,
+                 'Vision Encoder Image Features  (* = FPS anchors from PE space)',
+                 os.path.join(out, 'image_allmodels.png'),
+                 n_pca=args.n_pca, fps_indices=fps_idx)
+
+    # ── Anisotropy (includes rank + multimodality) ──────────────────────────
+    aniso = {name: compute_anisotropy(feat) for name, feat in img_feats.items()}
+    plot_anisotropy(aniso, os.path.join(out, 'anisotropy.png'))
+    _log_aniso_table(aniso)
+
+
+# ── Mode: overlap ─────────────────────────────────────────────────────────────
+
+def run_overlap(args):
+    npz_pairs = {
+        'PE-Core':  ('pe_core_img.npz',  'pe_core_img.npz'),
+        'SigLIP2':  ('siglip2_img.npz',  'siglip2_img.npz'),
+        'DINOv3':   ('dinov3_img.npz',   'dinov3_img.npz'),
+        'RADIO':    ('radio_img.npz',    'radio_img.npz'),
+        'EUPE':     ('eupe_img.npz',     'eupe_img.npz'),
+        'TIPSv2':   ('tips_img.npz',     'tips_img.npz'),
+    }
+    out = os.path.join(os.path.dirname(args.cc3m_dir.rstrip('/')), 'overlap')
+    os.makedirs(out, exist_ok=True)
+
+    available = {}
+    for model, (cf, mf) in npz_pairs.items():
+        cp = os.path.join(args.coco_dir, cf)
+        mp = os.path.join(args.cc3m_dir, mf)
+        if os.path.exists(cp) and os.path.exists(mp):
+            available[model] = (cp, mp)
+        else:
+            logging.info(f'  skip {model}: cache missing')
+    assert available, 'No cached npz pairs found — run coco and cc3m modes first.'
+
+    from sklearn.decomposition import PCA
+    import matplotlib.pyplot as plt
+
+    n = len(available)
+    fig, axes = plt.subplots(1, n, figsize=(5 * n, 5))
+    if n == 1:
+        axes = [axes]
+    for ax, (model, (cp, mp)) in zip(axes, available.items()):
+        fa = np.load(cp)['features']
+        fb = np.load(mp)['features']
+        combined = np.concatenate([fa, fb])
+        pca = PCA(n_components=2).fit(combined)
+        pa, pb = pca.transform(fa), pca.transform(fb)
+        ax.scatter(pa[:, 0], pa[:, 1], s=2, alpha=0.3, color='steelblue',
+                   label='COCO', rasterized=True)
+        ax.scatter(pb[:, 0], pb[:, 1], s=2, alpha=0.3, color='coral',
+                   label='CC3M', rasterized=True)
+        d = np.linalg.norm(pa.mean(0) - pb.mean(0))
+        ax.set_title(f'{model}\ncentroid dist={d:.3f}', fontsize=9)
+        ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
+        ax.legend(markerscale=4, fontsize=8)
+        plot_overlap(fa, fb, 'COCO', 'CC3M', model,
+                     os.path.join(out, f'overlap_{model.lower()}.png'))
+
+    fig.suptitle('COCO vs CC3M Feature Distribution Overlap', fontsize=11)
+    plt.tight_layout()
+    grid = os.path.join(out, 'overlap_grid.png')
+    plt.savefig(grid, dpi=150, bbox_inches='tight'); plt.close()
+    print(f'[viz] {grid}')
+
+
+# ── Mode: anisotropy ──────────────────────────────────────────────────────────
+
+def run_anisotropy(args):
+    npz_map = {
+        'PE-Core': 'pe_core_img.npz', 'SigLIP2': 'siglip2_img.npz',
+        'DINOv3':  'dinov3_img.npz',  'RADIO':   'radio_img.npz',
+        'EUPE':    'eupe_img.npz',    'TIPSv2':  'tips_img.npz',
+    }
+    metrics = {}
+    for name, fname in npz_map.items():
+        p = os.path.join(args.aniso_dir, fname)
+        if not os.path.exists(p):
+            logging.info(f'  skip {name}: {fname} not found')
+            continue
+        f = np.load(p)['features']
+        logging.info(f'  {name}  shape={f.shape}')
+        metrics[name] = compute_anisotropy(f)
+    assert metrics, f'No npz found in {args.aniso_dir}'
+    plot_anisotropy(metrics, os.path.join(args.aniso_dir, 'anisotropy.png'))
+    _log_aniso_table(metrics)
+
+
+# ── Mode: epochs ──────────────────────────────────────────────────────────────
+
+def run_epochs(args):
+    files = sorted(glob.glob(os.path.join(args.probe_dir, 'epoch_*.npz')))
+    assert files, f'No epoch_*.npz found in {args.probe_dir}'
+    epoch_ids, epoch_feats = [], []
+    for f in files:
+        eid = int(os.path.splitext(os.path.basename(f))[0].split('_')[1])
+        epoch_ids.append(eid)
+        epoch_feats.append(np.load(f)['features'])
+        logging.info(f'  epoch {eid:02d}: {epoch_feats[-1].shape}')
+    out = os.path.join(args.probe_dir, 'plots')
+    os.makedirs(out, exist_ok=True)
+    plot_evolution(epoch_feats, epoch_ids, out, n_traj=args.n_traj)

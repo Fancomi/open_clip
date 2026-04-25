@@ -148,8 +148,8 @@ src/misc
 .vscode
 src/debug
 core.*
-scripts/probe_out/
-scripts/pca_demo/
+**/probe_out/
+**/pca_demo/
 
 # Allow
 !src/evaluation/misc/results_dbs/*
