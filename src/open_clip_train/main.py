@@ -600,7 +600,8 @@ def main(args):
                 else:
                     torch.distributed.barrier()
 
-        if is_master(args):
+        if is_master(args) and not getattr(args, 'probe_freq_steps', None):
+            # step-based probing handled inside train_one_epoch; skip epoch-end probe
             from open_clip_train.probe_hook import run_probe
             run_probe(original_model, completed_epoch, args, preprocess_val)
 
