@@ -1,6 +1,10 @@
 """
-Per-epoch feature probe: extract image features and save to disk.
-Called from main.py after each epoch (master process only).
+Per-step / per-epoch feature probe: extract image features and save to disk.
+Called from train.py (step-granularity) or main.py (epoch fallback).
+
+File naming:
+  step-based  →  step_XXXXXX.npz   (6-digit zero-padded global optimizer step)
+  epoch-based →  epoch_XX.npz      (kept for backward compat / epoch-only mode)
 """
 import os
 import logging
@@ -33,14 +37,18 @@ def extract_image_features(model, paths, preprocess, device, batch_size=256):
         feats.append(model.encode_image(imgs.to(device), normalize=True).cpu().float().numpy())
         if (i + 1) % 5 == 0 or (i + 1) == len(dl):
             logging.info(f'[probe] extracting {(i+1)*batch_size}/{len(paths)} ...')
+    model.train()
     return np.concatenate(feats, 0)
 
 
-def run_probe(model, epoch, args, preprocess_val):
-    """Extract image features for probe_data TSV and save epoch_XX.npz."""
+def run_probe(model, epoch, args, preprocess_val, step=None):
+    """Extract image features for probe_data TSV and save npz.
+
+    step: global optimizer step. If provided, file is named step_XXXXXX.npz;
+          otherwise falls back to epoch_XX.npz (legacy mode).
+    """
     if not getattr(args, 'probe_data', None):
         return
-    # Unwrap DDP, then CLIPLeJEPA — both lack encode_image directly
     model = model.module if hasattr(model, 'module') else model
     model = model.clip_model if hasattr(model, 'clip_model') else model
     probe_dir = getattr(args, 'probe_dir', None) or os.path.join(args.checkpoint_path, 'probe')
@@ -49,6 +57,10 @@ def run_probe(model, epoch, args, preprocess_val):
     paths = df['filepath'].tolist()
     device = next(model.parameters()).device
     feats = extract_image_features(model, paths, preprocess_val, device)
-    out = os.path.join(probe_dir, f'epoch_{epoch:02d}.npz')
+    if step is not None:
+        out = os.path.join(probe_dir, f'step_{step:06d}.npz')
+        logging.info(f'[probe] step={step}  shape={feats.shape}  -> {out}')
+    else:
+        out = os.path.join(probe_dir, f'epoch_{epoch:02d}.npz')
+        logging.info(f'[probe] epoch={epoch}  shape={feats.shape}  -> {out}')
     np.savez_compressed(out, features=feats, paths=np.array(paths))
-    logging.info(f'[probe] epoch={epoch}  shape={feats.shape}  -> {out}')

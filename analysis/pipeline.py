@@ -1,5 +1,5 @@
 """Analysis pipeline modes: pretrained (COCO/CC3M), overlap, anisotropy, epochs."""
-import glob, logging, os
+import glob, logging, os, re
 import numpy as np
 import pandas as pd
 import torch
@@ -12,7 +12,7 @@ from .extractors import (load_from_cache,
                           extract_eupe_img, extract_tips_img, extract_tips_txt,
                           extract_wds_features)
 from .metrics  import fps_sample, compute_anisotropy
-from .viz      import plot_scatter, plot_overlap, plot_anisotropy, plot_evolution
+from .viz      import plot_scatter, plot_overlap, plot_anisotropy, plot_aniso_evolution, plot_evolution
 
 _BASE = '/root/paddlejob/workspace/env_run/penghaotian'
 _DATA = dict(
@@ -247,17 +247,49 @@ def run_anisotropy(args):
     _log_aniso_table(metrics)
 
 
-# ── Mode: epochs ──────────────────────────────────────────────────────────────
+# ── Mode: epochs / steps ─────────────────────────────────────────────────────
 
 def run_epochs(args):
-    files = sorted(glob.glob(os.path.join(args.probe_dir, 'epoch_*.npz')))
-    assert files, f'No epoch_*.npz found in {args.probe_dir}'
-    epoch_ids, epoch_feats = [], []
+    """Load probe npz files (step_*.npz preferred, epoch_*.npz as fallback)
+    and render GIF evolution + static trajectory plot."""
+    import re
+    probe_dir = args.probe_dir
+
+    # Prefer step-based files; fall back to epoch-based
+    step_files = sorted(glob.glob(os.path.join(probe_dir, 'step_*.npz')))
+    epoch_files = sorted(glob.glob(os.path.join(probe_dir, 'epoch_*.npz')))
+
+    if step_files:
+        files = step_files
+        id_label = 'Step'
+        def _parse_id(fname):
+            return int(re.search(r'step_(\d+)', os.path.basename(fname)).group(1))
+    elif epoch_files:
+        files = epoch_files
+        id_label = 'Epoch'
+        def _parse_id(fname):
+            return int(os.path.splitext(os.path.basename(fname))[0].split('_')[1])
+    else:
+        assert False, f'No step_*.npz or epoch_*.npz found in {probe_dir}'
+
+    ids, feats = [], []
     for f in files:
-        eid = int(os.path.splitext(os.path.basename(f))[0].split('_')[1])
-        epoch_ids.append(eid)
-        epoch_feats.append(np.load(f)['features'])
-        logging.info(f'  epoch {eid:02d}: {epoch_feats[-1].shape}')
-    out = os.path.join(args.probe_dir, 'plots')
+        ids.append(_parse_id(f))
+        feats.append(np.load(f)['features'])
+        logging.info(f'  {id_label} {ids[-1]:>6d}: {feats[-1].shape}')
+
+    out = os.path.join(probe_dir, 'plots')
     os.makedirs(out, exist_ok=True)
-    plot_evolution(epoch_feats, epoch_ids, out, n_traj=args.n_traj)
+    plot_evolution(feats, ids, out, n_traj=args.n_traj, id_label=id_label)
+
+    # ── Anisotropy evolution ────────────────────────────────────────────────
+    logging.info(f'[epochs] computing anisotropy for {len(feats)} checkpoints...')
+    aniso_list = [compute_anisotropy(f) for f in feats]
+    plot_aniso_evolution(ids, aniso_list,
+                         os.path.join(out, 'aniso_evolution.png'),
+                         id_label=id_label)
+    # Log final vs initial delta
+    m0, m1 = aniso_list[0], aniso_list[-1]
+    logging.info(f'[epochs] EffRank  {m0["effective_rank"]:.1f} → {m1["effective_rank"]:.1f}')
+    logging.info(f'[epochs] top4%    {m0["pct_var_top4"]:.1f} → {m1["pct_var_top4"]:.1f}')
+    logging.info(f'[epochs] AvgCos   {m0["avg_cos_sim"]:.4f} → {m1["avg_cos_sim"]:.4f}')

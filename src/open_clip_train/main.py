@@ -587,7 +587,8 @@ def main(args):
             logging.info(f'Start epoch {epoch}')
 
         train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist_model, args,
-                        tb_writer=writer, dino_schedules=dino_schedules)
+                        tb_writer=writer, dino_schedules=dino_schedules,
+                        original_model=original_model, preprocess_val=preprocess_val)
         completed_epoch = epoch + 1
 
         if any(v in data for v in ('val', 'imagenet-val', 'imagenet-v2')):

@@ -31,13 +31,17 @@ def fps_sample(feats: np.ndarray, k: int = 5, seed: int = 0) -> np.ndarray:
     return np.array(chosen)
 
 
-def compute_anisotropy(feats: np.ndarray) -> dict:
-    """Compute full-dimensional isotropy + rank + multimodality metrics."""
+def compute_anisotropy(feats: np.ndarray, max_components: int = 256) -> dict:
+    """Compute full-dimensional isotropy + rank + multimodality metrics.
+
+    max_components: cap on SVD rank. 256 is enough for all metrics; raising
+    it slows down randomized_svd significantly when n_samples is large.
+    """
     from sklearn.utils.extmath import randomized_svd
 
     D  = feats.shape[1]
     f  = feats - feats.mean(0, keepdims=True)
-    k  = min(D, f.shape[0], 512)
+    k  = min(D, f.shape[0] - 1, max_components)   # -1: randomized_svd needs k < min(m,n)
     _, s, _ = randomized_svd(f, n_components=k, random_state=0)
 
     lam = s ** 2

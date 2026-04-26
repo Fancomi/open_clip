@@ -673,6 +673,14 @@ def parse_args(args):
         default=None,
         help="Output dir for probe npz files (default: <checkpoint_path>/probe)."
     )
+    parser.add_argument(
+        "--probe-freq-steps",
+        type=int,
+        default=None,
+        help="Run feature probe every N optimizer steps (inside epoch). "
+             "If None, probe runs once per epoch as before. "
+             "E.g. set to steps_per_epoch//4 for 4 probes per epoch."
+    )
 
     args = parser.parse_args(args)
 

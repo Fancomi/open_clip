@@ -72,11 +72,11 @@ CC3M_PRE="${CC3M_OUT}/pretrained"
 case "$MODE" in
     coco|pretrained)
         echo "=== [probe] COCO analysis (cache-first) ==="
-        $SCRIPT --mode pretrained
+        $SCRIPT --mode pretrained --fps-model DINOv3      
         ;;
     cc3m)
         echo "=== [probe] CC3M analysis (cache-first, wds 100k) ==="
-        $SCRIPT --mode pretrained --data-type wds \
+        $SCRIPT --mode pretrained --data-type wds --fps-model DINOv3 \
             --data "${CC3M_WDS}" --out-dir "${CC3M_OUT}"
         ;;
     epochs)
@@ -96,6 +96,12 @@ case "$MODE" in
         echo "=== [probe] anisotropy  dir=${ANISO_DIR} ==="
         $SCRIPT --mode anisotropy --aniso-dir "${ANISO_DIR}"
         ;;
+    layers)
+        MODEL="${2:?Usage: probe.sh layers <model>  (dinov3|pe_core|siglip2|eupe)}"
+        OUT_DIR="${3:-analysis/layer_probe_out}"
+        echo "=== [probe] layer-wise feature probe  model=${MODEL} ==="
+        python3 -m analysis.layer_probe --model "${MODEL}" --out-dir "${OUT_DIR}"
+        ;;
     *)
         echo "Usage:"
         echo "  bash analysis/probe.sh coco"
@@ -103,6 +109,7 @@ case "$MODE" in
         echo "  bash analysis/probe.sh epochs <probe_dir>"
         echo "  bash analysis/probe.sh overlap"
         echo "  bash analysis/probe.sh anisotropy [coco|cc3m]"
+        echo "  bash analysis/probe.sh layers <model>  (dinov3|pe_core|siglip2|eupe)"
         exit 1
         ;;
 esac

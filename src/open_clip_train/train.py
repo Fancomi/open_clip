@@ -63,7 +63,8 @@ def backward(total_loss, scaler):
 
 
 def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist_model, args,
-                    tb_writer=None, dino_schedules=None):
+                    tb_writer=None, dino_schedules=None,
+                    original_model=None, preprocess_val=None):
     device = torch.device(args.device)
     autocast = get_autocast(args.precision, device_type=device.type)
     input_dtype = get_input_dtype(args.precision)
@@ -362,6 +363,16 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             # resetting batch / data time meters per log window
             batch_time_m.reset()
             data_time_m.reset()
+
+        # ── Step-granularity feature probe ────────────────────────────────
+        probe_freq = getattr(args, 'probe_freq_steps', None)
+        if (probe_freq and is_master(args)
+                and getattr(args, 'probe_data', None)
+                and original_model is not None
+                and preprocess_val is not None
+                and (step + 1) % probe_freq == 0):
+            from open_clip_train.probe_hook import run_probe
+            run_probe(original_model, epoch, args, preprocess_val, step=step + 1)
     # end for
 
 

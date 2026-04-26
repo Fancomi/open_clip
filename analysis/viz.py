@@ -137,6 +137,41 @@ def plot_overlap(pa, pb, label_a, label_b, model_name, save_path,
     print(f'[viz] {save_path}')
 
 
+def plot_aniso_evolution(step_ids, aniso_list, save_path, id_label='Step'):
+    """Line plot of anisotropy metrics across training steps/epochs.
+
+    step_ids  : list of int
+    aniso_list: list of dicts from compute_anisotropy, one per step
+    """
+    keys = [
+        ('effective_rank',      'Effective Rank'),
+        ('stable_rank',         'Stable Rank'),
+        ('avg_cos_sim',         'Avg Cosine Sim ↓'),
+        ('std_cos_sim',         'Std Cosine Sim'),
+        ('pct_var_top4',        'Var% top-4'),
+        ('pct_var_top10',       'Var% top-10'),
+    ]
+    ncols = 3; nrows = 2
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 4 * nrows))
+    axes = axes.reshape(-1)
+    xs = step_ids
+    for ax, (key, lbl) in zip(axes, keys):
+        ys = [m[key] for m in aniso_list]
+        ax.plot(xs, ys, marker='o', ms=4, lw=1.5, color='steelblue')
+        ax.set_xlabel(id_label); ax.set_title(lbl, fontsize=9)
+        ax.grid(True, alpha=0.3)
+        # annotate first and last
+        ax.annotate(f'{ys[0]:.2f}',  (xs[0],  ys[0]),  textcoords='offset points',
+                    xytext=(4, 4),  fontsize=7, color='gray')
+        ax.annotate(f'{ys[-1]:.2f}', (xs[-1], ys[-1]), textcoords='offset points',
+                    xytext=(-20, 4), fontsize=7, color='steelblue')
+    fig.suptitle(f'Anisotropy Evolution across {id_label}s', fontsize=11, y=1.01)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f'[viz] {save_path}')
+
+
 def plot_anisotropy(metrics_dict: dict, save_path: str):
     """Bar charts + eigenvalue spectrum for all anisotropy metrics."""
     models  = list(metrics_dict.keys())
@@ -182,12 +217,21 @@ def plot_anisotropy(metrics_dict: dict, save_path: str):
     print(f'[viz] {save_path}')
 
 
-def plot_evolution(epoch_feats, epoch_ids, save_dir, n_traj=100, seed=42):
-    """Epoch-by-epoch PCA scatter + trajectory plot."""
+def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
+                   id_label='Step', fps=4):
+    """Step/epoch PCA scatter animation (GIF) + static trajectory plot.
+
+    step_feats : list of (N, D) arrays, one per checkpoint
+    step_ids   : list of int step/epoch numbers (used for frame titles)
+    id_label   : 'Step' or 'Epoch' — shown in frame titles and filenames
+    fps        : GIF frames per second (default 4)
+    """
     import os
-    pca   = PCA(n_components=2).fit(epoch_feats[-1])
-    projs = [pca.transform(f) for f in epoch_feats]
-    n     = len(epoch_ids)
+    from matplotlib.animation import FuncAnimation, PillowWriter
+
+    pca   = PCA(n_components=2).fit(step_feats[-1])
+    projs = [pca.transform(f) for f in step_feats]
+    n     = len(step_ids)
     all_p = np.concatenate(projs)
     pad   = 0.05
     x0, x1 = all_p[:, 0].min(), all_p[:, 0].max()
@@ -195,23 +239,35 @@ def plot_evolution(epoch_feats, epoch_ids, save_dir, n_traj=100, seed=42):
     xp = (x1 - x0) * pad; yp = (y1 - y0) * pad
     xlim = (x0 - xp, x1 + xp); ylim = (y0 - yp, y1 + yp)
 
-    ncols = min(5, n); nrows = (n + ncols - 1) // ncols
-    fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 4 * nrows))
-    axes = np.array(axes).reshape(-1)
-    for i, (eid, proj) in enumerate(zip(epoch_ids, projs)):
-        axes[i].scatter(proj[:, 0], proj[:, 1], s=3, alpha=0.4,
-                        c=np.arange(len(proj)), cmap='viridis', rasterized=True)
-        axes[i].set_title(f'Epoch {eid}', fontsize=9)
-        axes[i].set_xlim(xlim); axes[i].set_ylim(ylim); axes[i].axis('off')
-    for ax in axes[n:]:
-        ax.axis('off')
-    fig.suptitle('Image Feature Distribution per Epoch  [PCA fitted on final epoch]', fontsize=10)
-    plt.tight_layout()
-    p = os.path.join(save_dir, 'epoch_evolution.png')
-    plt.savefig(p, dpi=150); plt.close(); print(f'[viz] {p}')
+    # ── GIF: one frame per checkpoint ─────────────────────────────────────
+    fig_gif, ax_gif = plt.subplots(figsize=(5, 5))
+    colors_n = cm.viridis(np.linspace(0, 1, n))
+    scat = ax_gif.scatter([], [], s=3, alpha=0.4, rasterized=True)
+    ax_gif.set_xlim(xlim); ax_gif.set_ylim(ylim); ax_gif.axis('off')
+    title_obj = ax_gif.set_title('', fontsize=10)
 
+    def _init():
+        scat.set_offsets(np.empty((0, 2)))
+        return (scat, title_obj)
+
+    def _update(frame):
+        proj = projs[frame]
+        scat.set_offsets(proj[:, :2])
+        scat.set_color(colors_n[frame])
+        title_obj.set_text(f'{id_label} {step_ids[frame]}  '
+                           f'[PCA fitted on final {id_label.lower()}]')
+        return (scat, title_obj)
+
+    anim = FuncAnimation(fig_gif, _update, init_func=_init,
+                         frames=n, interval=1000 // fps, blit=True)
+    gif_path = os.path.join(save_dir, f'{id_label.lower()}_evolution.gif')
+    anim.save(gif_path, writer=PillowWriter(fps=fps))
+    plt.close(fig_gif)
+    print(f'[viz] {gif_path}')
+
+    # ── Static trajectory: all checkpoints overlaid ────────────────────────
     rng    = np.random.default_rng(seed)
-    idx    = rng.choice(len(epoch_feats[0]), min(n_traj, len(epoch_feats[0])), replace=False)
+    idx    = rng.choice(len(step_feats[0]), min(n_traj, len(step_feats[0])), replace=False)
     colors = cm.tab20(np.linspace(0, 1, len(idx)))
     alphas = np.linspace(0.10, 1.00, n); lws = np.linspace(0.3, 1.8, n)
     fig, ax = plt.subplots(figsize=(8, 7))
@@ -225,8 +281,9 @@ def plot_evolution(epoch_feats, epoch_ids, save_dir, n_traj=100, seed=42):
         ax.scatter(pts[-1, 0], pts[-1, 1], color=color, s=40, marker='*',
                    alpha=1.0, zorder=4)
     ax.set_xlim(xlim); ax.set_ylim(ylim)
-    ax.set_title(f'Sample Trajectories  N={len(idx)}\no=start  *=end  light→dark = early→late epoch', fontsize=9)
-    ax.set_xlabel('PC1 (final epoch)'); ax.set_ylabel('PC2 (final epoch)')
+    ax.set_title(f'Sample Trajectories  N={len(idx)}\n'
+                 f'o=start  *=end  light→dark = early→late {id_label.lower()}', fontsize=9)
+    ax.set_xlabel(f'PC1 (final {id_label.lower()})'); ax.set_ylabel(f'PC2 (final {id_label.lower()})')
     plt.tight_layout()
-    p = os.path.join(save_dir, 'trajectory.png')
-    plt.savefig(p, dpi=150); plt.close(); print(f'[viz] {p}')
+    traj_path = os.path.join(save_dir, 'trajectory.png')
+    plt.savefig(traj_path, dpi=150); plt.close(); print(f'[viz] {traj_path}')
