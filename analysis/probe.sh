@@ -102,6 +102,12 @@ case "$MODE" in
         echo "=== [probe] layer-wise feature probe  model=${MODEL} ==="
         python3 -m analysis.layer_probe --model "${MODEL}" --out-dir "${OUT_DIR}"
         ;;
+    pc_alignment)
+        PROBE_DIR="${2:?Usage: probe.sh pc_alignment <probe_dir>}"
+        N_PCS="${3:-16}"
+        echo "=== [probe] PC alignment  probe_dir=${PROBE_DIR}  n_pcs=${N_PCS} ==="
+        $SCRIPT --mode pc_alignment --probe-dir "$PROBE_DIR" --n-pcs "${N_PCS}"
+        ;;
     *)
         echo "Usage:"
         echo "  bash analysis/probe.sh coco"
@@ -110,6 +116,7 @@ case "$MODE" in
         echo "  bash analysis/probe.sh overlap"
         echo "  bash analysis/probe.sh anisotropy [coco|cc3m]"
         echo "  bash analysis/probe.sh layers <model>  (dinov3|pe_core|siglip2|eupe)"
+        echo "  bash analysis/probe.sh pc_alignment <probe_dir> [n_pcs=16]"
         exit 1
         ;;
 esac
