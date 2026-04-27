@@ -317,42 +317,67 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
     # pre-collect per-sample point arrays
     sample_pts = [np.array([pr[si] for pr in projs]) for si in idx]
 
-    # ── GIF 2: trajectory progressive animation ────────────────────────────
-    # frame t shows all trails from step 0 → t, plus current scatter
+    # ── GIF 2: sliding-window trajectory (last `trail` steps) ────────────────
+    # frame t shows trails from max(0, t-trail+1) → t  (rolling window)
+    # + step label and % of training completed
+    trail = 10
     fig_traj, ax_traj = plt.subplots(figsize=(7, 7))
     ax_traj.set_xlim(xlim); ax_traj.set_ylim(ylim)
     ax_traj.set_xlabel(f'PC1 (final {id_label.lower()})')
     ax_traj.set_ylabel(f'PC2 (final {id_label.lower()})')
     traj_title = ax_traj.set_title('', fontsize=9)
 
-    line_artists  = []   # one Line2D per sample
-    start_scats   = []   # start-point dot per sample
-    cur_scats     = []   # current-position dot per sample
+    # Each sample needs `trail-1` line segments; pre-create them
+    # seg_artists[i] = list of Line2D, one per segment slot in the window
+    seg_artists = []
+    cur_scats   = []
     for pts, c in zip(sample_pts, traj_colors):
-        ln, = ax_traj.plot([], [], '-', color=c, alpha=0.6, lw=0.8)
-        sc_start = ax_traj.scatter(pts[0, 0], pts[0, 1], color=c, s=10,
-                                   marker='o', alpha=0.5, zorder=3)
-        sc_cur   = ax_traj.scatter([], [], color=c, s=40, marker='*',
-                                   zorder=5, edgecolors='black', linewidths=0.3)
-        line_artists.append(ln)
-        start_scats.append(sc_start)
+        segs = [ax_traj.plot([], [], '-', color=c, lw=1.2)[0]
+                for _ in range(trail - 1)]
+        sc_cur = ax_traj.scatter([], [], color=c, s=50, marker='*',
+                                 zorder=5, edgecolors='black', linewidths=0.4)
+        seg_artists.append(segs)
         cur_scats.append(sc_cur)
 
+    all_line_artists = [seg for segs in seg_artists for seg in segs]
+
     def _init_traj():
-        for ln, sc in zip(line_artists, cur_scats):
-            ln.set_data([], [])
+        for segs in seg_artists:
+            for seg in segs:
+                seg.set_data([], [])
+                seg.set_alpha(0.0)
+        for sc in cur_scats:
             sc.set_offsets(np.empty((0, 2)))
         traj_title.set_text('')
-        return line_artists + cur_scats + [traj_title]
+        return all_line_artists + cur_scats + [traj_title]
 
     def _update_traj(frame):
-        for pts, ln, sc in zip(sample_pts, line_artists, cur_scats):
-            ln.set_data(pts[:frame + 1, 0], pts[:frame + 1, 1])
+        win_start = max(0, frame - trail + 1)
+        win_pts   = list(range(win_start, frame + 1))   # indices in window
+        w         = len(win_pts)
+        # alpha ramp: oldest segment is faintest
+        alphas = np.linspace(0.08, 0.85, w) if w > 1 else [0.85]
+
+        for pts, segs in zip(sample_pts, seg_artists):
+            # fill segments that are active in the window
+            for slot in range(trail - 1):
+                seg = segs[slot]
+                seg_idx = win_start + slot          # index of segment start
+                if slot < w - 1 and seg_idx + 1 <= frame:
+                    seg.set_data(pts[seg_idx:seg_idx + 2, 0],
+                                 pts[seg_idx:seg_idx + 2, 1])
+                    seg.set_alpha(float(alphas[slot]))
+                else:
+                    seg.set_data([], [])
+                    seg.set_alpha(0.0)
+        for pts, sc in zip(sample_pts, cur_scats):
             sc.set_offsets(pts[frame:frame + 1, :2])
+
+        pct = (frame + 1) / n * 100
         traj_title.set_text(
-            f'{id_label} {step_ids[frame]}  '
-            f'N={len(idx)} samples  o=start  *=current')
-        return line_artists + cur_scats + [traj_title]
+            f'{id_label} {step_ids[frame]}  ({pct:.0f}% of training)  '
+            f'N={len(idx)}  trail={trail}  *=current')
+        return all_line_artists + cur_scats + [traj_title]
 
     anim_traj = FuncAnimation(fig_traj, _update_traj, init_func=_init_traj,
                               frames=n, interval=1000 // fps, blit=True)
