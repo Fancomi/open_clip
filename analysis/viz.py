@@ -112,7 +112,7 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
             ax.set_xlabel(f'PC{pi+1}'); ax.set_ylabel(f'PC{pj+1}')
             ax.set_title(f'PC{pi+1} vs PC{pj+1}', fontsize=9)
             if col == 0:
-                ax.legend(markerscale=4, fontsize=8)
+                ax.legend(markerscale=1, fontsize=8)
         ax = axes[len(pairs)]
         ax.bar(range(1, n_pca + 1), shared_var * 100, color='steelblue')
         ax.set_xlabel('Component'); ax.set_ylabel('Variance explained (%)')
@@ -125,7 +125,7 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
                            label=label, rasterized=True)
                 _fps_on_tsne(ax, emb, sub_idx, add_label=(mi == 0))
             ax.set_title('T-SNE (2k subsample)', fontsize=9)
-            ax.legend(markerscale=4, fontsize=8)
+            ax.legend(markerscale=1, fontsize=8)
             ax.axis('off')
         fig.suptitle(title, fontsize=12, y=1.01)
     else:
@@ -208,7 +208,7 @@ def plot_overlap(pa, pb, label_a, label_b, model_name, save_path,
                    label=label_b, rasterized=True)
         on_top_lbl = label_b
     ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
-    ax.legend(markerscale=4, fontsize=9)
+    ax.legend(markerscale=1, fontsize=9)
     dist_str = f'  centroid dist={centroid_dist:.3f}' if centroid_dist is not None else ''
     ax.set_title(f'{model_name}: {on_top_lbl} on top{dist_str}', fontsize=10)
     plt.tight_layout()
