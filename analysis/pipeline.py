@@ -109,16 +109,20 @@ def run_pretrained(args):
             del ti_m; torch.cuda.empty_cache()
 
     # ── Modality gap plots (models with text towers) ────────────────────────
-    plot_scatter({'PE-Core Image': pe_img, 'PE-Core Text': pe_txt},
-                 'PE-Core: Image vs Text', os.path.join(out,'pe_core_modality_gap.png'),
-                 n_pca=args.n_pca)
-    plot_scatter({'SigLIP2 Image': sig2_img, 'SigLIP2 Text': sig2_txt},
-                 'SigLIP2: Image vs Text', os.path.join(out,'siglip2_modality_gap.png'),
-                 n_pca=args.n_pca)
+    def _modality_gap(img, txt, model_name, out_path):
+        """PCA shared on img+txt, then plot_overlap for high-contrast two-color view."""
+        from sklearn.decomposition import PCA
+        pca = PCA(n_components=2).fit(np.concatenate([img, txt]))
+        pa  = pca.transform(img)
+        pb  = pca.transform(txt)
+        dist = float(np.linalg.norm(pa.mean(0) - pb.mean(0)))
+        plot_overlap(pa, pb, f'{model_name} Image', f'{model_name} Text',
+                     model_name, out_path, a_on_top=True, centroid_dist=dist)
+
+    _modality_gap(pe_img,   pe_txt,   'PE-Core',  os.path.join(out, 'pe_core_modality_gap.png'))
+    _modality_gap(sig2_img, sig2_txt, 'SigLIP2',  os.path.join(out, 'siglip2_modality_gap.png'))
     if tips_img is not None and tips_txt is not None:
-        plot_scatter({'TIPSv2 Image': tips_img, 'TIPSv2 Text': tips_txt},
-                     'TIPSv2: Image vs Text', os.path.join(out,'tips_modality_gap.png'),
-                     n_pca=args.n_pca)
+        _modality_gap(tips_img, tips_txt, 'TIPSv2', os.path.join(out, 'tips_modality_gap.png'))
 
     # ── All-model image comparison + FPS tracking ───────────────────────────
     img_feats = {k: v for k, v in [
