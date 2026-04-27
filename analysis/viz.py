@@ -21,11 +21,22 @@ def _fit_pca(feats_list, n):
     return [PCA(n_components=n).fit(f) for f in feats_list], None
 
 
-def _tsne_proj(feats, subsample=2000, seed=42):
-    """Run T-SNE on a subsample; return (N_sub, 2) projection + original indices."""
+def _tsne_proj(feats, subsample=2000, seed=42, force_indices=None):
+    """Run T-SNE on a subsample; return (N_sub, 2) projection + original indices.
+
+    force_indices: list/array of indices that MUST be in the subsample (e.g. FPS).
+    """
     from sklearn.manifold import TSNE
     rng = np.random.default_rng(seed)
-    idx = rng.choice(len(feats), min(subsample, len(feats)), replace=False)
+    n   = len(feats)
+    if force_indices is not None and len(force_indices) > 0:
+        forced   = np.unique(np.asarray(force_indices, dtype=int))
+        pool     = np.setdiff1d(np.arange(n), forced)
+        n_extra  = max(0, min(subsample - len(forced), len(pool)))
+        extra    = rng.choice(pool, n_extra, replace=False) if n_extra > 0 else np.array([], dtype=int)
+        idx      = np.concatenate([forced, extra]).astype(int)
+    else:
+        idx = rng.choice(n, min(subsample, n), replace=False)
     sub = feats[idx]
     emb = TSNE(n_components=2, perplexity=30, n_jobs=-1,
                random_state=seed).fit_transform(sub.astype(np.float32))
@@ -35,34 +46,53 @@ def _tsne_proj(feats, subsample=2000, seed=42):
 # ── Main plots ────────────────────────────────────────────────────────────────
 
 def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
-                 with_tsne=True):
+                 with_tsne=True, colors=None):
     """Multi-axis PCA scatter + optional T-SNE column.
 
     Same-dim → shared PCA row; mixed-dim → independent rows.
-    fps_indices: highlight same samples (by index) across all model rows.
-    with_tsne: append a T-SNE panel (2k subsample) per row.
+    fps_indices : list of k int indices; each highlighted with a distinct marker
+                  across ALL models (shared PCA: marks every modality at same idx).
+    with_tsne   : append a T-SNE panel (2k subsample) per row; FPS points included.
+    colors      : optional list/array of colors overriding tab10 (e.g. ['#0055FF','#FF2200']).
     """
     labels = list(feats_dict.keys())
     feats  = list(feats_dict.values())
-    colors = cm.tab10(np.linspace(0, 0.9, len(labels)))
+    if colors is None:
+        colors = cm.tab10(np.linspace(0, 0.9, len(labels)))
     pairs  = list(combinations(range(n_pca), 2))
     pcas, shared_var = _fit_pca(feats, n_pca)
     projs  = [pca.transform(f) for pca, f in zip(pcas, feats)]
 
-    # Pre-compute T-SNE (slow — done once per call)
-    if with_tsne:
-        tsne_projs = []
-        for f in feats:
-            emb, _ = _tsne_proj(f)
-            tsne_projs.append(emb)
+    # FPS helper: flat array of all fps indices (for forcing into T-SNE subsample)
+    fps_flat = np.array(fps_indices, dtype=int) if fps_indices is not None else None
 
-    def _fps_on(ax, proj, pi, pj):
+    # Pre-compute T-SNE — force FPS indices into every subsample
+    if with_tsne:
+        tsne_data = []   # list of (emb, sub_idx) per model
+        for f in feats:
+            emb, sub_idx = _tsne_proj(f, force_indices=fps_flat)
+            tsne_data.append((emb, sub_idx))
+
+    def _fps_on_pca(ax, proj, pi, pj, add_label=False):
+        """Mark FPS points on a PCA panel."""
         if fps_indices is None:
             return
         for fi, (idx, mk, fc) in enumerate(zip(fps_indices, _FPS_MARKERS, _FPS_COLORS)):
             ax.scatter(proj[idx, pi], proj[idx, pj], marker=mk, s=120, color=fc,
                        edgecolors='black', linewidths=0.5, zorder=5,
-                       label=f'FPS-{fi}' if (pi == 0 and pj == 1) else '')
+                       label=f'FPS-{fi}' if add_label else '')
+
+    def _fps_on_tsne(ax, emb, sub_idx, add_label=False):
+        """Mark FPS points on a T-SNE panel using index remapping."""
+        if fps_indices is None:
+            return
+        idx_map = {int(orig): pos for pos, orig in enumerate(sub_idx)}
+        for fi, (fps_i, mk, fc) in enumerate(zip(fps_indices, _FPS_MARKERS, _FPS_COLORS)):
+            pos = idx_map.get(int(fps_i))
+            if pos is not None:
+                ax.scatter(emb[pos, 0], emb[pos, 1], marker=mk, s=120, color=fc,
+                           edgecolors='black', linewidths=0.5, zorder=5,
+                           label=f'FPS-{fi}' if add_label else '')
 
     tsne_col = 1 if with_tsne else 0
 
@@ -75,7 +105,10 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
             for label, proj, c in zip(labels, projs, colors):
                 ax.scatter(proj[:, pi], proj[:, pj], s=3, alpha=0.3, color=c,
                            label=label if col == 0 else '', rasterized=True)
-            _fps_on(ax, projs[0], pi, pj)
+            # Mark FPS in EVERY modality (same index → shows image-text pairing)
+            for mi, proj in enumerate(projs):
+                _fps_on_pca(ax, proj, pi, pj,
+                            add_label=(col == 0 and mi == 0))
             ax.set_xlabel(f'PC{pi+1}'); ax.set_ylabel(f'PC{pj+1}')
             ax.set_title(f'PC{pi+1} vs PC{pj+1}', fontsize=9)
             if col == 0:
@@ -86,16 +119,18 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
         ax.set_title('Explained variance', fontsize=9)
         if with_tsne:
             ax = axes[-1]
-            for label, emb, c in zip(labels, tsne_projs, colors):
+            for mi, (label, (emb, sub_idx), c) in enumerate(
+                    zip(labels, tsne_data, colors)):
                 ax.scatter(emb[:, 0], emb[:, 1], s=3, alpha=0.3, color=c,
                            label=label, rasterized=True)
+                _fps_on_tsne(ax, emb, sub_idx, add_label=(mi == 0))
             ax.set_title('T-SNE (2k subsample)', fontsize=9)
             ax.legend(markerscale=4, fontsize=8)
             ax.axis('off')
         fig.suptitle(title, fontsize=12, y=1.01)
     else:
         # ── independent PCA: one row per model ────────────────────────────────
-        nrows = len(labels)
+        nrows   = len(labels)
         has_fps = fps_indices is not None
         ncols   = len(pairs) + 1 + (1 if has_fps else 0) + tsne_col
         fig, axes = plt.subplots(nrows, ncols, figsize=(4.5 * ncols, 4.5 * nrows))
@@ -108,7 +143,7 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
                 ax = axes[row, col]
                 ax.scatter(proj[:, pi], proj[:, pj], s=3, alpha=0.3,
                            color=c, rasterized=True)
-                _fps_on(ax, proj, pi, pj)
+                _fps_on_pca(ax, proj, pi, pj, add_label=(col == 0 and row == 0))
                 ax.set_xlabel(f'PC{pi+1}')
                 ax.set_ylabel(f'{label}  (D={dim})\nPC{pj+1}'
                               if col == 0 else f'PC{pj+1}')
@@ -132,12 +167,15 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
                     ax.legend(markerscale=1, fontsize=7,
                               title='Same sample\nacross models')
             if with_tsne:
+                emb, sub_idx = tsne_data[row]
                 ax = axes[row, -1]
-                emb = tsne_projs[row]
                 ax.scatter(emb[:, 0], emb[:, 1], s=3, alpha=0.3, color=c,
                            rasterized=True)
+                _fps_on_tsne(ax, emb, sub_idx, add_label=(row == 0))
                 ax.set_title(f'{label}  T-SNE', fontsize=9)
                 ax.axis('off')
+                if row == 0 and has_fps:
+                    ax.legend(markerscale=2, fontsize=7)
         fig.suptitle(title + '  [independent PCA]', fontsize=12, y=1.01)
 
     plt.tight_layout()

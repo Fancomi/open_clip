@@ -109,15 +109,23 @@ def run_pretrained(args):
             del ti_m; torch.cuda.empty_cache()
 
     # ── Modality gap plots (models with text towers) ────────────────────────
+    _MOD_COLORS = ['#0055FF', '#FF2200']   # Image=blue, Text=red
+
     def _modality_gap(img, txt, model_name, out_path):
-        """PCA shared on img+txt, then plot_overlap for high-contrast two-color view."""
-        from sklearn.decomposition import PCA
-        pca = PCA(n_components=2).fit(np.concatenate([img, txt]))
-        pa  = pca.transform(img)
-        pb  = pca.transform(txt)
-        dist = float(np.linalg.norm(pa.mean(0) - pb.mean(0)))
-        plot_overlap(pa, pb, f'{model_name} Image', f'{model_name} Text',
-                     model_name, out_path, a_on_top=True, centroid_dist=dist)
+        """Full scatter (all PC pairs + T-SNE) with blue/red high-contrast colors.
+
+        FPS is computed in image space; same indices shown in text space too
+        so you can see where a specific image's paired caption lands.
+        """
+        fps_img = fps_sample(img, k=5).tolist()
+        plot_scatter(
+            {f'{model_name} Image': img, f'{model_name} Text': txt},
+            f'{model_name}: Image vs Text',
+            out_path,
+            n_pca=args.n_pca,
+            fps_indices=fps_img,
+            colors=_MOD_COLORS,
+        )
 
     _modality_gap(pe_img,   pe_txt,   'PE-Core',  os.path.join(out, 'pe_core_modality_gap.png'))
     _modality_gap(sig2_img, sig2_txt, 'SigLIP2',  os.path.join(out, 'siglip2_modality_gap.png'))
