@@ -155,16 +155,18 @@ def plot_overlap(pa, pb, label_a, label_b, model_name, save_path,
     a_on_top=False → draw A first (background), then B on top.
     """
     fig, ax = plt.subplots(figsize=(5, 5))
+    _COL_A = '#2B6CB0'   # deep blue  — image
+    _COL_B = '#E84545'   # vivid red  — text
     if a_on_top:
-        ax.scatter(pb[:, 0], pb[:, 1], s=2, alpha=0.3, color='coral',
+        ax.scatter(pb[:, 0], pb[:, 1], s=2, alpha=0.35, color=_COL_B,
                    label=label_b, rasterized=True)
-        ax.scatter(pa[:, 0], pa[:, 1], s=2, alpha=0.3, color='steelblue',
+        ax.scatter(pa[:, 0], pa[:, 1], s=2, alpha=0.35, color=_COL_A,
                    label=label_a, rasterized=True)
         on_top_lbl = label_a
     else:
-        ax.scatter(pa[:, 0], pa[:, 1], s=2, alpha=0.3, color='steelblue',
+        ax.scatter(pa[:, 0], pa[:, 1], s=2, alpha=0.35, color=_COL_A,
                    label=label_a, rasterized=True)
-        ax.scatter(pb[:, 0], pb[:, 1], s=2, alpha=0.3, color='coral',
+        ax.scatter(pb[:, 0], pb[:, 1], s=2, alpha=0.35, color=_COL_B,
                    label=label_b, rasterized=True)
         on_top_lbl = label_b
     ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
