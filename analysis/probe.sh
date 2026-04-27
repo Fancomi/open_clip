@@ -12,7 +12,7 @@
 #
 #   bash analysis/probe.sh epochs logs/cc3m_pe_dinov3_leproj_probe_0424_0119/checkpoints/probe
 #   bash analysis/probe.sh epochs logs/cc3m_pe_dinov3_dinov3_probe_0424_1400/checkpoints/probe
-#
+#   bash analysis/probe.sh epochs logs/cc3m_pe_dinov3_dinov3_probe_clip_0427_0146/checkpoints/probe
 # ═══════════════════════════════════════════════════════════════════════════════
 # 输出文件（coco / cc3m 模式）
 # ═══════════════════════════════════════════════════════════════════════════════

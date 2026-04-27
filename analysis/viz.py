@@ -21,17 +21,40 @@ def _fit_pca(feats_list, n):
     return [PCA(n_components=n).fit(f) for f in feats_list], None
 
 
+def _tsne_proj(feats, subsample=2000, seed=42):
+    """Run T-SNE on a subsample; return (N_sub, 2) projection + original indices."""
+    from sklearn.manifold import TSNE
+    rng = np.random.default_rng(seed)
+    idx = rng.choice(len(feats), min(subsample, len(feats)), replace=False)
+    sub = feats[idx]
+    emb = TSNE(n_components=2, perplexity=30, n_jobs=-1,
+               random_state=seed).fit_transform(sub.astype(np.float32))
+    return emb, idx
+
+
 # ── Main plots ────────────────────────────────────────────────────────────────
 
-def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None):
-    """Multi-axis PCA scatter.  Same-dim → shared PCA; mixed-dim → independent rows.
-    fps_indices: highlight same samples (by index) across all model rows."""
+def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
+                 with_tsne=True):
+    """Multi-axis PCA scatter + optional T-SNE column.
+
+    Same-dim → shared PCA row; mixed-dim → independent rows.
+    fps_indices: highlight same samples (by index) across all model rows.
+    with_tsne: append a T-SNE panel (2k subsample) per row.
+    """
     labels = list(feats_dict.keys())
     feats  = list(feats_dict.values())
     colors = cm.tab10(np.linspace(0, 0.9, len(labels)))
     pairs  = list(combinations(range(n_pca), 2))
     pcas, shared_var = _fit_pca(feats, n_pca)
     projs  = [pca.transform(f) for pca, f in zip(pcas, feats)]
+
+    # Pre-compute T-SNE (slow — done once per call)
+    if with_tsne:
+        tsne_projs = []
+        for f in feats:
+            emb, _ = _tsne_proj(f)
+            tsne_projs.append(emb)
 
     def _fps_on(ax, proj, pi, pj):
         if fps_indices is None:
@@ -41,9 +64,11 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None):
                        edgecolors='black', linewidths=0.5, zorder=5,
                        label=f'FPS-{fi}' if (pi == 0 and pj == 1) else '')
 
+    tsne_col = 1 if with_tsne else 0
+
     if shared_var is not None:
         # ── shared PCA: single row ─────────────────────────────────────────────
-        ncols = len(pairs) + 1
+        ncols = len(pairs) + 1 + tsne_col
         fig, axes = plt.subplots(1, ncols, figsize=(4.5 * ncols, 4.5))
         for col, (pi, pj) in enumerate(pairs):
             ax = axes[col]
@@ -55,37 +80,45 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None):
             ax.set_title(f'PC{pi+1} vs PC{pj+1}', fontsize=9)
             if col == 0:
                 ax.legend(markerscale=4, fontsize=8)
-        ax = axes[-1]
+        ax = axes[len(pairs)]
         ax.bar(range(1, n_pca + 1), shared_var * 100, color='steelblue')
         ax.set_xlabel('Component'); ax.set_ylabel('Variance explained (%)')
         ax.set_title('Explained variance', fontsize=9)
+        if with_tsne:
+            ax = axes[-1]
+            for label, emb, c in zip(labels, tsne_projs, colors):
+                ax.scatter(emb[:, 0], emb[:, 1], s=3, alpha=0.3, color=c,
+                           label=label, rasterized=True)
+            ax.set_title('T-SNE (2k subsample)', fontsize=9)
+            ax.legend(markerscale=4, fontsize=8)
+            ax.axis('off')
         fig.suptitle(title, fontsize=12, y=1.01)
     else:
-        # ── independent PCA: one row per model, extra FPS column ──────────────
+        # ── independent PCA: one row per model ────────────────────────────────
         nrows = len(labels)
         has_fps = fps_indices is not None
-        ncols   = len(pairs) + 1 + (1 if has_fps else 0)
+        ncols   = len(pairs) + 1 + (1 if has_fps else 0) + tsne_col
         fig, axes = plt.subplots(nrows, ncols, figsize=(4.5 * ncols, 4.5 * nrows))
         axes = np.array(axes).reshape(nrows, ncols)
         for row, (label, pca, proj, feat, c) in enumerate(
                 zip(labels, pcas, projs, feats, colors)):
             var = pca.explained_variance_ratio_
+            dim = feat.shape[1]
             for col, (pi, pj) in enumerate(pairs):
                 ax = axes[row, col]
                 ax.scatter(proj[:, pi], proj[:, pj], s=3, alpha=0.3,
                            color=c, rasterized=True)
                 _fps_on(ax, proj, pi, pj)
                 ax.set_xlabel(f'PC{pi+1}')
-                ax.set_ylabel(f'{label}  (dim={feat.shape[1]})\nPC{pj+1}'
+                ax.set_ylabel(f'{label}  (D={dim})\nPC{pj+1}'
                               if col == 0 else f'PC{pj+1}')
                 ax.set_title(f'PC{pi+1} vs PC{pj+1}', fontsize=9)
             ax = axes[row, len(pairs)]
             ax.bar(range(1, n_pca + 1), var * 100, color=c)
             ax.set_xlabel('Component'); ax.set_ylabel('Var. explained (%)')
-            ax.set_title(f'{label}  explained var.', fontsize=9)
+            ax.set_title(f'{label} (D={dim})  explained var.', fontsize=9)
             if has_fps:
-                # Dedicated FPS panel: PC1 vs PC2, prominent markers
-                ax = axes[row, -1]
+                ax = axes[row, len(pairs) + 1]
                 ax.scatter(proj[:, 0], proj[:, 1], s=2, alpha=0.15,
                            color=c, rasterized=True)
                 for fi, (idx, mk, fc) in enumerate(
@@ -98,6 +131,13 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None):
                 if row == 0:
                     ax.legend(markerscale=1, fontsize=7,
                               title='Same sample\nacross models')
+            if with_tsne:
+                ax = axes[row, -1]
+                emb = tsne_projs[row]
+                ax.scatter(emb[:, 0], emb[:, 1], s=3, alpha=0.3, color=c,
+                           rasterized=True)
+                ax.set_title(f'{label}  T-SNE', fontsize=9)
+                ax.axis('off')
         fig.suptitle(title + '  [independent PCA]', fontsize=12, y=1.01)
 
     plt.tight_layout()
@@ -138,18 +178,14 @@ def plot_overlap(pa, pb, label_a, label_b, model_name, save_path,
 
 
 def plot_aniso_evolution(step_ids, aniso_list, save_path, id_label='Step'):
-    """Line plot of anisotropy metrics across training steps/epochs.
-
-    step_ids  : list of int
-    aniso_list: list of dicts from compute_anisotropy, one per step
-    """
+    """Line plot of anisotropy metrics across training steps/epochs."""
     keys = [
         ('effective_rank',      'Effective Rank'),
         ('stable_rank',         'Stable Rank'),
         ('avg_cos_sim',         'Avg Cosine Sim ↓'),
         ('std_cos_sim',         'Std Cosine Sim'),
-        ('pct_var_top4',        'Var% top-4'),
-        ('pct_var_top10',       'Var% top-10'),
+        ('pct_var_top_p0.5',    'Var% top-0.5% dims'),
+        ('pct_var_top_p5',      'Var% top-5% dims'),
     ]
     ncols = 3; nrows = 2
     fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 4 * nrows))
@@ -160,12 +196,14 @@ def plot_aniso_evolution(step_ids, aniso_list, save_path, id_label='Step'):
         ax.plot(xs, ys, marker='o', ms=4, lw=1.5, color='steelblue')
         ax.set_xlabel(id_label); ax.set_title(lbl, fontsize=9)
         ax.grid(True, alpha=0.3)
-        # annotate first and last
         ax.annotate(f'{ys[0]:.2f}',  (xs[0],  ys[0]),  textcoords='offset points',
                     xytext=(4, 4),  fontsize=7, color='gray')
         ax.annotate(f'{ys[-1]:.2f}', (xs[-1], ys[-1]), textcoords='offset points',
                     xytext=(-20, 4), fontsize=7, color='steelblue')
-    fig.suptitle(f'Anisotropy Evolution across {id_label}s', fontsize=11, y=1.01)
+    # Annotate dim (same for all checkpoints from same model)
+    dim = aniso_list[0].get('dim')
+    dim_str = f'  D={dim}' if dim else ''
+    fig.suptitle(f'Anisotropy Evolution across {id_label}s{dim_str}', fontsize=11, y=1.01)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
@@ -173,9 +211,12 @@ def plot_aniso_evolution(step_ids, aniso_list, save_path, id_label='Step'):
 
 
 def plot_anisotropy(metrics_dict: dict, save_path: str):
-    """Bar charts + eigenvalue spectrum for all anisotropy metrics."""
+    """Bar charts + eigenvalue spectrum. top-k uses fraction of D for fair comparison."""
     models  = list(metrics_dict.keys())
     colors  = cm.tab10(np.linspace(0, 0.9, len(models)))
+    # Labels include D for each model
+    model_labels = [f'{m}\n(D={metrics_dict[m].get("dim","?")})'
+                    for m in models]
     scalars = [
         ('effective_rank',      'Effective Rank'),
         ('participation_ratio', 'Participation Ratio'),
@@ -183,32 +224,35 @@ def plot_anisotropy(metrics_dict: dict, save_path: str):
         ('numerical_rank',      'Numerical Rank (1% thr)'),
         ('avg_cos_sim',         'Avg Cosine Sim ↓'),
         ('std_cos_sim',         'Std Cosine Sim (multi-modal ↑)'),
-        ('pct_var_top4',        'Var% top-4'),
-        ('pct_var_top10',       'Var% top-10'),
-        ('pct_var_top50',       'Var% top-50'),
-        ('pct_var_top100',      'Var% top-100'),
+        ('pct_var_top_p0.5',    'Var% top-0.5% of D'),
+        ('pct_var_top_p5',      'Var% top-5% of D'),
+        ('pct_var_top_p25',     'Var% top-25% of D'),
+        ('pct_var_top_p50',     'Var% top-50% of D'),
     ]
     ncols = len(scalars) + 1
-    fig, axes = plt.subplots(1, ncols, figsize=(3.2 * ncols, 4.5))
+    fig, axes = plt.subplots(1, ncols, figsize=(3.2 * ncols, 5))
     for ax, (key, lbl) in zip(axes[:-1], scalars):
-        vals = [metrics_dict[m][key] for m in models]
+        vals = [metrics_dict[m].get(key, float('nan')) for m in models]
         bars = ax.bar(range(len(models)), vals, color=colors)
         ax.set_xticks(range(len(models)))
-        ax.set_xticklabels(models, rotation=30, ha='right', fontsize=7)
+        ax.set_xticklabels(model_labels, rotation=30, ha='right', fontsize=7)
         ax.set_title(lbl, fontsize=8)
         for bar, v in zip(bars, vals):
-            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
-                    f'{v:.1f}' if v > 10 else f'{v:.3f}',
-                    ha='center', va='bottom', fontsize=6)
-    # Eigenvalue spectrum (log scale, top-100 PCs)
+            if not np.isnan(v):
+                ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height(),
+                        f'{v:.1f}' if v > 10 else f'{v:.3f}',
+                        ha='center', va='bottom', fontsize=6)
+    # Eigenvalue spectrum (log scale, top-100 PCs, x-axis normalized by D)
     ax = axes[-1]
     for m, c in zip(models, colors):
         eigs = metrics_dict[m]['eigenvalues'][:100]
-        ax.plot(np.arange(1, len(eigs) + 1), eigs * 100,
-                color=c, label=m, lw=1.2)
+        D    = metrics_dict[m].get('dim', len(eigs))
+        xs   = np.arange(1, len(eigs) + 1) / D * 100   # % of total dims
+        ax.plot(xs, eigs * 100, color=c,
+                label=f'{m} (D={D})', lw=1.2)
     ax.set_yscale('log')
-    ax.set_xlabel('PC index'); ax.set_ylabel('Variance % (log)')
-    ax.set_title('Eigenvalue spectrum top-100 (log)', fontsize=8)
+    ax.set_xlabel('PC index (% of D)'); ax.set_ylabel('Variance % (log)')
+    ax.set_title('Eigenvalue spectrum top-100 (log,\nx-axis = % of total dims)', fontsize=8)
     ax.legend(fontsize=7)
     fig.suptitle('Feature Anisotropy & Rank Metrics', fontsize=11, y=1.01)
     plt.tight_layout()
@@ -219,12 +263,13 @@ def plot_anisotropy(metrics_dict: dict, save_path: str):
 
 def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
                    id_label='Step', fps=4):
-    """Step/epoch PCA scatter animation (GIF) + static trajectory plot.
+    """PCA scatter GIF + trajectory GIF + static trajectory plot.
 
-    step_feats : list of (N, D) arrays, one per checkpoint
-    step_ids   : list of int step/epoch numbers (used for frame titles)
-    id_label   : 'Step' or 'Epoch' — shown in frame titles and filenames
-    fps        : GIF frames per second (default 4)
+    Outputs
+    -------
+    {id_label}_evolution.gif   : scatter snapshot per checkpoint
+    trajectory.gif             : progressive trajectory animation
+    trajectory.png             : static full-path overlay
     """
     import os
     from matplotlib.animation import FuncAnimation, PillowWriter
@@ -239,40 +284,87 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
     xp = (x1 - x0) * pad; yp = (y1 - y0) * pad
     xlim = (x0 - xp, x1 + xp); ylim = (y0 - yp, y1 + yp)
 
-    # ── GIF: one frame per checkpoint ─────────────────────────────────────
-    fig_gif, ax_gif = plt.subplots(figsize=(5, 5))
     colors_n = cm.viridis(np.linspace(0, 1, n))
+
+    # ── GIF 1: scatter snapshot per checkpoint ─────────────────────────────
+    fig_gif, ax_gif = plt.subplots(figsize=(5, 5))
     scat = ax_gif.scatter([], [], s=3, alpha=0.4, rasterized=True)
     ax_gif.set_xlim(xlim); ax_gif.set_ylim(ylim); ax_gif.axis('off')
     title_obj = ax_gif.set_title('', fontsize=10)
 
-    def _init():
+    def _init_scat():
         scat.set_offsets(np.empty((0, 2)))
         return (scat, title_obj)
 
-    def _update(frame):
-        proj = projs[frame]
-        scat.set_offsets(proj[:, :2])
+    def _update_scat(frame):
+        scat.set_offsets(projs[frame][:, :2])
         scat.set_color(colors_n[frame])
         title_obj.set_text(f'{id_label} {step_ids[frame]}  '
-                           f'[PCA fitted on final {id_label.lower()}]')
+                           f'[PCA on final {id_label.lower()}]')
         return (scat, title_obj)
 
-    anim = FuncAnimation(fig_gif, _update, init_func=_init,
+    anim = FuncAnimation(fig_gif, _update_scat, init_func=_init_scat,
                          frames=n, interval=1000 // fps, blit=True)
     gif_path = os.path.join(save_dir, f'{id_label.lower()}_evolution.gif')
     anim.save(gif_path, writer=PillowWriter(fps=fps))
     plt.close(fig_gif)
     print(f'[viz] {gif_path}')
 
-    # ── Static trajectory: all checkpoints overlaid ────────────────────────
+    # ── Sample selection (shared across both trajectory outputs) ───────────
     rng    = np.random.default_rng(seed)
     idx    = rng.choice(len(step_feats[0]), min(n_traj, len(step_feats[0])), replace=False)
-    colors = cm.tab20(np.linspace(0, 1, len(idx)))
+    traj_colors = cm.tab20(np.linspace(0, 1, len(idx)))
+    # pre-collect per-sample point arrays
+    sample_pts = [np.array([pr[si] for pr in projs]) for si in idx]
+
+    # ── GIF 2: trajectory progressive animation ────────────────────────────
+    # frame t shows all trails from step 0 → t, plus current scatter
+    fig_traj, ax_traj = plt.subplots(figsize=(7, 7))
+    ax_traj.set_xlim(xlim); ax_traj.set_ylim(ylim)
+    ax_traj.set_xlabel(f'PC1 (final {id_label.lower()})')
+    ax_traj.set_ylabel(f'PC2 (final {id_label.lower()})')
+    traj_title = ax_traj.set_title('', fontsize=9)
+
+    line_artists  = []   # one Line2D per sample
+    start_scats   = []   # start-point dot per sample
+    cur_scats     = []   # current-position dot per sample
+    for pts, c in zip(sample_pts, traj_colors):
+        ln, = ax_traj.plot([], [], '-', color=c, alpha=0.6, lw=0.8)
+        sc_start = ax_traj.scatter(pts[0, 0], pts[0, 1], color=c, s=10,
+                                   marker='o', alpha=0.5, zorder=3)
+        sc_cur   = ax_traj.scatter([], [], color=c, s=40, marker='*',
+                                   zorder=5, edgecolors='black', linewidths=0.3)
+        line_artists.append(ln)
+        start_scats.append(sc_start)
+        cur_scats.append(sc_cur)
+
+    def _init_traj():
+        for ln, sc in zip(line_artists, cur_scats):
+            ln.set_data([], [])
+            sc.set_offsets(np.empty((0, 2)))
+        traj_title.set_text('')
+        return line_artists + cur_scats + [traj_title]
+
+    def _update_traj(frame):
+        for pts, ln, sc in zip(sample_pts, line_artists, cur_scats):
+            ln.set_data(pts[:frame + 1, 0], pts[:frame + 1, 1])
+            sc.set_offsets(pts[frame:frame + 1, :2])
+        traj_title.set_text(
+            f'{id_label} {step_ids[frame]}  '
+            f'N={len(idx)} samples  o=start  *=current')
+        return line_artists + cur_scats + [traj_title]
+
+    anim_traj = FuncAnimation(fig_traj, _update_traj, init_func=_init_traj,
+                              frames=n, interval=1000 // fps, blit=True)
+    traj_gif = os.path.join(save_dir, 'trajectory.gif')
+    anim_traj.save(traj_gif, writer=PillowWriter(fps=fps))
+    plt.close(fig_traj)
+    print(f'[viz] {traj_gif}')
+
+    # ── Static trajectory: full paths overlaid ────────────────────────────
     alphas = np.linspace(0.10, 1.00, n); lws = np.linspace(0.3, 1.8, n)
     fig, ax = plt.subplots(figsize=(8, 7))
-    for si, color in zip(idx, colors):
-        pts = np.array([pr[si] for pr in projs])
+    for pts, color in zip(sample_pts, traj_colors):
         for t in range(len(pts) - 1):
             ax.plot(pts[t:t+2, 0], pts[t:t+2, 1], '-', color=color,
                     alpha=float(alphas[t + 1]), lw=float(lws[t + 1]))
