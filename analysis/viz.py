@@ -10,6 +10,12 @@ from sklearn.decomposition import PCA
 _FPS_MARKERS = ['*', 'D', '^', 's', 'P']
 _FPS_COLORS  = ['red', 'lime', 'cyan', 'orange', 'magenta']
 
+# ── Pair-link mode (modality gap): same shape, modality-specific color + line ─
+# Colors must contrast with cloud colors (#0055FF, #FF2200) and white background
+_PAIR_COL_IMG  = '#00CC44'   # vivid green  — image FPS markers
+_PAIR_COL_TXT  = '#AA00FF'   # violet       — text  FPS markers
+_PAIR_LINE_COL = '#222222'   # near-black   — connecting line
+
 # ── PCA helpers ───────────────────────────────────────────────────────────────
 
 def _fit_pca(feats_list, n):
@@ -46,14 +52,13 @@ def _tsne_proj(feats, subsample=2000, seed=42, force_indices=None):
 # ── Main plots ────────────────────────────────────────────────────────────────
 
 def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
-                 with_tsne=True, colors=None):
+                 with_tsne=True, colors=None, fps_pair_link=False):
     """Multi-axis PCA scatter + optional T-SNE column.
 
-    Same-dim → shared PCA row; mixed-dim → independent rows.
-    fps_indices : list of k int indices; each highlighted with a distinct marker
-                  across ALL models (shared PCA: marks every modality at same idx).
-    with_tsne   : append a T-SNE panel (2k subsample) per row; FPS points included.
-    colors      : optional list/array of colors overriding tab10 (e.g. ['#0055FF','#FF2200']).
+    fps_pair_link : when True (modality gap mode, exactly 2 models in shared PCA),
+                    FPS samples are rendered as same-shape / modality-color pairs
+                    with a line connecting image↔text of the same entity.
+                    Image FPS = green (#00CC44), Text FPS = violet (#AA00FF).
     """
     labels = list(feats_dict.keys())
     feats  = list(feats_dict.values())
@@ -74,7 +79,7 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
             tsne_data.append((emb, sub_idx))
 
     def _fps_on_pca(ax, proj, pi, pj, add_label=False):
-        """Mark FPS points on a PCA panel."""
+        """Mark FPS points on a PCA panel (standard multi-model mode)."""
         if fps_indices is None:
             return
         for fi, (idx, mk, fc) in enumerate(zip(fps_indices, _FPS_MARKERS, _FPS_COLORS)):
@@ -82,8 +87,26 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
                        edgecolors='black', linewidths=0.5, zorder=5,
                        label=f'FPS-{fi}' if add_label else '')
 
+    def _fps_pair_on_pca(ax, pi, pj, add_legend=False):
+        """Pair-link mode: same shape per FPS sample, green=image / violet=text + line."""
+        if fps_indices is None or len(projs) < 2:
+            return
+        p_img_all = projs[0]   # image projection
+        p_txt_all = projs[1]   # text  projection
+        for fi, (fps_i, mk) in enumerate(zip(fps_indices, _FPS_MARKERS)):
+            xi, yi = p_img_all[fps_i, pi], p_img_all[fps_i, pj]
+            xt, yt = p_txt_all[fps_i, pi], p_txt_all[fps_i, pj]
+            ax.plot([xi, xt], [yi, yt], '-', color=_PAIR_LINE_COL,
+                    lw=1.0, alpha=0.65, zorder=4)
+            ax.scatter(xi, yi, marker=mk, s=160, color=_PAIR_COL_IMG,
+                       edgecolors='black', linewidths=0.6, zorder=6,
+                       label='Image FPS' if (add_legend and fi == 0) else '')
+            ax.scatter(xt, yt, marker=mk, s=160, color=_PAIR_COL_TXT,
+                       edgecolors='black', linewidths=0.6, zorder=6,
+                       label='Text FPS' if (add_legend and fi == 0) else '')
+
     def _fps_on_tsne(ax, emb, sub_idx, add_label=False):
-        """Mark FPS points on a T-SNE panel using index remapping."""
+        """Mark FPS points on a T-SNE panel using index remapping (standard mode)."""
         if fps_indices is None:
             return
         idx_map = {int(orig): pos for pos, orig in enumerate(sub_idx)}
@@ -93,6 +116,30 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
                 ax.scatter(emb[pos, 0], emb[pos, 1], marker=mk, s=120, color=fc,
                            edgecolors='black', linewidths=0.5, zorder=5,
                            label=f'FPS-{fi}' if add_label else '')
+
+    def _fps_pair_on_tsne(ax, add_legend=False):
+        """Pair-link mode on T-SNE: green=image, violet=text, line between pairs."""
+        if fps_indices is None or len(tsne_data) < 2:
+            return
+        emb0, idx0 = tsne_data[0]   # image T-SNE
+        emb1, idx1 = tsne_data[1]   # text  T-SNE
+        map0 = {int(o): p for p, o in enumerate(idx0)}
+        map1 = {int(o): p for p, o in enumerate(idx1)}
+        for fi, (fps_i, mk) in enumerate(zip(fps_indices, _FPS_MARKERS)):
+            p0 = map0.get(int(fps_i))
+            p1 = map1.get(int(fps_i))
+            if p0 is None or p1 is None:
+                continue
+            xi, yi = emb0[p0, 0], emb0[p0, 1]
+            xt, yt = emb1[p1, 0], emb1[p1, 1]
+            ax.plot([xi, xt], [yi, yt], '-', color=_PAIR_LINE_COL,
+                    lw=1.0, alpha=0.65, zorder=4)
+            ax.scatter(xi, yi, marker=mk, s=160, color=_PAIR_COL_IMG,
+                       edgecolors='black', linewidths=0.6, zorder=6,
+                       label='Image FPS' if (add_legend and fi == 0) else '')
+            ax.scatter(xt, yt, marker=mk, s=160, color=_PAIR_COL_TXT,
+                       edgecolors='black', linewidths=0.6, zorder=6,
+                       label='Text FPS' if (add_legend and fi == 0) else '')
 
     tsne_col = 1 if with_tsne else 0
 
@@ -105,10 +152,11 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
             for label, proj, c in zip(labels, projs, colors):
                 ax.scatter(proj[:, pi], proj[:, pj], s=3, alpha=0.3, color=c,
                            label=label if col == 0 else '', rasterized=True)
-            # Mark FPS in EVERY modality (same index → shows image-text pairing)
-            for mi, proj in enumerate(projs):
-                _fps_on_pca(ax, proj, pi, pj,
-                            add_label=(col == 0 and mi == 0))
+            if fps_pair_link:
+                _fps_pair_on_pca(ax, pi, pj, add_legend=(col == 0))
+            else:
+                for mi, proj in enumerate(projs):
+                    _fps_on_pca(ax, proj, pi, pj, add_label=(col == 0 and mi == 0))
             ax.set_xlabel(f'PC{pi+1}'); ax.set_ylabel(f'PC{pj+1}')
             ax.set_title(f'PC{pi+1} vs PC{pj+1}', fontsize=9)
             if col == 0:
@@ -123,7 +171,11 @@ def plot_scatter(feats_dict, title, save_path, n_pca=4, fps_indices=None,
                     zip(labels, tsne_data, colors)):
                 ax.scatter(emb[:, 0], emb[:, 1], s=3, alpha=0.3, color=c,
                            label=label, rasterized=True)
-                _fps_on_tsne(ax, emb, sub_idx, add_label=(mi == 0))
+            if fps_pair_link:
+                _fps_pair_on_tsne(ax, add_legend=True)
+            else:
+                for mi, (_, (emb, sub_idx)) in enumerate(zip(labels, tsne_data)):
+                    _fps_on_tsne(ax, emb, sub_idx, add_label=(mi == 0))
             ax.set_title('T-SNE (2k subsample)', fontsize=9)
             ax.legend(markerscale=1, fontsize=8)
             ax.axis('off')

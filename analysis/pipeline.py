@@ -125,6 +125,7 @@ def run_pretrained(args):
             n_pca=args.n_pca,
             fps_indices=fps_img,
             colors=_MOD_COLORS,
+            fps_pair_link=True,
         )
 
     _modality_gap(pe_img,   pe_txt,   'PE-Core',  os.path.join(out, 'pe_core_modality_gap.png'))
