@@ -2,18 +2,6 @@
 # Feature space analysis — lives in analysis/, runs from repo root
 #
 # ═══════════════════════════════════════════════════════════════════════════════
-# 用法
-# ═══════════════════════════════════════════════════════════════════════════════
-#   bash analysis/probe.sh coco                    # COCO — 有缓存则直接出图
-#   bash analysis/probe.sh cc3m                    # CC3M — 有缓存则直接出图
-#   bash analysis/probe.sh epochs <probe_dir>      # epoch 演化
-#   bash analysis/probe.sh overlap                 # COCO vs CC3M 分布重合
-#   bash analysis/probe.sh anisotropy [coco|cc3m]  # 各向异性指标（秒级）
-#
-#   bash analysis/probe.sh epochs logs/cc3m_pe_dinov3_leproj_probe_0424_0119/checkpoints/probe
-#   bash analysis/probe.sh epochs logs/cc3m_pe_dinov3_dinov3_probe_0424_1400/checkpoints/probe
-#   bash analysis/probe.sh epochs logs/cc3m_pe_dinov3_dinov3_probe_clip_0427_0146/checkpoints/probe
-# ═══════════════════════════════════════════════════════════════════════════════
 # 输出文件（coco / cc3m 模式）
 # ═══════════════════════════════════════════════════════════════════════════════
 #   pe_core_modality_gap.png    PE-Core 图文模态鸿沟

@@ -150,6 +150,7 @@ src/debug
 core.*
 **/probe_out/
 **/pca_demo/
+analysis/layer_probe_out/
 
 # Allow
 !src/evaluation/misc/results_dbs/*
