@@ -366,8 +366,8 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
     import os
     from matplotlib.animation import FuncAnimation, PillowWriter
 
-    pca   = PCA(n_components=2).fit(step_feats[-1])
-    projs = [pca.transform(f) for f in step_feats]
+    pca   = PCA(n_components=4).fit(step_feats[-1])   # fit once on final ckpt
+    projs = [pca.transform(f) for f in step_feats]    # all frames → same space
     n     = len(step_ids)
     all_p = np.concatenate(projs)
     pad   = 0.05
@@ -378,27 +378,12 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
 
     colors_n = cm.viridis(np.linspace(0, 1, n))
 
-    # ── GIF 1: T-SNE scatter snapshot per checkpoint ───────────────────────
-    # Run T-SNE independently for each checkpoint (2k subsample for speed)
-    print(f'[viz] computing T-SNE for {n} checkpoints …')
-    tsne_projs = []
-    for i, f in enumerate(step_feats):
-        emb, _ = _tsne_proj(f, subsample=2000, seed=seed)
-        tsne_projs.append(emb)
-        if (i + 1) % 5 == 0 or i == n - 1:
-            print(f'[viz]   T-SNE {i+1}/{n}')
-
-    # Compute a stable axis range across all frames
-    all_t = np.concatenate(tsne_projs)
-    pad   = 0.05
-    tx0, tx1 = all_t[:, 0].min(), all_t[:, 0].max()
-    ty0, ty1 = all_t[:, 1].min(), all_t[:, 1].max()
-    tp = max((tx1 - tx0), (ty1 - ty0)) * pad
-    tlim_x = (tx0 - tp, tx1 + tp); tlim_y = (ty0 - tp, ty1 + tp)
-
+    # ── GIF 1: PCA scatter snapshot per checkpoint ────────────────────────────
+    # All frames projected into the SAME PCA space (fitted on final checkpoint),
+    # so the coordinate system is stable across the entire animation.
     fig_gif, ax_gif = plt.subplots(figsize=(5, 5))
     scat = ax_gif.scatter([], [], s=3, alpha=0.4, rasterized=True)
-    ax_gif.set_xlim(tlim_x); ax_gif.set_ylim(tlim_y); ax_gif.axis('off')
+    ax_gif.set_xlim(xlim); ax_gif.set_ylim(ylim); ax_gif.axis('off')
     title_obj = ax_gif.set_title('', fontsize=10)
 
     def _init_scat():
@@ -406,10 +391,11 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
         return (scat, title_obj)
 
     def _update_scat(frame):
-        scat.set_offsets(tsne_projs[frame])
+        scat.set_offsets(projs[frame][:, :2])
         scat.set_color(colors_n[frame])
         pct = (frame + 1) / n * 100
-        title_obj.set_text(f'{id_label} {step_ids[frame]}  ({pct:.0f}%)  [T-SNE 2k]')
+        title_obj.set_text(f'{id_label} {step_ids[frame]}  ({pct:.0f}%)'
+                           f'  [PCA on final {id_label.lower()}]')
         return (scat, title_obj)
 
     anim = FuncAnimation(fig_gif, _update_scat, init_func=_init_scat,
