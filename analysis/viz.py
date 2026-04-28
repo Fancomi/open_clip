@@ -282,20 +282,24 @@ def plot_aniso_evolution(step_ids, aniso_list, save_path, id_label='Step'):
     ncols = 3; nrows = 2
     fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 4 * nrows))
     axes = axes.reshape(-1)
-    xs = step_ids
+    xs  = step_ids
+    dim = aniso_list[0].get('dim')
+    dim_str = f'D={dim}' if dim else ''
     for ax, (key, lbl) in zip(axes, keys):
         ys = [m[key] for m in aniso_list]
         ax.plot(xs, ys, marker='o', ms=4, lw=1.5, color='steelblue')
-        ax.set_xlabel(id_label); ax.set_title(lbl, fontsize=9)
+        ax.set_xlabel(id_label)
+        ax.set_title(lbl, fontsize=9)
         ax.grid(True, alpha=0.3)
         ax.annotate(f'{ys[0]:.2f}',  (xs[0],  ys[0]),  textcoords='offset points',
                     xytext=(4, 4),  fontsize=7, color='gray')
         ax.annotate(f'{ys[-1]:.2f}', (xs[-1], ys[-1]), textcoords='offset points',
                     xytext=(-20, 4), fontsize=7, color='steelblue')
-    # Annotate dim (same for all checkpoints from same model)
-    dim = aniso_list[0].get('dim')
-    dim_str = f'  D={dim}' if dim else ''
-    fig.suptitle(f'Anisotropy Evolution across {id_label}s{dim_str}', fontsize=11, y=1.01)
+        if dim_str:
+            ax.text(0.98, 0.97, dim_str, transform=ax.transAxes,
+                    fontsize=8, color='#555555', ha='right', va='top',
+                    bbox=dict(boxstyle='round,pad=0.2', fc='white', ec='#cccccc', alpha=0.8))
+    fig.suptitle(f'Anisotropy Evolution across {id_label}s', fontsize=11, y=1.01)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
