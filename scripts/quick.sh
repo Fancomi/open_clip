@@ -144,7 +144,12 @@ LR_1_2=$(python3 -c "print($LR / 2)")
 # ORI
 # run_cc3m "pe_dinov3_leproj_probe"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} --probe-data ${PROBE_TSV}"
 # run_cc3m "pe_dinov3_dinov3_probe" "PE-Core-B-16-dinov3" 29540  "--siglip --epochs 10 --warmup 512 --lr ${LR_17_1} --dinov3 --dino-local-crops-number 2 --dino-head-prototypes 8192  --probe-data ${PROBE_TSV}"
-run_cc3m "pe_dinov3_dinov3_probe_clip" "PE-Core-B-16-dinov3" 29541  "--epochs 10 --warmup 512 --lr ${LR_17_1} --dinov3 --dino-local-crops-number 2 --dino-head-prototypes 8192  --probe-data ${PROBE_TSV} --probe-freq-steps 176"
+# run_cc3m "pe_dinov3_dinov3_probe_clip" "PE-Core-B-16-dinov3" 29541  "--epochs 10 --warmup 512 --lr ${LR_17_1} --dinov3 --dino-local-crops-number 2 --dino-head-prototypes 8192  --probe-data ${PROBE_TSV} --probe-freq-steps 176"
+
+run_cc3m "pe_dinov3_leproj_muon_lr002"   "PE-Core-B-16-dinov3"     29560 "--siglip --lejepa --lejepa-proj --epochs 10 --warmup 512  --lr ${LR_17_1} --opt muon --muon-lr 0.02  --probe-data ${PROBE_TSV} --probe-freq-steps 176"
+# run_cc3m "vit_muon"    "ViT-B-16-exp"        29565 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} --opt muon"
+# run_cc3m "vit_muon_lr002" "ViT-B-16-exp" 29566 "--siglip --epochs 10 --warmup 512 --lr ${LR_17_1} --opt muon --muon-lr 0.02"
+
 
 run_cc3m "vit"         "ViT-B-16-exp"        29562 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "
 run_cc3m "pe_dinov3"   "PE-Core-B-16-dinov3" 29563 "--siglip --epochs 10 --warmup 512  --lr ${LR_17_1} "

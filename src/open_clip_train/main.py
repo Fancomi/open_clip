@@ -403,6 +403,37 @@ def main(args):
                     betas=(args.beta1, args.beta2),
                     eps=args.eps,
                 )
+            elif opt == 'muon':
+                # Muon: hidden weight matrices (ndim>=2, non-embed/non-bias/non-norm) → Muon
+                #        everything else (embed, bias, norm, logit_scale/bias)           → AdamW
+                from open_clip_train.muon import MuonWithAuxAdam
+                muon_lr = getattr(args, 'muon_lr', None) or args.lr
+                muon_momentum = getattr(args, 'muon_momentum', 0.95)
+
+                # Re-partition with Muon-specific rules:
+                # is_muon: ndim>=2 AND not embedding-like AND not norm/bias/logit
+                is_muon = lambda n, p: (
+                    p.ndim >= 2
+                    and "embed" not in n
+                    and "bn" not in n
+                    and "ln" not in n
+                    and "bias" not in n
+                    and "logit_scale" not in n
+                    and "logit_bias" not in n
+                )
+                muon_params   = [p for n, p in named_parameters if is_muon(n, p) and p.requires_grad]
+                adam_params_wd   = [p for n, p in named_parameters if not is_muon(n, p) and not exclude(n, p) and p.requires_grad]
+                adam_params_nowd = [p for n, p in named_parameters if not is_muon(n, p) and exclude(n, p) and p.requires_grad]
+
+                param_groups = [
+                    dict(params=adam_params_nowd, lr=args.lr, betas=(args.beta1, args.beta2),
+                         eps=args.eps, weight_decay=0., use_muon=False),
+                    dict(params=adam_params_wd,   lr=args.lr, betas=(args.beta1, args.beta2),
+                         eps=args.eps, weight_decay=args.wd, use_muon=False),
+                    dict(params=muon_params, lr=muon_lr, momentum=muon_momentum,
+                         weight_decay=args.wd, use_muon=True),
+                ]
+                optimizer = MuonWithAuxAdam(param_groups)
             else:
                 assert False, f'Unknown optimizer {opt}'
 

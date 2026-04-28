@@ -3,7 +3,21 @@ import math
 
 def assign_learning_rate(optimizer, new_lr):
     for param_group in optimizer.param_groups:
-        param_group["lr"] = new_lr
+        # If the group has an initial_lr recorded, scale proportionally.
+        # This preserves the per-group lr ratio (e.g. Muon vs Adam groups).
+        if "initial_lr" in param_group:
+            scale = new_lr / param_group["initial_lr_base"]
+            param_group["lr"] = param_group["initial_lr"] * scale
+        else:
+            param_group["lr"] = new_lr
+
+
+def _record_initial_lr(optimizer, base_lr):
+    """Called once before the first lr assignment to snapshot per-group lrs."""
+    for param_group in optimizer.param_groups:
+        if "initial_lr" not in param_group:
+            param_group["initial_lr"] = param_group["lr"]
+            param_group["initial_lr_base"] = base_lr
 
 
 def _warmup_lr(base_lr, warmup_length, step):
@@ -11,6 +25,8 @@ def _warmup_lr(base_lr, warmup_length, step):
 
 
 def const_lr(optimizer, base_lr, warmup_length, steps):
+    _record_initial_lr(optimizer, base_lr)
+
     def _lr_adjuster(step):
         if step < warmup_length:
             lr = _warmup_lr(base_lr, warmup_length, step)
@@ -23,6 +39,8 @@ def const_lr(optimizer, base_lr, warmup_length, steps):
 
 
 def const_lr_cooldown(optimizer, base_lr, warmup_length, steps, cooldown_steps, cooldown_power=1.0, cooldown_end_lr=0.):
+    _record_initial_lr(optimizer, base_lr)
+
     def _lr_adjuster(step):
         start_cooldown_step = steps - cooldown_steps
         if step < warmup_length:
@@ -43,6 +61,8 @@ def const_lr_cooldown(optimizer, base_lr, warmup_length, steps, cooldown_steps, 
 
 
 def cosine_lr(optimizer, base_lr, warmup_length, steps):
+    _record_initial_lr(optimizer, base_lr)
+
     def _lr_adjuster(step):
         if step < warmup_length:
             lr = _warmup_lr(base_lr, warmup_length, step)

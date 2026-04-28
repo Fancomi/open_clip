@@ -149,7 +149,17 @@ def parse_args(args):
     )
     parser.add_argument(
         "--opt", type=str, default='adamw',
-        help="Which optimizer to use. Choices are ['adamw', or any timm optimizer 'timm/{opt_name}']."
+        help="Which optimizer to use. Choices are ['adamw', 'muon', or any timm optimizer 'timm/{opt_name}']. "
+             "'muon' uses MuonWithAuxAdam: Muon for hidden weight matrices (ndim>=2, non-embed/bias) + AdamW for the rest."
+    )
+    parser.add_argument(
+        "--muon-lr", type=float, default=None,
+        help="Muon learning rate for hidden weight matrices. Defaults to --lr if not set. "
+             "Muon lr semantics differ from Adam lr (spectral norm units); typical range 0.01-0.05."
+    )
+    parser.add_argument(
+        "--muon-momentum", type=float, default=0.95,
+        help="Muon momentum (default: 0.95)."
     )
     parser.add_argument(
         "--use-bn-sync",
