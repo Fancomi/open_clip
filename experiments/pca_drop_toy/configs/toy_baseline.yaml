@@ -1,0 +1,33 @@
+# ============================================================
+# toy_baseline.yaml
+# Dataset B: top PCs = nuisance; label in low-var dims
+# Mode: none (pure MLP, no PCA regularization)
+# This is the baseline all other configs are compared against.
+# ============================================================
+
+name: toy_baseline_dataset_b
+seed: 42
+device: "cpu"   # change to "cuda" if available
+
+dataset: b
+dataset_kwargs:
+  n: 6000
+  dim: 64
+  n_classes: 4
+  signal_dims_start: 16   # label in dims [16:], nuisance in dims [0:16]
+  nuisance_scale: 8.0
+  signal_scale: 1.5
+  noise_scale: 0.3
+
+batch_size: 256
+epochs: 80
+lr: 1.0e-3
+weight_decay: 1.0e-4
+
+model:
+  arch: mlp2
+  dropout: 0.0
+  pca_insert_after: [0]   # position kept for fair comparison, but pca_drop.enabled=false
+
+pca_drop:
+  enabled: false

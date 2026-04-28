@@ -1,0 +1,28 @@
+# =============================================================
+# Dataset B2: nuisance domain shift  (核心正向验证实验)
+# Baseline: no PCA
+# =============================================================
+name: b2_baseline
+seed: 42
+device: cpu
+dataset: b2
+dataset_kwargs:
+  n_train: 5000
+  n_test: 1000
+  dim: 64
+  n_classes: 4
+  signal_dims_start: 16
+  nuisance_scale_train: 8.0
+  nuisance_scale_test: 20.0
+  signal_scale: 1.5
+  noise_scale: 0.3
+batch_size: 256
+epochs: 80
+lr: 1.0e-3
+weight_decay: 1.0e-4
+model:
+  arch: mlp2
+  dropout: 0.0
+  pca_insert_after: [0]
+pca_drop:
+  enabled: false

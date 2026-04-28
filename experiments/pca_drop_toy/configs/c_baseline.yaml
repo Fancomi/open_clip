@@ -1,0 +1,26 @@
+# =============================================================
+# Dataset C: spurious correlation (binary)  — BASELINE
+# =============================================================
+name: c_baseline
+seed: 42
+device: cpu
+dataset: c
+dataset_kwargs:
+  n_train: 4000
+  n_test: 1000
+  dim: 32
+  n_classes: 2
+  spurious_scale: 6.0
+  signal_scale: 1.5
+  noise_scale: 0.5
+  spurious_corr: 0.9
+batch_size: 128
+epochs: 80
+lr: 1.0e-3
+weight_decay: 1.0e-4
+model:
+  arch: mlp2
+  dropout: 0.0
+  pca_insert_after: [0]
+pca_drop:
+  enabled: false

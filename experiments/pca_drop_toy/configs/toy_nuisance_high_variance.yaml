@@ -1,0 +1,42 @@
+# ============================================================
+# toy_nuisance_high_variance.yaml
+# Dataset B: top PCs = nuisance; label in low-var dims
+# Mode: attenuate_topk  (suppress top-k PCs)
+# Expected outcome: OOD accuracy IMPROVES vs baseline
+# ============================================================
+
+name: toy_attenuate_dataset_b
+seed: 42
+device: "cpu"
+
+dataset: b
+dataset_kwargs:
+  n: 6000
+  dim: 64
+  n_classes: 4
+  signal_dims_start: 16
+  nuisance_scale: 8.0
+  signal_scale: 1.5
+  noise_scale: 0.3
+
+batch_size: 256
+epochs: 80
+lr: 1.0e-3
+weight_decay: 1.0e-4
+
+model:
+  arch: mlp2
+  dropout: 0.0
+  pca_insert_after: [0]
+
+pca_drop:
+  enabled: true
+  backend: momentum        # use MomentumPCAStats
+  mode: attenuate_topk
+  top_k: 8                 # nuisance lives in dims 0..15  (8 is conservative)
+  alpha: 0.5
+  momentum: 0.99
+  warmup_steps: 20         # let stats stabilize for 20 steps first
+  update_every: 1
+  train_only: true
+  eps: 1.0e-5

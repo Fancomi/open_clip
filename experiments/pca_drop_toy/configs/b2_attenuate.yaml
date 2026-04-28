@@ -1,0 +1,36 @@
+# =============================================================
+# Dataset B2: nuisance domain shift + attenuate_topk
+# =============================================================
+name: b2_attenuate
+seed: 42
+device: cpu
+dataset: b2
+dataset_kwargs:
+  n_train: 5000
+  n_test: 1000
+  dim: 64
+  n_classes: 4
+  signal_dims_start: 16
+  nuisance_scale_train: 8.0
+  nuisance_scale_test: 20.0
+  signal_scale: 1.5
+  noise_scale: 0.3
+batch_size: 256
+epochs: 80
+lr: 1.0e-3
+weight_decay: 1.0e-4
+model:
+  arch: mlp2
+  dropout: 0.0
+  pca_insert_after: [0]
+pca_drop:
+  enabled: true
+  backend: momentum
+  mode: attenuate_topk
+  top_k: 8
+  alpha: 0.7
+  momentum: 0.99
+  warmup_steps: 20
+  update_every: 1
+  train_only: true
+  eps: 1.0e-5

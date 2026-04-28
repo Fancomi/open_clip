@@ -1,0 +1,27 @@
+# =============================================================
+# Dataset B2 + regular dropout (对照组：验证 PCA drop vs 普通 dropout)
+# =============================================================
+name: b2_regular_dropout
+seed: 42
+device: cpu
+dataset: b2
+dataset_kwargs:
+  n_train: 5000
+  n_test: 1000
+  dim: 64
+  n_classes: 4
+  signal_dims_start: 16
+  nuisance_scale_train: 8.0
+  nuisance_scale_test: 20.0
+  signal_scale: 1.5
+  noise_scale: 0.3
+batch_size: 256
+epochs: 80
+lr: 1.0e-3
+weight_decay: 1.0e-4
+model:
+  arch: mlp2
+  dropout: 0.3   # standard dropout 0.3 applied in each hidden layer
+  pca_insert_after: [0]
+pca_drop:
+  enabled: false

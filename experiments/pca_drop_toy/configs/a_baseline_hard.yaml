@@ -1,0 +1,24 @@
+# =============================================================
+# Dataset A HARD: baseline (no PCA)
+# =============================================================
+name: a_baseline_hard
+seed: 42
+device: cpu
+dataset: a
+dataset_kwargs:
+  n: 6000
+  dim: 64
+  n_classes: 4
+  signal_dims: 4
+  signal_scale: 1.5
+  noise_scale: 1.0
+batch_size: 256
+epochs: 80
+lr: 1.0e-3
+weight_decay: 1.0e-4
+model:
+  arch: linear
+  dropout: 0.0
+  pca_insert_after: []
+pca_drop:
+  enabled: false

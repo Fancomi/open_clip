@@ -1,0 +1,33 @@
+# =============================================================
+# Dataset A: signal in top PCs + attenuate_topk (SHOULD HURT)
+# =============================================================
+name: a_attenuate
+seed: 42
+device: cpu
+dataset: a
+dataset_kwargs:
+  n: 6000
+  dim: 64
+  n_classes: 4
+  signal_dims: 4
+  signal_scale: 5.0
+  noise_scale: 0.5
+batch_size: 256
+epochs: 80
+lr: 1.0e-3
+weight_decay: 1.0e-4
+model:
+  arch: mlp2
+  dropout: 0.0
+  pca_insert_after: ["input"]
+pca_drop:
+  enabled: true
+  backend: momentum
+  mode: attenuate_topk
+  top_k: 4
+  alpha: 0.7
+  momentum: 0.99
+  warmup_steps: 20
+  update_every: 1
+  train_only: true
+  eps: 1.0e-5

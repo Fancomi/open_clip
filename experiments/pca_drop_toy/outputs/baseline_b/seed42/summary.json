@@ -1,0 +1,67 @@
+{
+  "name": "toy_baseline_dataset_b",
+  "dataset": "dataset_b_nuisance_in_top_pcs",
+  "config": {
+    "name": "toy_baseline_dataset_b",
+    "seed": 42,
+    "device": "cpu",
+    "dataset": "b",
+    "dataset_kwargs": {
+      "n": 6000,
+      "dim": 64,
+      "n_classes": 4,
+      "signal_dims_start": 16,
+      "nuisance_scale": 8.0,
+      "signal_scale": 1.5,
+      "noise_scale": 0.3,
+      "seed": 42
+    },
+    "batch_size": 256,
+    "epochs": 80,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "model": {
+      "arch": "mlp2",
+      "dropout": 0.0,
+      "pca_insert_after": [
+        0
+      ]
+    },
+    "pca_drop": {
+      "enabled": false
+    }
+  },
+  "best_val_acc": 1.0,
+  "test_acc": 1.0,
+  "test_loss": 0.014574042288586497,
+  "test_feature_metrics": {
+    "effective_rank": 18.57912254333496,
+    "stable_rank": 13.521674529689697,
+    "explained_var_ratio": 0.2786550521850586,
+    "explained_var_ratio_k4": 0.2786550521850586,
+    "eigenvalue_spectrum": [
+      81.37401580810547,
+      76.83007049560547,
+      75.64480590820312,
+      72.75888061523438,
+      69.94064331054688,
+      68.69873046875,
+      66.56838989257812,
+      62.786441802978516,
+      61.62565231323242,
+      60.278602600097656,
+      58.35411834716797,
+      57.00979995727539,
+      56.200401306152344,
+      54.44270706176758,
+      52.36351013183594,
+      48.67476272583008
+    ],
+    "norm_mean": 33.18977355957031,
+    "norm_std": 5.2572526931762695,
+    "norm_min": 18.053539276123047,
+    "norm_max": 52.40481185913086
+  },
+  "total_epochs": 80,
+  "total_time_s": 22.15
+}
