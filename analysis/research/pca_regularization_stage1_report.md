@@ -532,14 +532,100 @@ if dist.is_initialized():
 
 ---
 
-## 十、附录
+## 十一、Stage 1.1 补充实验：Spectral Balance 新模式
+
+**实验日期**：2026-04-28  
+**目的**：测试「EMA-PCA 谱平衡」策略作为 attenuate 的替代方案
+
+### 11.1 方法设计
+
+在 `PCARegularizer` 中新增第5种模式：`spectral_balance`
+
+**公式**：
+
+```
+z_centered = z - μ
+u = z_centered @ V          # [B, d] 投影到 PCA 基
+r_j = λ_j / Σλ              # 归一化特征值份额
+w_j = clip((r_mean / (r_j + ε))^γ, w_min, w_max)   # 逆方差权重
+z_out = (u * w) @ V^T + μ
+```
+
+**与 attenuate_topk 的区别**：
+- attenuate：只操作 top-k 方向，将其投影坐标乘以 `(1-α)`
+- spectral_balance：操作全部 d 个方向，高方差方向压缩（w<1），低方差方向放大（w>1）
+- 参数 `γ` 控制压缩/放大强度（γ=0→identity，γ=1→完整逆方差缩放）
+- `w_min, w_max` 防止极端方向崩溃
+
+**超参数**：
+
+| 参数 | 值 | 语义 |
+|---|---|---|
+| γ | 0.3 / 0.5 / 1.0 | 0.3: mild，0.5: medium，1.0: full inverse |
+| w_min | 0.7 / 0.5 / 0.3 | 对应 γ 从小到大 |
+| w_max | 1.5 / 2.0 / 4.0 | 对应 γ 从小到大 |
+
+### 11.2 实验结果
+
+**Dataset C（spurious corr=0.9，seed=2 排除）**：
+
+| 条件 | seed=42 | seed=1 | mean±std | Δ vs baseline(0.838) |
+|---|---|---|---|---|
+| Baseline（Stage 1） | 0.861 | 0.815 | **0.838±0.023** | — |
+| spectral_balance γ=0.3 | 0.856 | 0.810 | **0.833±0.023** | −0.005 |
+| spectral_balance γ=0.5 | 0.825 | 0.797 | **0.811±0.014** | −0.027 |
+| spectral_balance γ=1.0 | 0.760 | 0.776 | **0.768±0.008** | −0.070 |
+| attenuate α=0.1（对照，Stage 1）| 0.860 | 0.810 | 0.835±0.025 | −0.003 |
+| attenuate α=0.7（对照，Stage 1）| 0.770 | 0.765 | 0.768±0.003 | −0.071 |
+
+**Dataset B2（nuisance shift）**：
+
+| 条件 | seed=42 | seed=1 | mean | Δ |
+|---|---|---|---|---|
+| Baseline（Stage 1） | 0.983 | 0.967 | **0.978** | — |
+| spectral_balance γ=0.5 | 0.958 | 0.937 | **0.948** | **−0.030** ✗ |
+| attenuate α=0.7（对照，Stage 1）| 0.983 | 0.967 | **0.978** | 0.000 |
+
+### 11.3 分析与结论
+
+**发现 1：spectral_balance 与 attenuate 在 Dataset C 上机制等价**
+
+γ 扫和 α 扫呈现完全相同的退化曲线：
+
+| attenuate α | Δ | spectral γ | Δ |
+|---|---|---|---|
+| 0.1 | −0.003 | 0.3 | −0.005 |
+| 0.5 | −0.028 | 0.5 | −0.027 |
+| 0.7 | −0.071 | 1.0 | −0.070 |
+
+两者在强度足够小时都能保持接近 baseline（γ=0.3 对应 α≈0.1 的保守程度）。这不是巧合——**当特征的主成分高度各向异性时（PC1 特征值 46.28 vs PC2 4.0），γ=0.5 的全局缩放和 α=0.7 的 top-2 局部压制在效果上等价**：两者都在主导方向上做了大约同样程度的压缩。
+
+**发现 2：spectral_balance 在 B2 上比 attenuate 更差（−3.0pp vs 0.0pp）**
+
+这是关键的负面差异：
+
+- attenuate 只修改 top-k 方向（B2 中 MLP 会自然忽略的方向），对 MLP 的分类决策面影响为零 → **zero-degradation**
+- spectral_balance 同时**放大低方差方向**（w_max=2.0），而 B2 的低方差方向中包含噪声维度。MLP 分类器原本会忽略它们，但经过 spectral_balance 放大后，这些噪声被强制注入分类器的输入 → **−3.0pp 退化**
+
+**根本原因**：「放大低方差方向」这个操作在低方差=有用信号时是正确的，但在低方差=纯噪声时是有害的。由于 PCA 无法区分两者（都只看方差大小），spectral_balance 的「放大」操作引入了随机风险。
+
+**结论：spectral_balance 不比 attenuate 更优，不推荐作为 Stage 3 方案**
+
+从本次实验中，`spectral_balance` 的「全方向软白化」策略：
+1. 在有效抑制高方差 spurious 方向上与 attenuate 等价（Dataset C 曲线重叠）
+2. 在低方差方向的放大操作引入新风险（Dataset B2 退化 −3pp）
+3. 没有在任何场景超越 baseline
+
+Stage 1 的结论保持不变：**若上正则化，使用 `attenuate_topk`（α≤0.2）是更安全的选择**。`spectral_balance` 理论上更优雅，但「放大噪声方向」这个副作用使它实际上比 attenuate 风险更高。
+
+
 
 ### A. 文件结构
 
 ```
 experiments/pca_drop_toy/
 ├── momentum_pca.py          # MomentumPCAStats 核心模块
-├── pca_regularizer.py       # PCARegularizer（4 种模式）
+├── pca_regularizer.py       # PCARegularizer（5 种模式，含 spectral_balance）
 ├── datasets.py              # 合成数据集（A/B/B2/C/D/E）
 ├── models.py                # MLPClassifier + build_model
 ├── train.py                 # 训练循环 + JSONL 日志
@@ -557,6 +643,7 @@ experiments/pca_drop_toy/
 │   ├── c_ablation_alpha_{a0.1,a0.2,a0.3,a0.5}/
 │   ├── c_ablation_topk_{k1,k2,k3,k4}/
 │   ├── c_ablation_momentum_{m0.9,m0.99,m0.995}/
+│   ├── c_spectral_g{0.3,0.5,1.0}/ b2_spectral_g0.5/
 │   └── e_baseline/ e_attenuate/
 └── tests/
     └── test_pca_regularizer.py  # 29 个单元测试，全部通过

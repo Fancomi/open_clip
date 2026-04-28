@@ -10,6 +10,11 @@ Modes
   attenuate_topk     : H' = H_c - α · H_c V_k V_k^T + μ
   drop_topk          : zero out / mask PC coordinates of top-k components
   drop_all_pc_weighted: eigenvalue-proportional drop probability for all PCs
+  spectral_balance   : soft inverse-variance reweighting across ALL PC directions
+                       z' = (u * w) @ V^T + μ,  u = z_c @ V
+                       w_j = clip((r_mean / (r_j + ε))^γ, w_min, w_max)
+                       r_j = λ_j / Σλ  (normalized eigenvalue share)
+                       γ=0.5 (sqrt): mild stretching of low-variance dirs
 
 All modes
   * identity at eval() time by default (train_only=True)
@@ -68,7 +73,7 @@ class PCARegularizer(nn.Module):
     use_fp32       : compute PCA statistics and basis in float32
     """
 
-    MODES = ("none", "attenuate_topk", "drop_topk", "drop_all_pc_weighted")
+    MODES = ("none", "attenuate_topk", "drop_topk", "drop_all_pc_weighted", "spectral_balance")
 
     def __init__(
         self,
@@ -88,6 +93,10 @@ class PCARegularizer(nn.Module):
         train_only: bool = True,
         detach_basis: bool = True,
         use_fp32: bool = True,
+        # spectral_balance params
+        spectral_gamma: float = 0.5,
+        spectral_w_min: float = 0.5,
+        spectral_w_max: float = 2.0,
     ):
         super().__init__()
         assert mode in self.MODES, f"Unknown mode '{mode}'. Choose from {self.MODES}"
@@ -103,6 +112,10 @@ class PCARegularizer(nn.Module):
         self.train_only = train_only
         self.detach_basis = detach_basis  # always True in practice
         self.use_fp32 = use_fp32
+        self.eps = eps
+        self.spectral_gamma = spectral_gamma
+        self.spectral_w_min = spectral_w_min
+        self.spectral_w_max = spectral_w_max
 
         self.pca_stats = MomentumPCAStats(
             dim=dim,
@@ -115,7 +128,6 @@ class PCARegularizer(nn.Module):
     # ──────────────────────────────────────────────────────────────────
     # Mode implementations  (work in float32 internally)
     # ──────────────────────────────────────────────────────────────────
-
     def _attenuate_topk(
         self,
         xc: torch.Tensor,   # [B, d]  centered, float32
@@ -206,6 +218,41 @@ class PCARegularizer(nn.Module):
         xc_out = coords_masked @ V.T    # project back
         return xc_out + mu
 
+    def _spectral_balance(
+        self,
+        xc: torch.Tensor,   # [B, d]  centered, float32
+        V: torch.Tensor,    # [d, d]  all eigenvectors (descending order)
+        lam: torch.Tensor,  # [d]     all eigenvalues
+        mu: torch.Tensor,   # [1, d]  batch mean
+    ) -> torch.Tensor:
+        """
+        Soft inverse-variance reweighting across ALL PC directions.
+
+        Each direction j is scaled by w_j = clip((r_mean / (r_j + ε))^γ, w_min, w_max)
+        where r_j = λ_j / Σλ is the normalized eigenvalue share.
+
+        Effect:
+          - High-variance (top) PCs: r_j > r_mean → w_j < 1  (compressed)
+          - Low-variance PCs:         r_j < r_mean → w_j > 1  (amplified)
+          - γ=0.5: mild stretching (sqrt), avoids extreme distortion
+          - Clamping to [w_min, w_max] prevents runaway amplification of noise dirs
+
+        With w_j=1 for all j (γ=0 or w_min=w_max=1) → identity transform.
+        """
+        lam = lam.clamp(min=0.0)
+        total = lam.sum().clamp(min=1e-8)
+        r = lam / total                                     # [d] normalized shares
+        r_mean = 1.0 / self.dim                             # uniform target = 1/d
+
+        # Inverse-variance weights (clamped)
+        w = ((r_mean / (r + self.eps)).pow(self.spectral_gamma)
+             .clamp(self.spectral_w_min, self.spectral_w_max))  # [d]
+
+        u = xc @ V          # [B, d] project to PCA basis
+        u_scaled = u * w    # [B, d] scale per-direction
+        xc_out = u_scaled @ V.T  # [B, d] project back
+        return xc_out + mu
+
     # ──────────────────────────────────────────────────────────────────
     # Forward
     # ──────────────────────────────────────────────────────────────────
@@ -248,11 +295,10 @@ class PCARegularizer(nn.Module):
         # ── get PCA basis ─────────────────────────────────────────────
         k = min(self.top_k, self.dim)
 
-        if self.mode == "drop_all_pc_weighted":
+        if self.mode in ("drop_all_pc_weighted", "spectral_balance"):
             V_all, lam_all = self.pca_stats.get_basis(k=self.dim)
         else:
             V_all, lam_all = self.pca_stats.get_basis(k=k)
-
         if V_all is None:
             return x  # not ready
 
@@ -274,6 +320,9 @@ class PCARegularizer(nn.Module):
 
             elif self.mode == "drop_all_pc_weighted":
                 out_f32 = self._drop_all_pc_weighted(xc, V_f32, lam_f32, mu)
+
+            elif self.mode == "spectral_balance":
+                out_f32 = self._spectral_balance(xc, V_f32, lam_f32, mu)
 
             else:  # should not happen
                 return x

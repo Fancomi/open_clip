@@ -1,0 +1,78 @@
+{
+  "name": "b2_attenuate",
+  "dataset": "dataset_b2_nuisance_domain_shift",
+  "config": {
+    "name": "b2_attenuate",
+    "seed": 2,
+    "device": "cpu",
+    "dataset": "b2",
+    "dataset_kwargs": {
+      "n_train": 5000,
+      "n_test": 1000,
+      "dim": 64,
+      "n_classes": 4,
+      "signal_dims_start": 16,
+      "nuisance_scale_train": 8.0,
+      "nuisance_scale_test": 20.0,
+      "signal_scale": 1.5,
+      "noise_scale": 0.3,
+      "seed": 2
+    },
+    "batch_size": 256,
+    "epochs": 80,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "model": {
+      "arch": "mlp2",
+      "dropout": 0.0,
+      "pca_insert_after": [
+        0
+      ]
+    },
+    "pca_drop": {
+      "enabled": true,
+      "backend": "momentum",
+      "mode": "attenuate_topk",
+      "top_k": 8,
+      "alpha": 0.7,
+      "momentum": 0.995,
+      "warmup_steps": 20,
+      "update_every": 1,
+      "train_only": true,
+      "eps": 1e-05
+    }
+  },
+  "best_val_acc": 1.0,
+  "test_acc": 0.984,
+  "test_loss": 0.07307852525264025,
+  "test_feature_metrics": {
+    "effective_rank": 16.60283088684082,
+    "stable_rank": 12.930618297841265,
+    "explained_var_ratio": 0.29134395718574524,
+    "explained_var_ratio_k4": 0.29134395718574524,
+    "eigenvalue_spectrum": [
+      501.18524169921875,
+      481.6007385253906,
+      456.7014465332031,
+      448.6063537597656,
+      431.87847900390625,
+      418.6629333496094,
+      414.04901123046875,
+      409.4129638671875,
+      391.325927734375,
+      387.66888427734375,
+      377.6164855957031,
+      359.1506652832031,
+      352.06512451171875,
+      334.9308776855469,
+      329.0916748046875,
+      316.32122802734375
+    ],
+    "norm_mean": 79.53807830810547,
+    "norm_std": 13.747234344482422,
+    "norm_min": 40.98447799682617,
+    "norm_max": 131.19021606445312
+  },
+  "total_epochs": 80,
+  "total_time_s": 8278.24
+}

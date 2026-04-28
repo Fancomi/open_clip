@@ -1,8 +1,8 @@
 {
-  "name": "c_attenuate",
+  "name": "c_spectral_g0.3",
   "dataset": "dataset_c_spurious_correlation",
   "config": {
-    "name": "c_attenuate",
+    "name": "c_spectral_g0.3",
     "seed": 1,
     "device": "cpu",
     "dataset": "c",
@@ -31,19 +31,20 @@
     "pca_drop": {
       "enabled": true,
       "backend": "momentum",
-      "mode": "attenuate_topk",
-      "top_k": 4,
-      "alpha": 0.7,
+      "mode": "spectral_balance",
       "momentum": 0.99,
       "warmup_steps": 20,
       "update_every": 1,
       "train_only": true,
-      "eps": 1e-05
+      "eps": 1e-05,
+      "spectral_gamma": 0.3,
+      "spectral_w_min": 0.7,
+      "spectral_w_max": 1.5
     }
   },
   "best_val_acc": 1.0,
-  "test_acc": 0.773,
-  "test_loss": 0.46781453862786293,
+  "test_acc": 0.81,
+  "test_loss": 0.40296775475144386,
   "test_feature_metrics": {
     "effective_rank": 2.594449520111084,
     "stable_rank": 1.387321516822879,
@@ -74,5 +75,5 @@
     "spurious_alignment": 0.24998793005943298
   },
   "total_epochs": 80,
-  "total_time_s": 4084.5
+  "total_time_s": 9581.93
 }

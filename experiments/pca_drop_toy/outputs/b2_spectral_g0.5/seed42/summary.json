@@ -1,0 +1,78 @@
+{
+  "name": "b2_spectral_g0.5",
+  "dataset": "dataset_b2_nuisance_domain_shift",
+  "config": {
+    "name": "b2_spectral_g0.5",
+    "seed": 42,
+    "device": "cpu",
+    "dataset": "b2",
+    "dataset_kwargs": {
+      "n_train": 4000,
+      "n_test": 1000,
+      "dim": 64,
+      "n_classes": 4,
+      "nuisance_scale_train": 8.0,
+      "nuisance_scale_test": 20.0,
+      "signal_scale": 1.5,
+      "noise_scale": 0.5,
+      "seed": 42
+    },
+    "batch_size": 256,
+    "epochs": 80,
+    "lr": 0.001,
+    "weight_decay": 0.0001,
+    "model": {
+      "arch": "mlp2",
+      "dropout": 0.0,
+      "pca_insert_after": [
+        0
+      ]
+    },
+    "pca_drop": {
+      "enabled": true,
+      "backend": "momentum",
+      "mode": "spectral_balance",
+      "momentum": 0.99,
+      "warmup_steps": 20,
+      "update_every": 1,
+      "train_only": true,
+      "eps": 1e-05,
+      "spectral_gamma": 0.5,
+      "spectral_w_min": 0.5,
+      "spectral_w_max": 2.0
+    }
+  },
+  "best_val_acc": 1.0,
+  "test_acc": 0.958,
+  "test_loss": 0.17031553387641907,
+  "test_feature_metrics": {
+    "effective_rank": 16.722797393798828,
+    "stable_rank": 13.580337513077495,
+    "explained_var_ratio": 0.28873005509376526,
+    "explained_var_ratio_k4": 0.28873005509376526,
+    "eigenvalue_spectrum": [
+      476.5747985839844,
+      472.6510925292969,
+      469.3638610839844,
+      450.0847473144531,
+      432.90008544921875,
+      423.96331787109375,
+      413.326904296875,
+      407.44903564453125,
+      397.42047119140625,
+      394.3302307128906,
+      381.4172668457031,
+      358.5174560546875,
+      354.7123107910156,
+      340.8174743652344,
+      319.1142883300781,
+      303.94281005859375
+    ],
+    "norm_mean": 79.35699462890625,
+    "norm_std": 13.92361068725586,
+    "norm_min": 41.60801315307617,
+    "norm_max": 126.21887969970703
+  },
+  "total_epochs": 80,
+  "total_time_s": 8082.89
+}

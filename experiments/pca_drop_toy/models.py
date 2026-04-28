@@ -137,6 +137,9 @@ class MLPClassifier(nn.Module):
                 warmup_steps=cfg.get("warmup_steps", 0),
                 eps=cfg.get("eps", 1e-5),
                 train_only=cfg.get("train_only", True),
+                spectral_gamma=cfg.get("spectral_gamma", 0.5),
+                spectral_w_min=cfg.get("spectral_w_min", 0.5),
+                spectral_w_max=cfg.get("spectral_w_max", 2.0),
             )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
