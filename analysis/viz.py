@@ -358,8 +358,12 @@ def plot_anisotropy(metrics_dict: dict, save_path: str):
 
 
 def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
-                   id_label='Step', fps=4):
+                   id_label='Step', fps=4, txt_feats=None):
     """PCA scatter GIF + trajectory GIF + static trajectory plot.
+
+    txt_feats : optional list of (N, D) text feature arrays, one per checkpoint.
+                When provided, the scatter GIF shows both modalities in the same
+                PCA space (image=blue, text=red).  Trajectory tracks image only.
 
     Outputs
     -------
@@ -370,10 +374,15 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
     import os
     from matplotlib.animation import FuncAnimation, PillowWriter
 
-    pca   = PCA(n_components=4).fit(step_feats[-1])   # fit once on final ckpt
-    projs = [pca.transform(f) for f in step_feats]    # all frames → same space
+    # PCA fitted on final checkpoint (image only keeps stable reference axis).
+    # When text feats available, expand axis range to cover both modalities.
+    pca   = PCA(n_components=4).fit(step_feats[-1])
+    projs = [pca.transform(f) for f in step_feats]          # image projections
+    txt_projs = ([pca.transform(f) for f in txt_feats]
+                 if txt_feats is not None else None)          # text  projections
+
     n     = len(step_ids)
-    all_p = np.concatenate(projs)
+    all_p = np.concatenate(projs + (txt_projs if txt_projs else []))
     pad   = 0.05
     x0, x1 = all_p[:, 0].min(), all_p[:, 0].max()
     y0, y1 = all_p[:, 1].min(), all_p[:, 1].max()
@@ -385,22 +394,37 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
     # ── GIF 1: PCA scatter snapshot per checkpoint ────────────────────────────
     # All frames projected into the SAME PCA space (fitted on final checkpoint),
     # so the coordinate system is stable across the entire animation.
+    _C_IMG = '#0055FF'   # image cloud color
+    _C_TXT = '#FF2200'   # text  cloud color
+
     fig_gif, ax_gif = plt.subplots(figsize=(5, 5))
-    scat = ax_gif.scatter([], [], s=3, alpha=0.4, rasterized=True)
+    scat_img = ax_gif.scatter([], [], s=3, alpha=0.35, color=_C_IMG,
+                              label='Image', rasterized=True)
+    scat_txt = (ax_gif.scatter([], [], s=3, alpha=0.35, color=_C_TXT,
+                               label='Text', rasterized=True)
+                if txt_projs is not None else None)
     ax_gif.set_xlim(xlim); ax_gif.set_ylim(ylim); ax_gif.axis('off')
+    if scat_txt is not None:
+        ax_gif.legend(markerscale=3, fontsize=7, loc='lower right')
     title_obj = ax_gif.set_title('', fontsize=10)
 
+    _scat_artists = [scat_img] + ([scat_txt] if scat_txt else []) + [title_obj]
+
     def _init_scat():
-        scat.set_offsets(np.empty((0, 2)))
-        return (scat, title_obj)
+        scat_img.set_offsets(np.empty((0, 2)))
+        if scat_txt is not None:
+            scat_txt.set_offsets(np.empty((0, 2)))
+        return _scat_artists
 
     def _update_scat(frame):
-        scat.set_offsets(projs[frame][:, :2])
-        scat.set_color(colors_n[frame])
+        scat_img.set_offsets(projs[frame][:, :2])
+        if scat_txt is not None and txt_projs is not None:
+            scat_txt.set_offsets(txt_projs[frame][:, :2])
         pct = (frame + 1) / n * 100
+        suffix = '+Text' if txt_projs is not None else ''
         title_obj.set_text(f'{id_label} {step_ids[frame]}  ({pct:.0f}%)'
-                           f'  [PCA on final {id_label.lower()}]')
-        return (scat, title_obj)
+                           f'  [PCA{suffix}]')
+        return _scat_artists
 
     anim = FuncAnimation(fig_gif, _update_scat, init_func=_init_scat,
                          frames=n, interval=1000 // fps, blit=True)

@@ -285,15 +285,28 @@ def run_epochs(args):
     else:
         assert False, f'No step_*.npz or epoch_*.npz found in {probe_dir}'
 
-    ids, feats = [], []
+    ids, feats, txt_feats_list = [], [], []
+    has_txt = None
     for f in files:
         ids.append(_parse_id(f))
-        feats.append(np.load(f)['features'])
-        logging.info(f'  {id_label} {ids[-1]:>6d}: {feats[-1].shape}')
+        data = np.load(f)
+        feats.append(data['features'])
+        if 'txt_features' in data:
+            txt_feats_list.append(data['txt_features'])
+            has_txt = True
+        else:
+            has_txt = False
+        logging.info(f'  {id_label} {ids[-1]:>6d}: img={feats[-1].shape}'
+                     + (f'  txt={txt_feats_list[-1].shape}' if has_txt and txt_feats_list else ''))
+
+    txt_feats = txt_feats_list if (has_txt and len(txt_feats_list) == len(feats)) else None
+    if txt_feats is None:
+        logging.info('[epochs] no txt_features found in npz — image-only evolution')
 
     out = os.path.join(probe_dir, 'plots')
     os.makedirs(out, exist_ok=True)
-    plot_evolution(feats, ids, out, n_traj=args.n_traj, id_label=id_label)
+    plot_evolution(feats, ids, out, n_traj=args.n_traj, id_label=id_label,
+                   txt_feats=txt_feats)
 
     # ── Anisotropy evolution ────────────────────────────────────────────────
     logging.info(f'[epochs] computing anisotropy for {len(feats)} checkpoints...')
