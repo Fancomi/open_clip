@@ -77,13 +77,14 @@ def run_pc_alignment(args):
     """Load probe checkpoints and compute PC alignment across training.
 
     Expects args.probe_dir with step_XXXXXX.npz or epoch_XX.npz files.
-    Saves plots to <probe_dir>/plots/pc_alignment_*.png
+    Saves plots to <log_root>/probe/plots/pc_alignment_*.png  (sibling of checkpoints/)
     """
     import re
 
     probe_dir = args.probe_dir
     n_pcs     = getattr(args, 'n_pcs', 16)
-    plots_dir = os.path.join(probe_dir, 'plots')
+    # Place plots at <log_root>/probe/plots  (sibling of checkpoints/)
+    plots_dir = os.path.join(probe_dir, '..', '..', 'probe', 'plots')
     os.makedirs(plots_dir, exist_ok=True)
 
     # ── Collect and sort checkpoint files ────────────────────────────────────

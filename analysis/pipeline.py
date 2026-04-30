@@ -303,7 +303,8 @@ def run_epochs(args):
     if txt_feats is None:
         logging.info('[epochs] no txt_features found in npz — image-only evolution')
 
-    out = os.path.join(probe_dir, 'plots')
+    # Place plots at <log_root>/probe/plots  (sibling of checkpoints/)
+    out = os.path.join(probe_dir, '..', '..', 'probe', 'plots')
     os.makedirs(out, exist_ok=True)
     plot_evolution(feats, ids, out, n_traj=args.n_traj, id_label=id_label,
                    txt_feats=txt_feats)

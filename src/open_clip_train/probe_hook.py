@@ -64,11 +64,13 @@ def extract_text_features(model, captions, device, batch_size=512):
     Returns None if model has no text tower."""
     try:
         from open_clip import tokenize
-        tokenize_fn = tokenize
     except ImportError:
         return None
     if not hasattr(model, 'encode_text'):
         return None
+    # Respect the model's context_length (e.g. PE-Core uses 32, not the default 77)
+    ctx_len = getattr(model, 'context_length', 77)
+    tokenize_fn = lambda texts: tokenize(texts, context_length=ctx_len)
     dl = DataLoader(_TxtDataset(captions, tokenize_fn), batch_size=batch_size,
                     num_workers=0, pin_memory=False)
     model.eval()

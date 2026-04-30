@@ -151,6 +151,6 @@ core.*
 **/probe_out/
 **/pca_demo/
 analysis/layer_probe_out/
-
+experiments/pca_drop_toy/outputs/
 # Allow
 !src/evaluation/misc/results_dbs/*
