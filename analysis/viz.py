@@ -270,7 +270,10 @@ def plot_overlap(pa, pb, label_a, label_b, model_name, save_path,
 
 
 def plot_aniso_evolution(step_ids, aniso_list, save_path, id_label='Step'):
-    """Line plot of anisotropy metrics across training steps/epochs."""
+    """Line plot of anisotropy metrics across training steps/epochs.
+
+    aniso_list entries are backbone CLS metrics (the primary feature space).
+    """
     keys = [
         ('effective_rank',      'Effective Rank'),
         ('stable_rank',         'Stable Rank'),
@@ -282,24 +285,21 @@ def plot_aniso_evolution(step_ids, aniso_list, save_path, id_label='Step'):
     ncols = 3; nrows = 2
     fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 4 * nrows))
     axes = axes.reshape(-1)
-    xs  = step_ids
-    dim = aniso_list[0].get('dim')
-    dim_str = f'D={dim}' if dim else ''
+    xs = step_ids
+
     for ax, (key, lbl) in zip(axes, keys):
         ys = [m[key] for m in aniso_list]
-        ax.plot(xs, ys, marker='o', ms=4, lw=1.5, color='steelblue')
+        ax.plot(xs, ys, marker='o', ms=3, lw=1.5, color='steelblue')
+        ax.annotate(f'{ys[0]:.2f}',  (xs[0],  ys[0]),  textcoords='offset points',
+                    xytext=(4, 4),   fontsize=7, color='gray')
+        ax.annotate(f'{ys[-1]:.2f}', (xs[-1], ys[-1]), textcoords='offset points',
+                    xytext=(-20, 4), fontsize=7, color='steelblue')
         ax.set_xlabel(id_label)
         ax.set_title(lbl, fontsize=9)
         ax.grid(True, alpha=0.3)
-        ax.annotate(f'{ys[0]:.2f}',  (xs[0],  ys[0]),  textcoords='offset points',
-                    xytext=(4, 4),  fontsize=7, color='gray')
-        ax.annotate(f'{ys[-1]:.2f}', (xs[-1], ys[-1]), textcoords='offset points',
-                    xytext=(-20, 4), fontsize=7, color='steelblue')
-        if dim_str:
-            ax.text(0.98, 0.97, dim_str, transform=ax.transAxes,
-                    fontsize=8, color='#555555', ha='right', va='top',
-                    bbox=dict(boxstyle='round,pad=0.2', fc='white', ec='#cccccc', alpha=0.8))
-    fig.suptitle(f'Anisotropy Evolution across {id_label}s', fontsize=11, y=1.01)
+
+    dim_str = f'  (backbone CLS, D={aniso_list[0].get("dim", "?")})'
+    fig.suptitle(f'Anisotropy Evolution across {id_label}s{dim_str}', fontsize=11, y=1.01)
     plt.tight_layout()
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
@@ -374,9 +374,14 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
     import os
     from matplotlib.animation import FuncAnimation, PillowWriter
 
-    # PCA fitted on final checkpoint (image only keeps stable reference axis).
-    # When text feats available, expand axis range to cover both modalities.
-    pca   = PCA(n_components=4).fit(step_feats[-1])
+    # PCA fitted on final checkpoint.
+    # When text features are available, fit on the JOINT image+text pool so the
+    # modality-gap direction can emerge as a principal component (matching how
+    # plot_scatter / _fit_pca works for pretrained-model gap plots).
+    # Image-only fit would bury the modality axis inside within-image variance.
+    fit_data = (np.concatenate([step_feats[-1], txt_feats[-1]])
+                if txt_feats is not None else step_feats[-1])
+    pca   = PCA(n_components=4).fit(fit_data)
     projs = [pca.transform(f) for f in step_feats]          # image projections
     txt_projs = ([pca.transform(f) for f in txt_feats]
                  if txt_feats is not None else None)          # text  projections
@@ -527,3 +532,97 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
     plt.tight_layout()
     traj_path = os.path.join(save_dir, 'trajectory.png')
     plt.savefig(traj_path, dpi=150); plt.close(); print(f'[viz] {traj_path}')
+
+
+# ── Crop probe: original vs global crop vs local crop across all models ────────
+
+def plot_crop_probe(img_feats, crops_feats, fps_idx, out_path):
+    """Show where DINOv3-style global/local crops land vs the full-image features.
+
+    Layout : ceil(n_models / 3) rows × 3 cols, PC1 vs PC2 per panel.
+    Each panel:
+      - Gray cloud  : full image distribution (all N samples)
+      - Per-sample colour (5 colours from tab10):
+          ●  circle         : FPS original image
+          ▲  triangle-up    : global crop  (224px, scale 0.32–1.0)
+          ▼  triangle-down  : local  crop  (96px,  scale 0.05–0.32)
+        Three points of the same sample are connected by a thin line.
+
+    Args:
+        img_feats   : dict {model_name: (N, D) ndarray}  — full distributions
+        crops_feats : dict {model_name: {'orig':(5,D), 'global':(5,D), 'local':(5,D)}}
+        fps_idx     : array-like of 5 sample indices (for panel annotation)
+        out_path    : save path (.png)
+    """
+    models = [k for k in img_feats if k in crops_feats]
+    n_models = len(models)
+    ncols = 3
+    nrows = (n_models + ncols - 1) // ncols
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5.5 * ncols, 5 * nrows))
+    axes = np.array(axes).reshape(-1)
+
+    # 5 distinct, high-contrast sample colours
+    sample_colors = [plt.cm.tab10(i) for i in range(5)]
+
+    _MARKERS = {'orig': 'o', 'global': '^', 'local': 'v'}
+    _SIZES   = {'orig': 100, 'global': 100, 'local': 100}
+    _LABELS  = {'orig': 'Original', 'global': 'Global crop (224px)', 'local': 'Local crop (96px)'}
+
+    for ax_i, name in enumerate(models):
+        ax = axes[ax_i]
+        full = img_feats[name]
+
+        # Independent PCA per model (same as image_allmodels independent-PCA branch)
+        pca = PCA(n_components=2).fit(full)
+        var = pca.explained_variance_ratio_
+        full_proj = pca.transform(full)
+
+        # Background cloud
+        ax.scatter(full_proj[:, 0], full_proj[:, 1], s=2, alpha=0.12,
+                   color='#999999', rasterized=True)
+
+        cd = crops_feats[name]
+        projs = {k: pca.transform(cd[k]) for k in ('orig', 'global', 'local')}
+
+        for si in range(5):
+            c = sample_colors[si]
+            # Connect the three variants with a thin line
+            xs = [projs[k][si, 0] for k in ('orig', 'global', 'local')]
+            ys = [projs[k][si, 1] for k in ('orig', 'global', 'local')]
+            ax.plot(xs, ys, '-', color=c, alpha=0.55, linewidth=1.2, zorder=3)
+
+            for key in ('orig', 'global', 'local'):
+                ax.scatter(projs[key][si, 0], projs[key][si, 1],
+                           s=_SIZES[key], marker=_MARKERS[key],
+                           color=c, edgecolors='white', linewidths=0.6, zorder=5)
+
+        ax.set_xlabel(f'PC1 ({var[0]*100:.1f}%)', fontsize=8)
+        ax.set_ylabel(f'PC2 ({var[1]*100:.1f}%)', fontsize=8)
+        ax.set_title(name, fontsize=10)
+        ax.tick_params(labelsize=7)
+
+    # Shared legend (placed in last used panel)
+    from matplotlib.lines import Line2D
+    legend_handles = [
+        Line2D([0], [0], marker=_MARKERS[k], color='gray', linestyle='None',
+               markersize=9, label=_LABELS[k], markeredgecolor='white')
+        for k in ('orig', 'global', 'local')
+    ] + [Line2D([0], [0], color=sample_colors[i], linestyle='-',
+                linewidth=1.5, label=f'Sample #{fps_idx[i]}') for i in range(5)]
+    axes[len(models) - 1].legend(handles=legend_handles, fontsize=7,
+                                  loc='lower right', markerscale=1)
+
+    # Hide unused panels
+    for ax_i in range(len(models), len(axes)):
+        axes[ax_i].set_visible(False)
+
+    fig.suptitle(
+        'Crop Probe: Original vs DINOv3-style Global / Local Crop\n'
+        '●=original  ▲=global crop (224px, scale 0.32–1.0)  '
+        '▼=local crop (96px, scale 0.05–0.32)',
+        fontsize=11)
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f'[viz] {out_path}')

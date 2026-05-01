@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
 
 from .models        import CKPT
-from .pipeline      import _DATA, run_pretrained, run_overlap, run_anisotropy, run_epochs
+from .pipeline      import _DATA, run_pretrained, run_overlap, run_anisotropy, run_epochs, run_crop_probe
 from .pc_alignment  import run_pc_alignment
 
 
@@ -20,7 +20,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--mode', required=True,
                    choices=['pretrained', 'epochs', 'overlap', 'anisotropy',
-                            'pc_alignment'])
+                            'pc_alignment', 'crop_probe'])
     # Data
     p.add_argument('--data',         default=_DATA['data'])
     p.add_argument('--data-type',    choices=['tsv', 'wds'], default='tsv')
@@ -59,6 +59,7 @@ def main():
     elif args.mode == 'pc_alignment':
         assert args.probe_dir, '--probe-dir required for pc_alignment mode'
         run_pc_alignment(args)
+    elif args.mode == 'crop_probe': run_crop_probe(args)
 
 
 if __name__ == '__main__':

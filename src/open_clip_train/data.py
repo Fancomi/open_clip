@@ -362,6 +362,7 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             global_crops_scale=tuple(getattr(args, 'dino_global_crops_scale', [0.32, 1.0])),
             local_crops_scale=tuple(getattr(args, 'dino_local_crops_scale', [0.05, 0.32])),
             local_crops_number=getattr(args, 'dino_local_crops_number', 8),
+            n_global_crops=getattr(args, 'dino_n_global_crops', 2),
             global_crops_size=global_size,
             local_crops_size=getattr(args, 'dino_local_crops_size', 96),
             mean=_mean,

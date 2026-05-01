@@ -29,6 +29,12 @@ _TIPS_TF  = T.ToTensor()   # resizes inline to 448×448
 _TIPS_SZ  = 448
 _TIPS_CHUNK = 8             # TIPSv2 sub-batch: 1024 patches @ 448² → OOM guard
 
+# ── DINOv3-style crop augmentation (RandomResizedCrop applied to PIL) ─────────
+_GC_CROP = T.RandomResizedCrop(224, scale=(0.32, 1.0),  ratio=(3/4, 4/3),
+                                interpolation=T.InterpolationMode.BICUBIC)
+_LC_CROP = T.RandomResizedCrop(96,  scale=(0.05, 0.32), ratio=(3/4, 4/3),
+                                interpolation=T.InterpolationMode.BICUBIC)
+
 # ── Required npz for cache-hit ─────────────────────────────────────────────────
 _REQUIRED_NPZS = {
     'pe_img':    'pe_core_img.npz',  'pe_txt':   'pe_core_txt.npz',
@@ -78,6 +84,35 @@ def extract_clip_img(model, paths, preproc, out_path, force=False, bs=256):
         return feat
     from open_clip_train.probe_hook import extract_image_features
     feat = extract_image_features(model, paths, preproc, DEVICE, bs)
+    np.savez_compressed(out_path, features=feat, paths=np.array(paths))
+    return feat
+
+
+@torch.no_grad()
+def extract_pe_core_img_raw(model, paths, preproc, out_path, force=False, bs=256):
+    """PE-Core backbone CLS **before** the Linear(768→1024) projection head.
+
+    PE-Core's TimmModel has:
+      trunk (Eva ViT-B) → forward_features → [B, N, 768]  (CLS at index 0)
+      head  Sequential(Linear(768 → 1024))                 ← CLIP projection
+
+    For VLM fine-tuning (and consistent geometry comparison with DINOv3/EUPE),
+    we want the 768-dim backbone CLS, not the 1024-dim projected CLIP space.
+    The projected 1024-dim version is kept separately for modality_gap plots.
+    """
+    feat = _npz(out_path, force)
+    if feat is not None:
+        return feat
+    feats = []
+    for i in range(0, len(paths), bs):
+        x = torch.stack([preproc(Image.open(p).convert('RGB'))
+                         for p in paths[i:i+bs]]).to(DEVICE)
+        trunk_out = model.visual.trunk.forward_features(x)   # [B, N, 768]
+        cls = F.normalize(trunk_out[:, 0, :].float(), dim=-1)  # CLS token
+        feats.append(cls.cpu().numpy())
+        if (i // bs + 1) % 5 == 0 or i + bs >= len(paths):
+            logging.info(f'  [PE-Core raw] {min(i+bs, len(paths))}/{len(paths)}')
+    feat = np.concatenate(feats)
     np.savez_compressed(out_path, features=feat, paths=np.array(paths))
     return feat
 
@@ -304,3 +339,93 @@ def extract_wds_features(
             np.savez_compressed(p, features=result[k])
     logging.info('wds done: ' + ', '.join(f'{k}{v.shape}' for k, v in result.items()))
     return result
+
+
+# ── DINOv3-style crop generation ──────────────────────────────────────────────
+
+def make_dino_crops(fps_paths, seed=42):
+    """Generate one global crop (224px) and one local crop (96px) per FPS path.
+
+    Crop sizes match DINOv3 training augmentation:
+      global crop : RandomResizedCrop(224, scale=(0.32, 1.0))  ← teacher/student view
+      local  crop : RandomResizedCrop(96,  scale=(0.05, 0.32)) ← student-only view
+
+    Local crops are returned at 96px native size; each model's PIL extractor
+    handles the resize internally (e.g. _DINO_TF resizes anything to 224).
+
+    Returns:
+        orig_imgs    : list[PIL] — full original images
+        global_crops : list[PIL] — global crops (224px)
+        local_crops  : list[PIL] — local  crops  (96px)
+    """
+    torch.manual_seed(seed)
+    orig, gc, lc = [], [], []
+    for p in fps_paths:
+        img = Image.open(p).convert('RGB')
+        orig.append(img)
+        gc.append(_GC_CROP(img))
+        lc.append(_LC_CROP(img))
+    return orig, gc, lc
+
+
+# ── Per-model PIL-based feature extractors (used by crop_probe mode) ──────────
+# All accept a list of PIL images of any size; internal transforms handle resize.
+
+@torch.no_grad()
+def extract_dinov3_pil(model, pil_imgs):
+    """DINOv3 CLS features from PIL images (any size → 224 via _DINO_TF)."""
+    x = torch.stack([_DINO_TF(img) for img in pil_imgs]).to(DEVICE)
+    cls = F.normalize(model.forward_features(x)['x_norm_clstoken'], dim=-1)
+    return cls.cpu().float().numpy()
+
+
+@torch.no_grad()
+def extract_clip_pil(model, preproc, pil_imgs):
+    """CLIP-style image features from PIL images (preproc handles resize)."""
+    x = torch.stack([preproc(img) for img in pil_imgs]).to(DEVICE)
+    return model.encode_image(x, normalize=True).cpu().float().numpy()
+
+
+@torch.no_grad()
+def extract_pe_core_pil_raw(model, preproc, pil_imgs):
+    """PE-Core backbone raw CLS from PIL images (before Linear 768→1024 head)."""
+    x = torch.stack([preproc(img) for img in pil_imgs]).to(DEVICE)
+    trunk_out = model.visual.trunk.forward_features(x)   # [B, N, 768]
+    cls = F.normalize(trunk_out[:, 0, :].float(), dim=-1)
+    return cls.cpu().numpy()
+
+
+@torch.no_grad()
+def extract_radio_pil(model, cond, pil_imgs):
+    """RADIO features from PIL images (any size → 224 via _RADIO_TF)."""
+    x = torch.stack([_RADIO_TF(img) for img in pil_imgs]).to(DEVICE)
+    if cond is not None:
+        x = cond(x)
+    out = model(x)
+    s = out[0] if isinstance(out, (tuple, list)) else getattr(out, 'summary', out[0])
+    return F.normalize(s, dim=-1).cpu().float().numpy()
+
+
+@torch.no_grad()
+def extract_eupe_pil(model, pil_imgs):
+    """EUPE features from PIL images (any size → 224 via _EUPE_TF)."""
+    x = torch.stack([_EUPE_TF(img) for img in pil_imgs]).to(DEVICE)
+    dev = DEVICE.type
+    with torch.autocast(device_type=dev, dtype=torch.bfloat16, enabled=(dev != 'cpu')):
+        cls = F.normalize(model.forward_features(x)['x_norm_clstoken'], dim=-1)
+    return cls.cpu().float().numpy()
+
+
+@torch.no_grad()
+def extract_tips_pil(model, pil_imgs):
+    """TIPSv2 features from PIL images (any size → 448 inline)."""
+    dev = DEVICE.type
+    chunks = []
+    for i in range(0, len(pil_imgs), _TIPS_CHUNK):
+        imgs = [_TIPS_TF(img.resize((_TIPS_SZ, _TIPS_SZ), Image.BICUBIC))
+                for img in pil_imgs[i:i + _TIPS_CHUNK]]
+        x = torch.stack(imgs).to(DEVICE)
+        with torch.autocast(device_type=dev, dtype=torch.bfloat16, enabled=(dev != 'cpu')):
+            out = model.encode_image(x)
+        chunks.append(F.normalize(out.cls_token.squeeze(1).float(), dim=-1).cpu().numpy())
+    return np.concatenate(chunks)

@@ -665,15 +665,18 @@ class CustomTextCLIP(nn.Module):
 class CLIPLeJEPA(nn.Module):
     """CLIP wrapper，提供 normalized features（用于对比损失）和 unnormalized proj（用于 SIGReg）。
 
-    use_proj=False: projector = Identity，SIGReg 直接作用于 backbone raw embedding
-    use_proj=True:  projector = MLP，SIGReg 作用于 projector 输出，间接约束 backbone
+    sigreg_target:
+      "clip"      : image_proj = Identity(clip_embedding [B, clip_dim])
+      "clip_proj" : image_proj = MLP(clip_embedding)
+      "cls"       : image_proj = Identity(CLS_raw [B, backbone_dim]), requires TimmModel trunk
+      "cls_proj"  : image_proj = MLP(CLS_raw [B, backbone_dim]), requires TimmModel trunk
     """
     output_dict: torch.jit.Final[bool]
 
     def __init__(
             self,
             clip_model: nn.Module,
-            use_proj: bool = False,
+            sigreg_target: str = "clip",
             proj_dim: int = 512,
             proj_layers: int = 3,
             output_dict: bool = False,
@@ -684,33 +687,49 @@ class CLIPLeJEPA(nn.Module):
         self.visual = clip_model.visual
         self.logit_scale = clip_model.logit_scale
         self.logit_bias = getattr(clip_model, 'logit_bias', None)
+        self.sigreg_target = sigreg_target
 
-        # 获取 embed_dim：依次尝试常见属性，最后 probe forward
-        embed_dim = (
+        # 获取 CLIP embedding dim（TimmModel.head 输出）
+        clip_embed_dim = (
             getattr(clip_model.visual, 'output_dim', None)
             or getattr(clip_model, 'embed_dim', None)
         )
-        if embed_dim is None:
-            # TimmModel: 通过 forward probe 推断（trunk 的 num_features 不等于最终 output_dim）
+        if clip_embed_dim is None:
             if isinstance(clip_model.visual, TimmModel):
                 import torch
                 with torch.no_grad():
                     _dummy = torch.zeros(1, 3, 224, 224, device=next(clip_model.visual.parameters()).device)
-                    embed_dim = clip_model.visual(_dummy).shape[-1]
+                    clip_embed_dim = clip_model.visual(_dummy).shape[-1]
             else:
-                # 通过 visual.head 最后一层 Linear 推断
                 for m in reversed(list(clip_model.visual.head.modules())):
                     if isinstance(m, nn.Linear):
-                        embed_dim = m.out_features
+                        clip_embed_dim = m.out_features
                         break
-        if embed_dim is None:
-            raise ValueError("Cannot determine embed_dim from clip_model")
+        if clip_embed_dim is None:
+            raise ValueError("Cannot determine clip_embed_dim from clip_model")
 
-        if use_proj:
-            hidden_dim = embed_dim * 2
-            self.image_projector = self._build_mlp(embed_dim, proj_dim, hidden_dim, proj_layers)
-            self.text_projector = self._build_mlp(embed_dim, proj_dim, hidden_dim, proj_layers)
+        # 获取 backbone raw dim（用于 cls / cls_proj）
+        backbone_dim = None
+        if sigreg_target in ("cls", "cls_proj"):
+            if isinstance(clip_model.visual, TimmModel):
+                backbone_dim = clip_model.visual.trunk.num_features
+            if backbone_dim is None:
+                raise ValueError(
+                    f"sigreg_target='{sigreg_target}' requires TimmModel backbone with .trunk.num_features"
+                )
+        self._backbone_dim = backbone_dim
+        self._clip_embed_dim = clip_embed_dim
+
+        # Build projectors
+        img_in = backbone_dim if sigreg_target in ("cls", "cls_proj") else clip_embed_dim
+        txt_in = clip_embed_dim  # text always uses CLIP text encoder output
+
+        if sigreg_target in ("clip_proj", "cls_proj"):
+            hidden_dim = max(img_in, txt_in) * 2
+            self.image_projector = self._build_mlp(img_in, proj_dim, hidden_dim, proj_layers)
+            self.text_projector = self._build_mlp(txt_in, proj_dim, hidden_dim, proj_layers)
         else:
+            # "clip" or "cls": Identity (no extra parameters)
             self.image_projector = nn.Identity()
             self.text_projector = nn.Identity()
 
@@ -724,15 +743,42 @@ class CLIPLeJEPA(nn.Module):
         layers.append(nn.Linear(hidden_dim, out_dim))
         return nn.Sequential(*layers)
 
-    def forward(self, image: Optional[torch.Tensor] = None, text: Optional[torch.Tensor] = None):
-        # 各编一次，raw 用于 proj，normalized 用于对比损失
-        image_raw = self.clip_model.encode_image(image, normalize=False) if image is not None else None
-        text_raw = self.clip_model.encode_text(text, normalize=False) if text is not None else None
+    def _get_image_raw(self, image: torch.Tensor):
+        """Return (clip_embedding_unnorm, sigreg_input_unnorm)."""
+        if self.sigreg_target in ("cls", "cls_proj"):
+            # Single forward through trunk; then apply head for CLIP output
+            visual = self.clip_model.visual
+            if hasattr(visual, 'trunk') and hasattr(visual.trunk, 'forward_features'):
+                feats = visual.trunk.forward_features(image)  # [B, 1+N, D]
+                cls_raw = feats[:, 0]                         # [B, backbone_dim]
+                # Produce CLIP embedding: trunk.forward_head pools token seq → [B, trunk_dim], then visual.head projects
+                pooled = visual.trunk.forward_head(feats)     # [B, trunk_dim]
+                pooled = visual.head(pooled)                  # [B, clip_dim] (unnorm)
+                return pooled, cls_raw
+            # Fallback: double forward (slower but compatible)
+            clip_raw = self.clip_model.encode_image(image, normalize=False)
+            return clip_raw, clip_raw
+        else:
+            clip_raw = self.clip_model.encode_image(image, normalize=False)
+            return clip_raw, clip_raw
 
-        image_features = F.normalize(image_raw, dim=-1) if image_raw is not None else None
-        text_features = F.normalize(text_raw, dim=-1) if text_raw is not None else None
-        image_proj = self.image_projector(image_raw) if image_raw is not None else None
-        text_proj = self.text_projector(text_raw) if text_raw is not None else None
+    def forward(self, image: Optional[torch.Tensor] = None, text: Optional[torch.Tensor] = None):
+        image_proj = None
+        text_proj = None
+
+        if image is not None:
+            image_clip_raw, image_sigreg_raw = self._get_image_raw(image)
+            image_features = F.normalize(image_clip_raw, dim=-1)
+            image_proj = self.image_projector(image_sigreg_raw)
+        else:
+            image_features = None
+
+        if text is not None:
+            text_raw = self.clip_model.encode_text(text, normalize=False)
+            text_features = F.normalize(text_raw, dim=-1)
+            text_proj = self.text_projector(text_raw)
+        else:
+            text_features = None
 
         if self.output_dict:
             out = {
@@ -996,7 +1042,7 @@ def get_model_tokenize_cfg(model):
 
 class CLIPWithDINO(nn.Module):
     """Wraps a CLIP model (CLIP or CustomTextCLIP) with DINOv3-style student-teacher
-    self-distillation on the visual backbone.
+    self-distillation on the visual backbone, plus optional SIGReg regularization.
 
     The student visual backbone is **shared** with the CLIP contrastive tower.
     The teacher is an EMA copy of the student backbone (no text tower needed).
@@ -1005,7 +1051,8 @@ class CLIPWithDINO(nn.Module):
       - image_features / text_features  (normalized, for SigLIP/CLIP loss)
       - student_cls_tokens              (DINO head logits, all crops concatenated)
       - student_patch_tokens_masked     (iBOT head logits, masked positions only)
-      - student_cls_tokens_raw          (pre-head backbone CLS, for KoLeo)
+      - student_cls_tokens_raw          (pre-head backbone CLS [B, embed_dim], for KoLeo)
+      - sigreg_feat / sigreg_feat_text  (unnorm features for SIGReg, if enabled)
 
     Teacher produces (no_grad):
       - teacher_cls_tokens              (DINO head logits, global crops only)
@@ -1020,6 +1067,9 @@ class CLIPWithDINO(nn.Module):
         dino_head_hidden:   Hidden dim of DINO MLP head.
         dino_head_bottleneck: Bottleneck dim of DINO MLP head.
         n_global_crops:     Number of global crops (default 2).
+        sigreg_target:      "none" | "clip" | "clip_proj" | "cls" | "cls_proj"
+        sigreg_proj_dim:    SIGReg projector output dim (for *_proj variants).
+        sigreg_proj_layers: SIGReg projector MLP depth.
         output_dict:        If True, forward() returns a dict.
     """
     output_dict: torch.jit.Final[bool]
@@ -1034,14 +1084,21 @@ class CLIPWithDINO(nn.Module):
         dino_head_hidden: int = 2048,
         dino_head_bottleneck: int = 256,
         n_global_crops: int = 2,
+        sigreg_target: str = "none",
+        sigreg_proj_dim: int = 512,
+        sigreg_proj_layers: int = 3,
         output_dict: bool = True,
     ):
         super().__init__()
         self.output_dict = output_dict
         self.n_global_crops = n_global_crops
+        self.sigreg_target = sigreg_target
 
         # ---- student side: shared backbone + heads ----
         self.clip_model = clip_model
+        # If clip_model is itself a wrapper (e.g. CLIPLeJEPA), unwrap to the
+        # underlying CLIP so encode_image / encode_text are always available.
+        self._base_clip = clip_model.clip_model if isinstance(clip_model, CLIPLeJEPA) else clip_model
         # expose common attributes so train.py can call lock/grad-ckpt on wrapper
         self.visual = clip_model.visual
         self.logit_scale = clip_model.logit_scale
@@ -1081,6 +1138,39 @@ class CLIPWithDINO(nn.Module):
         # sync teacher = student at start
         self.teacher_dino_head.load_state_dict(self.student_dino_head.state_dict())
         self.teacher_ibot_head.load_state_dict(self.student_ibot_head.state_dict())
+
+        # ---- SIGReg projectors (optional) ----
+        # img: acts on CLS raw [embed_dim] (cls/cls_proj) or CLIP embedding (clip/clip_proj)
+        # txt: always acts on CLIP text embedding dim
+        self.sigreg_img_proj = None
+        self.sigreg_txt_proj = None
+        if sigreg_target != "none":
+            clip_embed_dim = (
+                getattr(clip_model.visual, 'output_dim', None)
+                or getattr(clip_model, 'embed_dim', None)
+            )
+            if clip_embed_dim is None:
+                # probe via trunk head
+                if hasattr(clip_model.visual, 'trunk'):
+                    # get from head last linear
+                    for m in reversed(list(clip_model.visual.head.modules())):
+                        if isinstance(m, nn.Linear):
+                            clip_embed_dim = m.out_features
+                            break
+            if clip_embed_dim is None:
+                raise ValueError("Cannot determine clip_embed_dim for SIGReg projector in CLIPWithDINO")
+
+            img_in = embed_dim if sigreg_target in ("cls", "cls_proj") else clip_embed_dim
+            txt_in = clip_embed_dim
+
+            if sigreg_target in ("clip_proj", "cls_proj"):
+                hidden = max(img_in, txt_in) * 2
+                self.sigreg_img_proj = CLIPLeJEPA._build_mlp(img_in, sigreg_proj_dim, hidden, sigreg_proj_layers)
+                self.sigreg_txt_proj = CLIPLeJEPA._build_mlp(txt_in, sigreg_proj_dim, hidden, sigreg_proj_layers)
+            else:
+                # Identity — no parameters, just pass features through
+                self.sigreg_img_proj = nn.Identity()
+                self.sigreg_txt_proj = nn.Identity()
 
     # ------------------------------------------------------------------
     # Helpers delegated to the inner CLIP model
@@ -1138,41 +1228,36 @@ class CLIPWithDINO(nn.Module):
     # _encode_backbone: get raw pre-projection CLS + all patch tokens
     # ------------------------------------------------------------------
     def _encode_backbone_with_patches(self, visual_module, images: torch.Tensor):
-        """Run backbone and return (cls_raw, all_patch_tokens).
+        """Run backbone and return (cls_raw, pure_patch_tokens).
 
         Uses trunk.forward_features for TimmModel to get pre-projection patch tokens.
         Falls back to cls-only if not available.
         NOTE: only valid for the model's native input size (e.g. 224px global crops).
+
+        Register tokens (storage tokens) are explicitly excluded from patch_tokens
+        to match the official DINOv3 convention: x_norm_patch = x[:, n_storage_tokens+1:].
         """
         if hasattr(visual_module, 'trunk') and hasattr(visual_module.trunk, 'forward_features'):
             # TimmModel wrapping — get raw tokens before attention-pool / head
-            feats = visual_module.trunk.forward_features(images)  # [B, 1+N, D]
+            feats = visual_module.trunk.forward_features(images)  # [B, 1+n_reg+N, D]
             cls_raw = feats[:, 0]        # CLS token  [B, D]
-            patch_tokens = feats[:, 1:]  # patch tokens [B, N, D]
+            # num_prefix_tokens = 1 (CLS) + n_reg_tokens; patch tokens start after all prefix tokens
+            n_prefix = getattr(visual_module.trunk, 'num_prefix_tokens', 1)
+            patch_tokens = feats[:, n_prefix:]  # pure patch tokens [B, N, D], excludes registers
             return cls_raw, patch_tokens
         # Generic: only cls available
         cls_raw = visual_module(images)  # [B, D] (pooled)
         return cls_raw, None
 
-    def _encode_cls_only(self, visual_module, images: torch.Tensor,
-                         target_size: int = 224):
+    def _encode_cls_only(self, visual_module, images: torch.Tensor):
         """Run backbone and return only the raw CLS token (pre-attention-pool).
 
-        For backbones with fixed positional embeddings (e.g. EVA with RoPE),
-        local crops at a different resolution are resized to target_size before
-        being passed through the backbone.  Returns the same 'embed_dim'-dimensional
-        CLS token as _encode_backbone_with_patches (feats[:, 0]), so that DINO head
-        in_dim matches.
+        Backbone must have dynamic_img_size=True (or equivalent) to handle
+        local crops at their native resolution (e.g. 96px).
         """
-        if images.shape[-1] != target_size:
-            images = F.interpolate(
-                images, size=(target_size, target_size),
-                mode='bicubic', align_corners=False,
-            )
         if hasattr(visual_module, 'trunk') and hasattr(visual_module.trunk, 'forward_features'):
             feats = visual_module.trunk.forward_features(images)  # [B, 1+N, D]
-            return feats[:, 0]   # raw CLS token [B, D], same dim as _encode_backbone_with_patches
-        # Generic fallback (non-TimmModel)
+            return feats[:, 0]   # raw CLS token [B, D]
         return visual_module(images)
 
     # ------------------------------------------------------------------
@@ -1197,6 +1282,8 @@ class CLIPWithDINO(nn.Module):
               teacher_patch_tokens    -- [B, n_masked, out_dim] teacher iBOT head output (masked only)
               student_masks           -- pass-through
               masks_weight            -- pass-through
+              sigreg_feat             -- [B, D] unnorm visual feature for SIGReg (if enabled)
+              sigreg_feat_text        -- [B, D] unnorm text feature for SIGReg (if enabled)
         """
         n_global = self.n_global_crops
         B_global = global_crops.shape[0]
@@ -1204,8 +1291,8 @@ class CLIPWithDINO(nn.Module):
 
         # ---- 1. Contrastive: encode first global crop as image_features ----
         # Use only global crop 1 for the contrastive loss (memory-efficient)
-        image_features = self.clip_model.encode_image(global_crops[:B], normalize=True)
-        text_features = self.clip_model.encode_text(texts, normalize=True)
+        image_features = self._base_clip.encode_image(global_crops[:B], normalize=True)
+        text_features = self._base_clip.encode_text(texts, normalize=True)
 
         # ---- 2. Student: global and local crops through backbone separately ----
         # Global and local crops have different spatial sizes (e.g. 224 vs 96),
@@ -1218,12 +1305,10 @@ class CLIPWithDINO(nn.Module):
         # student_global_cls_raw: [n_global * B, embed_dim]
 
         # Local crops (may be None or empty)
-        # Local crops have smaller spatial size (e.g. 96px); use _encode_cls_only
-        # which resizes to the backbone's native size before forwarding.
-        global_size = global_crops.shape[-1]  # native input size (e.g. 224)
+        # With dynamic_img_size=True backbone, local crops are passed at native resolution.
         if local_crops is not None and local_crops.shape[0] > 0:
             student_local_cls_raw = self._encode_cls_only(
-                self.visual, local_crops, target_size=global_size
+                self.visual, local_crops
             )
             # student_local_cls_raw: [n_local * B, embed_dim]
             student_cls_raw_all = torch.cat([student_global_cls_raw, student_local_cls_raw], dim=0)
@@ -1262,6 +1347,22 @@ class CLIPWithDINO(nn.Module):
                 masked_t = flat_t[mask_idx]
                 teacher_patch_tokens_masked = self.teacher_ibot_head(masked_t)
 
+        # ---- 4. SIGReg features (optional) ----
+        # cls/cls_proj: act on student_global_cls_raw[:B] — the KoLeo position (pre-dino-head)
+        # clip/clip_proj: act on unnormalized CLIP image/text embedding
+        sigreg_feat = None
+        sigreg_feat_text = None
+        if self.sigreg_target != "none" and self.sigreg_img_proj is not None:
+            if self.sigreg_target in ("cls", "cls_proj"):
+                sigreg_feat = self.sigreg_img_proj(student_global_cls_raw[:B])
+            else:
+                # clip / clip_proj: get unnorm CLIP image embedding
+                img_raw = self._base_clip.encode_image(global_crops[:B], normalize=False)
+                sigreg_feat = self.sigreg_img_proj(img_raw)
+            # text: always from unnorm CLIP text encoder
+            txt_raw = self._base_clip.encode_text(texts, normalize=False)
+            sigreg_feat_text = self.sigreg_txt_proj(txt_raw)
+
         out = {
             "image_features": image_features,
             "text_features": text_features,
@@ -1275,6 +1376,9 @@ class CLIPWithDINO(nn.Module):
             "teacher_patch_tokens": teacher_patch_tokens_masked,
             "student_masks": student_masks,
             "masks_weight": masks_weight,
+            # SIGReg
+            "sigreg_feat": sigreg_feat,
+            "sigreg_feat_text": sigreg_feat_text,
         }
         if self.logit_bias is not None:
             out["logit_bias"] = self.logit_bias

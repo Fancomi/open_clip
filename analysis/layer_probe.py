@@ -8,7 +8,7 @@ Supported model families
 ------------------------
   dinov3    DinoVisionTransformer  → model.blocks[i]  → x_norm_clstoken (last layer)
   pe_core   PE-Core (Eva trunk)   → model.visual.trunk.blocks[i]
-  siglip2   SigLIP2               → model.visual.transformer.resblocks[i]
+  siglip2   SigLIP2 (TimmModel)   → model.visual.trunk.blocks[i]
   eupe      EUPE (same as dinov3) → model.blocks[i]
 
 Usage (from repo root):
@@ -134,8 +134,8 @@ def _pe_core_setup(ckpt=None):
 
 def _siglip2_setup(ckpt=None):
     m, prep, _ = load_siglip2(ckpt)
-    # SigLIP2 visual transformer
-    blocks = list(m.visual.transformer.resblocks.children())
+    # SigLIP2 uses TimmModel (same as PE-Core) → trunk.blocks, not transformer.resblocks
+    blocks = list(m.visual.trunk.blocks.children())
     return m, blocks, prep
 
 

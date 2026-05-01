@@ -96,6 +96,14 @@ case "$MODE" in
         echo "=== [probe] PC alignment  probe_dir=${PROBE_DIR}  n_pcs=${N_PCS} ==="
         $SCRIPT --mode pc_alignment --probe-dir "$PROBE_DIR" --n-pcs "${N_PCS}"
         ;;
+    crop_probe)
+        # crop_probe requires individual image files on disk (tsv/COCO mode).
+        # wds/CC3M images live inside tar archives and cannot be opened by PIL.
+        COCO_FEAT_DIR="$(dirname "${COCO_OUT}")"   # .../datas/coco/feature_probe
+        OUT_DIR="${2:-${COCO_FEAT_DIR}}"
+        echo "=== [probe] crop_probe  out_dir=${OUT_DIR} ==="
+        $SCRIPT --mode crop_probe --out-dir "${OUT_DIR}"
+        ;;
     *)
         echo "Usage:"
         echo "  bash analysis/probe.sh coco"
@@ -105,6 +113,7 @@ case "$MODE" in
         echo "  bash analysis/probe.sh anisotropy [coco|cc3m]"
         echo "  bash analysis/probe.sh layers <model>  (dinov3|pe_core|siglip2|eupe)"
         echo "  bash analysis/probe.sh pc_alignment <probe_dir> [n_pcs=16]"
+        echo "  bash analysis/probe.sh crop_probe [out_dir=CC3M_OUT]"
         exit 1
         ;;
 esac

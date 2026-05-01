@@ -14,7 +14,7 @@ from .convert import convert_state_dict
 from .model import CLIP, CustomTextCLIP, CLIPLeJEPA, CLIPWithDINO, convert_weights_to_lp, convert_to_custom_text_state_dict,\
     resize_pos_embed, get_cast_dtype, resize_text_pos_embed, set_model_preprocess_cfg
 from .coca_model import CoCa
-from .loss import ClipLoss, DistillClipLoss, CoCaLoss, SigLipLoss, ClipLeJEPALoss, CLIPWithDINOLoss
+from .loss import ClipLoss, DistillClipLoss, CoCaLoss, SigLipLoss, SIGRegContrastiveLoss, CLIPWithDINOLoss
 from .pretrained import is_pretrained_cfg, get_pretrained_cfg, download_pretrained,\
     list_pretrained_tags_by_model, download_pretrained_from_hf
 from .transform import image_transform_v2, AugmentationCfg, PreprocessCfg, merge_preprocess_dict, merge_preprocess_kwargs
@@ -808,10 +808,10 @@ def create_loss(args):
             world_size=args.world_size,
             use_horovod=args.horovod,
         )
-    elif getattr(args, 'lejepa', False):
-        return ClipLeJEPALoss(
-            sigreg_weight=getattr(args, 'lejepa_weight', 0.01),
-            sigreg_num_slices=getattr(args, 'lejepa_num_slices', 256),
+    elif getattr(args, 'sigreg_target', 'none') not in ('none', None) and not getattr(args, 'dinov3', False):
+        return SIGRegContrastiveLoss(
+            sigreg_weight=getattr(args, 'sigreg_weight', 1e-4),
+            sigreg_num_slices=getattr(args, 'sigreg_slices', 256),
             use_siglip=getattr(args, 'siglip', False),
             local_loss=args.local_loss,
             gather_with_grad=args.gather_with_grad,
@@ -825,6 +825,7 @@ def create_loss(args):
         # CLIPWithDINOLoss：需要从 model 中读取 embed_dim，由 main.py 传入
         dino_out_dim  = getattr(args, 'dino_head_prototypes', 65536)
         ibot_out_dim  = getattr(args, 'ibot_head_prototypes', None) or dino_out_dim
+        sigreg_target = getattr(args, 'sigreg_target', 'none') or 'none'
         return CLIPWithDINOLoss(
             dino_out_dim=dino_out_dim,
             ibot_out_dim=ibot_out_dim,
@@ -832,10 +833,13 @@ def create_loss(args):
             dino_loss_weight=getattr(args, 'dino_loss_weight', 1.0),
             ibot_loss_weight=getattr(args, 'ibot_loss_weight', 1.0),
             koleo_loss_weight=getattr(args, 'koleo_loss_weight', 0.1),
+            sigreg_weight=getattr(args, 'sigreg_weight', 0.0) if sigreg_target != 'none' else 0.0,
+            sigreg_num_slices=getattr(args, 'sigreg_slices', 256),
             use_siglip=getattr(args, 'siglip', False),
             rank=args.rank,
             world_size=args.world_size,
             dist_impl=getattr(args, 'loss_dist_impl', None),
+            n_global_crops=getattr(args, 'dino_n_global_crops', 2),
         )
     elif args.siglip:
         assert not args.horovod, "Horovod not currently supported for SigLip"

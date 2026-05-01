@@ -244,15 +244,15 @@ def main(args):
         **model_kwargs,
     )
 
-    # LeJEPA: 包装模型，始终提供 image_proj/text_proj 给 SIGReg
-    if getattr(args, 'lejepa', False):
-        use_proj = getattr(args, 'lejepa_proj', False)
-        logging.info(f"=> Wrapping model with CLIPLeJEPA (use_proj={use_proj})")
+    # SIGReg (standalone, no DINOv3): wrap model to expose image_proj/text_proj
+    sigreg_target = getattr(args, 'sigreg_target', 'none') or 'none'
+    if sigreg_target != 'none' and not getattr(args, 'dinov3', False):
+        logging.info(f"=> Wrapping model with CLIPLeJEPA (sigreg_target={sigreg_target})")
         model = CLIPLeJEPA(
             clip_model=model,
-            use_proj=use_proj,
-            proj_dim=getattr(args, 'lejepa_proj_dim', 512),
-            proj_layers=getattr(args, 'lejepa_proj_layers', 3),
+            sigreg_target=sigreg_target,
+            proj_dim=getattr(args, 'sigreg_proj_dim', 512),
+            proj_layers=getattr(args, 'sigreg_proj_layers', 3),
             output_dict=True,
         )
         model = model.to(device)
@@ -273,7 +273,8 @@ def main(args):
         ibot_out = getattr(args, 'ibot_head_prototypes', None) or getattr(args, 'dino_head_prototypes', 65536)
         logging.info(
             f"=> Wrapping model with CLIPWithDINO "
-            f"(embed_dim={embed_dim}, dino_proto={args.dino_head_prototypes}, ibot_proto={ibot_out})"
+            f"(embed_dim={embed_dim}, dino_proto={args.dino_head_prototypes}, ibot_proto={ibot_out}, "
+            f"sigreg_target={sigreg_target})"
         )
         model = CLIPWithDINO(
             clip_model=model,
@@ -283,7 +284,10 @@ def main(args):
             dino_head_nlayers=getattr(args, 'dino_head_nlayers', 3),
             dino_head_hidden=getattr(args, 'dino_head_hidden_dim', 2048),
             dino_head_bottleneck=getattr(args, 'dino_head_bottleneck_dim', 256),
-            n_global_crops=2,
+            n_global_crops=getattr(args, 'dino_n_global_crops', 2),
+            sigreg_target=sigreg_target,
+            sigreg_proj_dim=getattr(args, 'sigreg_proj_dim', 512),
+            sigreg_proj_layers=getattr(args, 'sigreg_proj_layers', 3),
             output_dict=True,
         )
         model = model.to(device)

@@ -2270,6 +2270,7 @@ def vit_pe_core_base_patch16_224_dinov3(pretrained: bool = False, **kwargs) -> E
         num_reg_tokens=4,  # Storage tokens (registers)
         norm_layer=partial(RMSNorm, eps=1e-6),  # DINOv3 uses RMSNorm
         use_deep_norm_init=False,
+        dynamic_img_size=True,  # Support local crops at native resolution (e.g. 96px)
     )
     return _create_eva('vit_pe_core_base_patch16_224_dinov3', pretrained=pretrained, **dict(model_args, **kwargs))
 

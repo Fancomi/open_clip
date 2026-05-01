@@ -52,17 +52,19 @@ class DataAugmentationDINO:
     """Multi-crop augmentation for DINOv3 self-distillation.
 
     For each image produces:
-      - 2 global crops (large, diverse augmentations)
+      - n_global_crops global crops (large, diverse augmentations; default 2)
       - N local crops  (small, for local-context losses)
 
     Returns a dict with keys:
-      "global_crops"   : list of 2 tensors [C, H_g, W_g]
+      "global_crops"   : list of n_global_crops tensors [C, H_g, W_g]
       "local_crops"    : list of N tensors [C, H_l, W_l]
 
     Args:
         global_crops_scale:  Scale range for global RandomResizedCrop.
         local_crops_scale:   Scale range for local RandomResizedCrop.
         local_crops_number:  Number of local crops.
+        n_global_crops:      Number of global crops (1 or 2). Set to 1 for
+                             local-to-global only (CLIP provides global view).
         global_crops_size:   Pixel size of global crops (default 224).
         local_crops_size:    Pixel size of local crops (default 96).
         mean, std:           Normalization constants (from model preprocess config).
@@ -73,12 +75,14 @@ class DataAugmentationDINO:
         global_crops_scale=(0.32, 1.0),
         local_crops_scale=(0.05, 0.32),
         local_crops_number: int = 8,
+        n_global_crops: int = 2,
         global_crops_size: int = 224,
         local_crops_size: int = 96,
         mean=_IMAGENET_DEFAULT_MEAN,
         std=_IMAGENET_DEFAULT_STD,
     ):
         self.local_crops_number = local_crops_number
+        self.n_global_crops = n_global_crops
 
         # Normalization
         normalize = v2.Compose([
@@ -141,7 +145,7 @@ class DataAugmentationDINO:
 
         logger.info(
             f"DataAugmentationDINO: global_crops_scale={global_crops_scale}, "
-            f"local_crops_scale={local_crops_scale}, n_local={local_crops_number}, "
+            f"local_crops_scale={local_crops_scale}, n_global={n_global_crops}, n_local={local_crops_number}, "
             f"global_size={global_crops_size}, local_size={local_crops_size}"
         )
 
@@ -167,14 +171,17 @@ class DataAugmentationDINO:
             image: PIL Image.
 
         Returns:
-            dict with "global_crops" (list of 2 tensors) and
+            dict with "global_crops" (list of n_global_crops tensors) and
                        "local_crops"  (list of N tensors).
         """
         global_crop_1 = self._apply_global1(image)
-        global_crop_2 = self._apply_global2(image)
+        global_crops = [global_crop_1]
+        if self.n_global_crops >= 2:
+            global_crop_2 = self._apply_global2(image)
+            global_crops.append(global_crop_2)
         local_crops = [self._apply_local(image) for _ in range(self.local_crops_number)]
         return {
-            "global_crops": [global_crop_1, global_crop_2],
+            "global_crops": global_crops,
             "local_crops": local_crops,
         }
 

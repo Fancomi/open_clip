@@ -633,10 +633,12 @@ class DINOClsTokenLoss(nn.Module):
         out_dim: int,
         student_temp: float = 0.1,
         center_momentum: float = 0.9,
+        n_global_crops: int = 2,
     ):
         super().__init__()
         self.student_temp = student_temp
         self.center_momentum = center_momentum
+        self.n_global_crops = n_global_crops
         self.sinkhorn = SinkhornKnopp()
         self.register_buffer("center", torch.zeros(1, out_dim))
 
@@ -690,8 +692,8 @@ class DINOClsTokenLoss(nn.Module):
         #           total_loss += -sum(t * log(s))
         #
         # Here B_t rows = n_t * BS, so we iterate chunk-wise.
-        # We need BS to know chunk boundaries. Infer: assume n_t=2 global crops.
-        n_t = 2  # always 2 global teacher crops
+        # We need BS to know chunk boundaries.
+        n_t = self.n_global_crops
         BS = B_t // n_t
         n_s_crops = B_s // BS
 
@@ -786,7 +788,7 @@ class iBOTPatchLoss(nn.Module):
             loss = (per_token_ce * student_masks.float()).sum(dim=-1)  # [B]
             loss = (loss / n_masked_per_sample).mean()
 
-        return -loss if loss > 0 else loss  # CE should already be positive; sign correction
+        return loss
 
     def forward_masked(
         self,
@@ -889,19 +891,19 @@ class KoLeoLoss(nn.Module):
         return loss
 
 
-class ClipLeJEPALoss(nn.Module):
-    """LeJEPA SIGReg 正则化 + CLIP/SigLIP 主损失
+class SIGRegContrastiveLoss(nn.Module):
+    """SIGReg 正则化 + CLIP/SigLIP 主损失
 
     L = L_clip + λ × (SIGReg(image_proj) + SIGReg(text_proj))
 
     image_proj / text_proj 由 CLIPLeJEPA 模型提供（unnormalized）：
-    - 有 projector 时：MLP projector 输出
-    - 无 projector 时：backbone raw embedding（未 L2 normalize）
+    - sigreg_target in {clip, cls}:      Identity，直接作用于 [B, D] embedding
+    - sigreg_target in {clip_proj, cls_proj}: MLP projector 输出，间接约束 backbone
     """
 
     def __init__(
             self,
-            sigreg_weight: float = 0.01,
+            sigreg_weight: float = 1e-4,
             sigreg_knots: int = 17,
             sigreg_num_slices: int = 256,
             use_siglip: bool = False,
@@ -943,19 +945,26 @@ class ClipLeJEPALoss(nn.Module):
         weighted_reg = self.sigreg_weight * reg
 
         if output_dict:
-            return {"contrastive_loss": main_loss, "sigreg": weighted_reg}
+            return {"contrastive_loss": main_loss, "sigreg_loss": weighted_reg}
         return main_loss + weighted_reg
 
 
+# backwards-compat alias
+ClipLeJEPALoss = SIGRegContrastiveLoss
+
+
 class CLIPWithDINOLoss(nn.Module):
-    """Combined contrastive + self-distillation loss for CLIPWithDINO.
+    """Combined contrastive + self-distillation (+ optional SIGReg) loss for CLIPWithDINO.
 
     L = w_contrast * L_siglip
       + w_dino    * L_dino      (CLS token self-distillation)
       + w_ibot    * L_ibot      (masked patch token self-distillation)
       + w_koleo   * L_koleo     (nearest-neighbor entropy regularizer)
+      + w_sigreg  * L_sigreg    (optional: Sketched Isotropic Gaussian Regularizer)
 
-    The contrastive part uses SigLipLoss (default) or ClipLoss.
+    SIGReg inputs (sigreg_feat / sigreg_feat_text) are unnormalized features.
+    When dinov3+sigreg cls/cls_proj: sigreg_feat = student_cls_tokens_raw [B, backbone_dim].
+    When dinov3+sigreg clip/clip_proj: sigreg_feat = unnormalized CLIP image embedding [B, clip_dim].
     """
 
     def __init__(
@@ -967,15 +976,19 @@ class CLIPWithDINOLoss(nn.Module):
         dino_loss_weight: float = 1.0,
         ibot_loss_weight: float = 1.0,
         koleo_loss_weight: float = 0.1,
+        sigreg_weight: float = 0.0,
+        sigreg_num_slices: int = 256,
         use_siglip: bool = True,
         rank: int = 0,
         world_size: int = 1,
         dist_impl: Optional[str] = None,
+        n_global_crops: int = 2,
     ):
         super().__init__()
         self.dino_loss_weight = dino_loss_weight
         self.ibot_loss_weight = ibot_loss_weight
         self.koleo_loss_weight = koleo_loss_weight
+        self.sigreg_weight = sigreg_weight
 
         if use_siglip:
             self.contrastive_loss = SigLipLoss(
@@ -990,6 +1003,7 @@ class CLIPWithDINOLoss(nn.Module):
             out_dim=dino_out_dim,
             student_temp=student_temp,
             center_momentum=center_momentum,
+            n_global_crops=n_global_crops,
         )
         self.ibot_loss = iBOTPatchLoss(
             out_dim=ibot_out_dim,
@@ -997,6 +1011,11 @@ class CLIPWithDINOLoss(nn.Module):
             center_momentum=center_momentum,
         )
         self.koleo_loss = KoLeoLoss()
+
+        if sigreg_weight > 0:
+            self.sigreg = SIGReg(num_slices=sigreg_num_slices)
+        else:
+            self.sigreg = None
 
     def forward(
         self,
@@ -1014,6 +1033,9 @@ class CLIPWithDINOLoss(nn.Module):
         teacher_patch_tokens: Optional[torch.Tensor] = None,
         student_masks: Optional[torch.Tensor] = None,
         masks_weight: Optional[torch.Tensor] = None,
+        # SIGReg inputs (unnormalized features for regularization)
+        sigreg_feat: Optional[torch.Tensor] = None,
+        sigreg_feat_text: Optional[torch.Tensor] = None,
         # teacher temperature (scheduled outside)
         teacher_temp: float = 0.07,
         output_dict: bool = False,
@@ -1052,6 +1074,11 @@ class CLIPWithDINOLoss(nn.Module):
         if student_cls_tokens_raw is not None and self.koleo_loss_weight > 0:
             koleo = self.koleo_loss(student_cls_tokens_raw)
             losses["koleo_loss"] = self.koleo_loss_weight * koleo
+
+        # 5. SIGReg loss (optional; acts on unnormalized features provided by CLIPWithDINO)
+        if self.sigreg is not None and self.sigreg_weight > 0:
+            reg = sum(self.sigreg(f) for f in (sigreg_feat, sigreg_feat_text) if f is not None)
+            losses["sigreg_loss"] = self.sigreg_weight * reg
 
         if output_dict:
             return losses

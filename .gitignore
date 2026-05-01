@@ -4,6 +4,7 @@ models/
 features/
 results/
 
+output.txt
 tests/data/
 *.pt
 

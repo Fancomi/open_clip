@@ -495,42 +495,45 @@ def parse_args(args):
         help='A string to specify a specific distributed loss implementation.'
     )
 
-    # ============ LeJEPA 正则化参数 ============
+    # ============ SIGReg 正则化参数 (https://arxiv.org/abs/2511.08544) ============
     parser.add_argument(
-        "--lejepa",
-        default=False,
-        action="store_true",
-        help='Enable LeJEPA SIGReg regularization (https://arxiv.org/abs/2511.08544). Works with --siglip.'
+        "--sigreg-target",
+        default="none",
+        choices=["none", "clip", "clip_proj", "cls", "cls_proj"],
+        help=(
+            'SIGReg regularization target. '
+            '"none": disabled. '
+            '"clip": act on CLIP embedding [B, clip_dim] (Identity, no extra MLP). '
+            '"clip_proj": act on MLP output built on top of CLIP embedding. '
+            '"cls": act on CLS raw backbone embedding [B, backbone_dim] (Identity). '
+            '"cls_proj": act on MLP output built on top of CLS raw. '
+            'When --dinov3 is on, "cls"/"cls_proj" share the KoLeo position (pre-dino-head). '
+            'Works with --siglip.'
+        )
     )
     parser.add_argument(
-        "--lejepa-proj",
-        default=False,
-        action="store_true",
-        help='Use Projector for SIGReg (stronger regularization).'
-    )
-    parser.add_argument(
-        "--lejepa-weight",
+        "--sigreg-weight",
         type=float,
         default=1e-4,
-        help='SIGReg weight lambda. Recommended: 1e-2 to 1e-4.'
+        help='SIGReg loss weight lambda. Literature range: 1e-4 to 1e-2.'
     )
     parser.add_argument(
-        "--lejepa-num-slices",
-        type=int,
-        default=256,
-        help='Number of random slices for SIGReg.'
-    )
-    parser.add_argument(
-        "--lejepa-proj-dim",
+        "--sigreg-proj-dim",
         type=int,
         default=512,
-        help='Projector output dimension (only with --lejepa-proj).'
+        help='Projector output dimension (only used with clip_proj / cls_proj targets).'
     )
     parser.add_argument(
-        "--lejepa-proj-layers",
+        "--sigreg-proj-layers",
         type=int,
         default=3,
-        help='Projector layers (only with --lejepa-proj).'
+        help='Projector MLP depth (only used with clip_proj / cls_proj targets).'
+    )
+    parser.add_argument(
+        "--sigreg-slices",
+        type=int,
+        default=256,
+        help='Number of random slices for the SIGReg estimator.'
     )
 
     # ============ DINOv3 自蒸馏参数 ============
@@ -617,6 +620,14 @@ def parse_args(args):
         type=float,
         default=0.992,
         help="Starting EMA momentum for teacher (cosine-scheduled to 1.0)."
+    )
+    parser.add_argument(
+        "--dino-n-global-crops",
+        type=int,
+        default=2,
+        help="Number of global crops for DINO/iBOT. "
+             "Set to 1 for local-to-global only DINO (no global-to-global pairs). "
+             "iBOT always uses global crops regardless of this setting."
     )
     parser.add_argument(
         "--dino-local-crops-number",
