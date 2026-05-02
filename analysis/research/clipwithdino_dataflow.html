@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>CLIPWithDINO — 数据流全景</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'SF Mono', 'Consolas', monospace;
+  background: #0f1117;
+  color: #e0e0e0;
+  padding: 32px;
+  min-width: 1400px;
+}
+
+h1 {
+  text-align: center;
+  font-size: 18px;
+  color: #ffffff;
+  margin-bottom: 6px;
+  letter-spacing: 1px;
+}
+
+.subtitle {
+  text-align: center;
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 36px;
+}
+
+/* ── shared input banner ── */
+.inputs-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.input-chip {
+  background: #1e1e2e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 12px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.input-chip .label { color: #999; font-size: 11px; }
+.input-chip .tensor { color: #7ec8e3; font-weight: bold; }
+
+/* ── split annotation ── */
+.split-banner {
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 11px;
+  color: #888;
+}
+
+.split-banner code {
+  background: #1a1a2e;
+  border: 1px solid #333;
+  padding: 4px 10px;
+  border-radius: 4px;
+  color: #a0cfff;
+  margin: 0 4px;
+  font-size: 12px;
+}
+
+/* ── 6-column grid ── */
+.paths-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+/* ── path column ── */
+.path-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.path-header {
+  width: 100%;
+  border-radius: 8px 8px 0 0;
+  padding: 10px 8px 8px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  line-height: 1.5;
+}
+
+.path-header .path-num {
+  font-size: 10px;
+  opacity: 0.7;
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* path colors */
+.p1 { --c: #2a6496; --clight: #4a90c4; --cbg: #0d1f2d; }
+.p2 { --c: #8b5e00; --clight: #e09a1e; --cbg: #221800; }
+.p3 { --c: #1a6634; --clight: #2da05a; --cbg: #071a0e; }
+.p4 { --c: #6b2500; --clight: #c8581a; --cbg: #200a00; }
+.p5 { --c: #0d4425; --clight: #1a8050; --cbg: #031209; }
+.p6 { --c: #4a1a7a; --clight: #9b5fd4; --cbg: #120820; }
+
+.path-header { background: var(--c); color: #fff; border: 1px solid var(--clight); border-bottom: none; }
+
+.step-box {
+  width: 100%;
+  background: var(--cbg);
+  border-left: 1px solid var(--clight);
+  border-right: 1px solid var(--clight);
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.step-box.first { border-top: none; }
+.step-box.last  { border-bottom: 1px solid var(--clight); border-radius: 0 0 6px 6px; }
+
+.step-box .op {
+  color: #ccc;
+  margin-bottom: 2px;
+}
+
+.step-box .tensor {
+  color: var(--clight);
+  font-weight: bold;
+  font-size: 11px;
+}
+
+.step-box .dim {
+  color: #888;
+  font-size: 10px;
+}
+
+.step-box .note {
+  color: #777;
+  font-size: 10px;
+  font-style: italic;
+  margin-top: 3px;
+}
+
+/* arrow between steps */
+.arrow {
+  width: 100%;
+  text-align: center;
+  color: #444;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 0;
+  background: var(--cbg);
+  border-left: 1px solid var(--clight);
+  border-right: 1px solid var(--clight);
+}
+
+/* ── loss row ── */
+.losses-section {
+  border-top: 1px solid #333;
+  padding-top: 24px;
+}
+
+.losses-title {
+  text-align: center;
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 16px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.losses-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.loss-card {
+  background: #111;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 11px;
+  line-height: 1.8;
+}
+
+.loss-card .loss-name {
+  font-size: 13px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #222;
+}
+
+.loss-card .operand { color: #aaa; }
+.loss-card .vs { color: #555; margin: 0 6px; }
+.loss-card .dim { color: #666; font-size: 10px; }
+
+.badge {
+  display: inline-block;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: bold;
+  margin-right: 4px;
+}
+
+.badge.s1  { background: #1a3a50; color: #4a90c4; }
+.badge.s2  { background: #221800; color: #e09a1e; }
+.badge.s3  { background: #071a0e; color: #2da05a; }
+.badge.t4  { background: #200a00; color: #c8581a; }
+.badge.t5  { background: #031209; color: #1a8050; }
+.badge.s6  { background: #120820; color: #9b5fd4; }
+
+/* ── ema row ── */
+.ema-section {
+  margin-top: 24px;
+  border: 1px solid #2a2a3a;
+  border-radius: 8px;
+  padding: 16px 20px;
+  background: #0c0c14;
+}
+
+.ema-title {
+  font-size: 11px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 12px;
+}
+
+.ema-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.ema-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ema-src { color: #e09a1e; min-width: 200px; }
+.ema-arrow { color: #555; }
+.ema-dst { color: #c8581a; }
+.ema-note { color: #555; font-size: 10px; margin-left: 8px; }
+</style>
+</head>
+<body>
+
+<h1>CLIPWithDINO — 数据流全景</h1>
+<p class="subtitle">PE-Core-B-16-dinov3 · n_global_crops=1 · n_local_crops=8 · patch_size=16</p>
+
+<!-- inputs -->
+<div class="inputs-row">
+  <div class="input-chip">
+    <span class="label">global crops</span><br>
+    <span class="tensor">global_crops</span><br>
+    <span class="label">[B, 3, 224, 224]</span>
+  </div>
+  <div class="input-chip">
+    <span class="label">local crops</span><br>
+    <span class="tensor">local_crops</span><br>
+    <span class="label">[8B, 3, 96, 96]</span>
+  </div>
+  <div class="input-chip">
+    <span class="label">caption tokens</span><br>
+    <span class="tensor">texts</span><br>
+    <span class="label">[B, L]</span>
+  </div>
+</div>
+
+<div class="split-banner">
+  visual backbone (student or teacher) → <code>trunk.forward_features()</code> →
+  <code>x[:, 0]</code> CLS raw [·, 768]
+  &nbsp;+&nbsp;
+  <code>x[:, 1:]</code> reg+patch tokens [·, 4+N, 768]
+  &nbsp;|&nbsp; 以下从切分点开始
+</div>
+
+<!-- 6 paths -->
+<div class="paths-grid">
+
+  <!-- PATH 1: Student SigLIP/CLIP -->
+  <div class="path-col p1">
+    <div class="path-header p1">
+      <span class="path-num">路 1 · student</span>
+      SigLIP / CLIP
+    </div>
+    <div class="step-box first">
+      <div class="op">input</div>
+      <div class="tensor">x[:, 0]</div>
+      <div class="dim">CLS raw · global_crops[:B]</div>
+      <div class="note">仅取第1个 global crop</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="op">forward_head: pool='token'</div>
+      <div class="dim">取 x[:,0] → fc_norm → Identity</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="op">TimmModel.head</div>
+      <div class="dim">Linear(768 → 512)</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box last">
+      <div class="op">F.normalize</div>
+      <div class="tensor">image_features</div>
+      <div class="dim">[B, 512] · L2-normalized</div>
+    </div>
+  </div>
+
+  <!-- PATH 2: Student DINO -->
+  <div class="path-col p2">
+    <div class="path-header p2">
+      <span class="path-num">路 2 · student</span>
+      DINO CLS + KoLeo
+    </div>
+    <div class="step-box first">
+      <div class="op">input</div>
+      <div class="tensor">x[:, 0]</div>
+      <div class="dim">CLS raw · global + local crops</div>
+      <div class="note">1 global + 8 local → concat [9B, 768]</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="op">student_dino_head (MLP)</div>
+      <div class="dim">768 → 2048 → bottleneck(256) → 8192</div>
+      <div class="dim">L2-norm on bottleneck, weight-norm on last</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="tensor">student_cls_tokens</div>
+      <div class="dim">[9B, 8192]</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box last">
+      <div class="op">KoLeo loss</div>
+      <div class="dim">作用于 CLS raw [B, 768]</div>
+      <div class="note">仅 global crops，分叉前，最近邻熵</div>
+    </div>
+  </div>
+
+  <!-- PATH 3: Student iBOT -->
+  <div class="path-col p3">
+    <div class="path-header p3">
+      <span class="path-num">路 3 · student</span>
+      iBOT patch
+    </div>
+    <div class="step-box first">
+      <div class="op">input</div>
+      <div class="tensor">x[:, 1:]</div>
+      <div class="dim">reg+patch tokens · global_crops[:B]</div>
+      <div class="note">仅取第1个 global crop 的 patch tokens</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="op">mask + gather</div>
+      <div class="dim">student_masks [B, 4+N] → mask_idx</div>
+      <div class="dim">flat → index → masked_patches</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="op">student_ibot_head (MLP)</div>
+      <div class="dim">768 → 2048 → bottleneck(256) → 8192</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box last">
+      <div class="tensor">student_patch_tokens</div>
+      <div class="dim">[n_masked, 8192]</div>
+    </div>
+  </div>
+
+  <!-- PATH 4: Teacher DINO -->
+  <div class="path-col p4">
+    <div class="path-header p4">
+      <span class="path-num">路 4 · teacher · no_grad</span>
+      DINO CLS target
+    </div>
+    <div class="step-box first">
+      <div class="op">input</div>
+      <div class="tensor">x[:, 0]</div>
+      <div class="dim">CLS raw · global_crops only</div>
+      <div class="note">teacher_backbone (EMA copy), no_grad</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="op">teacher_dino_head (MLP)</div>
+      <div class="dim">768 → 2048 → bottleneck(256) → 8192</div>
+      <div class="note">EMA copy of student_dino_head</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="tensor">teacher_cls_tokens</div>
+      <div class="dim">[B, 8192]</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box last">
+      <div class="op">Sinkhorn-Knopp centering</div>
+      <div class="dim">+ softmax(T=teacher_temp)</div>
+      <div class="note">生成蒸馏 target 分布</div>
+    </div>
+  </div>
+
+  <!-- PATH 5: Teacher iBOT -->
+  <div class="path-col p5">
+    <div class="path-header p5">
+      <span class="path-num">路 5 · teacher · no_grad</span>
+      iBOT patch target
+    </div>
+    <div class="step-box first">
+      <div class="op">input</div>
+      <div class="tensor">x[:, 1:]</div>
+      <div class="dim">reg+patch tokens · global_crops[:B]</div>
+      <div class="note">teacher_backbone (EMA copy), no_grad</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="op">同 mask_idx gather</div>
+      <div class="dim">与 student 完全相同的 masked 位置</div>
+      <div class="note">same-view: student 和 teacher 看同一张图</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="op">teacher_ibot_head (MLP)</div>
+      <div class="dim">768 → 2048 → bottleneck(256) → 8192</div>
+      <div class="note">EMA copy of student_ibot_head</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box last">
+      <div class="tensor">teacher_patch_tokens</div>
+      <div class="dim">[n_masked, 8192]</div>
+    </div>
+  </div>
+
+  <!-- PATH 6: Student Text -->
+  <div class="path-col p6">
+    <div class="path-header p6">
+      <span class="path-num">路 6 · student</span>
+      Text Encoder
+    </div>
+    <div class="step-box first">
+      <div class="op">input</div>
+      <div class="tensor">texts</div>
+      <div class="dim">[B, L] · tokenized captions</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="op">CLIP text transformer</div>
+      <div class="dim">eot token → Linear(d_model → 512)</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box">
+      <div class="op">F.normalize</div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="step-box last">
+      <div class="tensor">text_features</div>
+      <div class="dim">[B, 512] · L2-normalized</div>
+    </div>
+  </div>
+
+</div><!-- /paths-grid -->
+
+<!-- losses -->
+<div class="losses-section">
+  <div class="losses-title">Loss Functions</div>
+  <div class="losses-grid">
+
+    <div class="loss-card">
+      <div class="loss-name" style="color:#4a90c4;">SigLIP / CLIP 对比损失</div>
+      <div>
+        <span class="badge s1">路1</span><span class="operand">image_features [B,512]</span>
+      </div>
+      <div style="color:#555; padding: 2px 0;">⟺ 匹配对齐</div>
+      <div>
+        <span class="badge s6">路6</span><span class="operand">text_features [B,512]</span>
+      </div>
+      <div class="dim" style="margin-top:6px;">SigLIP: sigmoid BCE · logit_bias=-10<br>CLIP: softmax cross-entropy</div>
+    </div>
+
+    <div class="loss-card">
+      <div class="loss-name" style="color:#e09a1e;">DINO CLS 蒸馏损失</div>
+      <div>
+        <span class="badge s2">路2</span><span class="operand">student_cls_tokens [9B,8192]</span>
+      </div>
+      <div style="color:#555; padding: 2px 0;">← cross-entropy →</div>
+      <div>
+        <span class="badge t4">路4</span><span class="operand">teacher_cls_tokens [B,8192]</span>
+      </div>
+      <div class="dim" style="margin-top:6px;">
+        student: 1 global + 8 local views<br>
+        teacher: 1 global view only<br>
+        skip same-view pair → local-to-global
+      </div>
+    </div>
+
+    <div class="loss-card">
+      <div class="loss-name" style="color:#2da05a;">iBOT patch 蒸馏损失</div>
+      <div>
+        <span class="badge s3">路3</span><span class="operand">student_patch_tokens [n_masked,8192]</span>
+      </div>
+      <div style="color:#555; padding: 2px 0;">← cross-entropy →</div>
+      <div>
+        <span class="badge t5">路5</span><span class="operand">teacher_patch_tokens [n_masked,8192]</span>
+      </div>
+      <div class="dim" style="margin-top:6px;">
+        student: masked positions (student 看 masked 图)<br>
+        teacher: 同位置 (teacher 看 unmasked 图)<br>
+        same-view constraint: 同一张 global crop
+      </div>
+    </div>
+
+    <div class="loss-card">
+      <div class="loss-name" style="color:#e09a1e;">KoLeo 熵正则</div>
+      <div>
+        <span class="badge s2">路2</span>
+        <span class="operand">CLS raw [B,768]</span>
+      </div>
+      <div class="dim" style="margin-top:6px;">
+        在 student_dino_head 之前的原始特征<br>
+        仅 global crops (B 行)<br>
+        最大化最近邻距离：<br>
+        L = −mean(log dist(xᵢ, NN(xᵢ)))
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- EMA -->
+<div class="ema-section">
+  <div class="ema-title">EMA 更新（每次 optimizer.step() 之后）</div>
+  <div class="ema-rows">
+    <div class="ema-row">
+      <span class="ema-src">student backbone (visual)</span>
+      <span class="ema-arrow">──EMA──►</span>
+      <span class="ema-dst">teacher_backbone</span>
+      <span class="ema-note">路1/2/3 的 backbone 权重 → 路4/5 的 backbone</span>
+    </div>
+    <div class="ema-row">
+      <span class="ema-src">student_dino_head</span>
+      <span class="ema-arrow">──EMA──►</span>
+      <span class="ema-dst">teacher_dino_head</span>
+      <span class="ema-note">路2 的 head → 路4 的 head</span>
+    </div>
+    <div class="ema-row">
+      <span class="ema-src">student_ibot_head</span>
+      <span class="ema-arrow">──EMA──►</span>
+      <span class="ema-dst">teacher_ibot_head</span>
+      <span class="ema-note">路3 的 head → 路5 的 head</span>
+    </div>
+    <div class="ema-row" style="margin-top:8px; padding-top:8px; border-top:1px solid #1a1a2a;">
+      <span style="color:#555; font-size:11px;">
+        momentum schedule: start_mom → 1.0 (cosine) · teacher 的 requires_grad=False · text encoder 无 EMA
+      </span>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
