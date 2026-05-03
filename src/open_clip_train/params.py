@@ -536,6 +536,27 @@ def parse_args(args):
         help='Number of random slices for the SIGReg estimator.'
     )
 
+    # ============ Modality Gap 正则化参数 ============
+    parser.add_argument(
+        "--modality-gap-weight",
+        type=float,
+        default=0.0,
+        help=(
+            'Weight λ for modality-gap regularization: λ * ||mean(img) - mean(txt)||². '
+            '0.0 = disabled. Typical range: 0.001 ~ 0.05. '
+            'Can be combined with --sigreg-target or --dinov3.'
+        )
+    )
+    parser.add_argument(
+        "--modality-gap-ema",
+        type=float,
+        default=0.999,
+        help=(
+            'EMA momentum for tracking running image/text means in ModalityGapLoss. '
+            '1.0 = pure batch-level (no EMA). 0.999 = smooth running mean (default).'
+        )
+    )
+
     # ============ DINOv3 自蒸馏参数 ============
     parser.add_argument(
         "--dinov3",

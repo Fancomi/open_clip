@@ -891,10 +891,79 @@ class KoLeoLoss(nn.Module):
         return loss
 
 
-class SIGRegContrastiveLoss(nn.Module):
-    """SIGReg 正则化 + CLIP/SigLIP 主损失
+class ModalityGapLoss(nn.Module):
+    """Modality-gap regularizer for CLIP-style contrastive training.
 
-    L = L_clip + λ × (SIGReg(image_proj) + SIGReg(text_proj))
+    Penalizes the L2 distance between the mean image embedding and the mean
+    text embedding in the shared space, encouraging the two modality clouds to
+    share a common center:
+
+        L_gap = || mean(img) - mean(txt) ||²
+
+    Mean estimation can be done at batch level (fast, noisy) or using a
+    running EMA across steps (smoother, recommended for large-batch training).
+
+    Args:
+        ema_momentum: EMA momentum for updating running means. Set to 1.0 to
+                      disable EMA and always use the batch mean (pure batch-level).
+        dim:          Feature dimension. Required when ema_momentum < 1.0.
+                      Will be inferred from the first forward call if not set.
+    """
+
+    def __init__(self, ema_momentum: float = 0.999, dim: Optional[int] = None):
+        super().__init__()
+        self.ema_momentum = ema_momentum
+        self._dim = dim
+        if dim is not None:
+            self.register_buffer("running_img_mean", torch.zeros(dim))
+            self.register_buffer("running_txt_mean", torch.zeros(dim))
+        else:
+            self.running_img_mean = None
+            self.running_txt_mean = None
+
+    def _lazy_init(self, dim: int, device):
+        if self.running_img_mean is None:
+            self._dim = dim
+            self.running_img_mean = torch.zeros(dim, device=device)
+            self.running_txt_mean = torch.zeros(dim, device=device)
+
+    def forward(
+        self,
+        image_features: torch.Tensor,  # [B, D] l2-normalized
+        text_features: torch.Tensor,   # [B, D] l2-normalized
+    ) -> torch.Tensor:
+        """Return scalar gap loss = ||mean_img - mean_txt||^2."""
+        self._lazy_init(image_features.shape[-1], image_features.device)
+
+        # Synchronise batch means across GPUs (allreduce avg)
+        batch_img = image_features.mean(dim=0)
+        batch_txt = text_features.mean(dim=0)
+        if has_distributed and dist.is_available() and dist.is_initialized():
+            dist.all_reduce(batch_img, op=dist.ReduceOp.AVG)
+            dist.all_reduce(batch_txt, op=dist.ReduceOp.AVG)
+
+        if self.ema_momentum < 1.0:
+            # EMA update (no gradient through the running mean buffer)
+            m = self.ema_momentum
+            self.running_img_mean = (m * self.running_img_mean.detach()
+                                     + (1 - m) * batch_img.detach())
+            self.running_txt_mean = (m * self.running_txt_mean.detach()
+                                     + (1 - m) * batch_txt.detach())
+            mu_img = self.running_img_mean
+            mu_txt = self.running_txt_mean
+        else:
+            mu_img = batch_img
+            mu_txt = batch_txt
+
+        return (mu_img - mu_txt).pow(2).sum()
+
+
+class SIGRegContrastiveLoss(nn.Module):
+    """SIGReg 正则化 + CLIP/SigLIP 主损失 (+ optional modality-gap regularizer)
+
+    L = L_clip
+      + λ_sigreg  × (SIGReg(image_proj) + SIGReg(text_proj))
+      + λ_gap     × ||mean(img) - mean(txt)||²
 
     image_proj / text_proj 由 CLIPLeJEPA 模型提供（unnormalized）：
     - sigreg_target in {clip, cls}:      Identity，直接作用于 [B, D] embedding
@@ -906,6 +975,8 @@ class SIGRegContrastiveLoss(nn.Module):
             sigreg_weight: float = 1e-4,
             sigreg_knots: int = 17,
             sigreg_num_slices: int = 256,
+            modality_gap_weight: float = 0.0,
+            modality_gap_ema: float = 0.999,
             use_siglip: bool = False,
             local_loss: bool = False,
             gather_with_grad: bool = False,
@@ -917,6 +988,7 @@ class SIGRegContrastiveLoss(nn.Module):
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
+        self.modality_gap_weight = modality_gap_weight
 
         if use_siglip:
             assert not use_horovod, "Horovod not supported for SigLip"
@@ -927,6 +999,10 @@ class SIGRegContrastiveLoss(nn.Module):
                 cache_labels=cache_labels, rank=rank, world_size=world_size, use_horovod=use_horovod,
             )
         self.sigreg = SIGReg(knots=sigreg_knots, num_slices=sigreg_num_slices)
+        if modality_gap_weight > 0:
+            self.gap_loss = ModalityGapLoss(ema_momentum=modality_gap_ema)
+        else:
+            self.gap_loss = None
 
     def forward(
             self,
@@ -944,9 +1020,16 @@ class SIGRegContrastiveLoss(nn.Module):
         reg = sum(self.sigreg(f) for f in (image_proj, text_proj) if f is not None)
         weighted_reg = self.sigreg_weight * reg
 
+        losses = {"contrastive_loss": main_loss, "sigreg_loss": weighted_reg}
+
+        if self.gap_loss is not None and self.modality_gap_weight > 0:
+            losses["modality_gap_loss"] = self.modality_gap_weight * self.gap_loss(
+                image_features, text_features
+            )
+
         if output_dict:
-            return {"contrastive_loss": main_loss, "sigreg_loss": weighted_reg}
-        return main_loss + weighted_reg
+            return losses
+        return sum(losses.values())
 
 
 # backwards-compat alias
@@ -978,6 +1061,8 @@ class CLIPWithDINOLoss(nn.Module):
         koleo_loss_weight: float = 0.1,
         sigreg_weight: float = 0.0,
         sigreg_num_slices: int = 256,
+        modality_gap_weight: float = 0.0,
+        modality_gap_ema: float = 0.999,
         use_siglip: bool = True,
         rank: int = 0,
         world_size: int = 1,
@@ -989,6 +1074,7 @@ class CLIPWithDINOLoss(nn.Module):
         self.ibot_loss_weight = ibot_loss_weight
         self.koleo_loss_weight = koleo_loss_weight
         self.sigreg_weight = sigreg_weight
+        self.modality_gap_weight = modality_gap_weight
 
         if use_siglip:
             self.contrastive_loss = SigLipLoss(
@@ -1016,6 +1102,11 @@ class CLIPWithDINOLoss(nn.Module):
             self.sigreg = SIGReg(num_slices=sigreg_num_slices)
         else:
             self.sigreg = None
+
+        if modality_gap_weight > 0:
+            self.gap_loss = ModalityGapLoss(ema_momentum=modality_gap_ema)
+        else:
+            self.gap_loss = None
 
     def forward(
         self,
@@ -1079,6 +1170,12 @@ class CLIPWithDINOLoss(nn.Module):
         if self.sigreg is not None and self.sigreg_weight > 0:
             reg = sum(self.sigreg(f) for f in (sigreg_feat, sigreg_feat_text) if f is not None)
             losses["sigreg_loss"] = self.sigreg_weight * reg
+
+        # 6. Modality gap loss (optional; penalises ||mean_img - mean_txt||^2)
+        if self.gap_loss is not None and self.modality_gap_weight > 0:
+            losses["modality_gap_loss"] = self.modality_gap_weight * self.gap_loss(
+                image_features, text_features
+            )
 
         if output_dict:
             return losses

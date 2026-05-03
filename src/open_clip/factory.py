@@ -14,7 +14,7 @@ from .convert import convert_state_dict
 from .model import CLIP, CustomTextCLIP, CLIPLeJEPA, CLIPWithDINO, convert_weights_to_lp, convert_to_custom_text_state_dict,\
     resize_pos_embed, get_cast_dtype, resize_text_pos_embed, set_model_preprocess_cfg
 from .coca_model import CoCa
-from .loss import ClipLoss, DistillClipLoss, CoCaLoss, SigLipLoss, SIGRegContrastiveLoss, CLIPWithDINOLoss
+from .loss import ClipLoss, DistillClipLoss, CoCaLoss, SigLipLoss, SIGRegContrastiveLoss, CLIPWithDINOLoss, ModalityGapLoss
 from .pretrained import is_pretrained_cfg, get_pretrained_cfg, download_pretrained,\
     list_pretrained_tags_by_model, download_pretrained_from_hf
 from .transform import image_transform_v2, AugmentationCfg, PreprocessCfg, merge_preprocess_dict, merge_preprocess_kwargs
@@ -812,6 +812,8 @@ def create_loss(args):
         return SIGRegContrastiveLoss(
             sigreg_weight=getattr(args, 'sigreg_weight', 1e-4),
             sigreg_num_slices=getattr(args, 'sigreg_slices', 256),
+            modality_gap_weight=getattr(args, 'modality_gap_weight', 0.0),
+            modality_gap_ema=getattr(args, 'modality_gap_ema', 0.999),
             use_siglip=getattr(args, 'siglip', False),
             local_loss=args.local_loss,
             gather_with_grad=args.gather_with_grad,
@@ -835,6 +837,8 @@ def create_loss(args):
             koleo_loss_weight=getattr(args, 'koleo_loss_weight', 0.1),
             sigreg_weight=getattr(args, 'sigreg_weight', 0.0) if sigreg_target != 'none' else 0.0,
             sigreg_num_slices=getattr(args, 'sigreg_slices', 256),
+            modality_gap_weight=getattr(args, 'modality_gap_weight', 0.0),
+            modality_gap_ema=getattr(args, 'modality_gap_ema', 0.999),
             use_siglip=getattr(args, 'siglip', False),
             rank=args.rank,
             world_size=args.world_size,
