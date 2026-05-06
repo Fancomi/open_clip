@@ -494,10 +494,13 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
     if not metrics:
         return metrics
 
-    logging.info(
-        f"Eval Epoch: {epoch} "
-        + "\t".join([f"{k}: {round(v, 4):.4f}" for k, v in metrics.items()])
-    )
+    _i2t = {k: v for k, v in metrics.items() if k.startswith("image_to_text")}
+    _t2i = {k: v for k, v in metrics.items() if k.startswith("text_to_image")}
+    _rest = {k: v for k, v in metrics.items() if not k.startswith("image_to_text") and not k.startswith("text_to_image")}
+    def _fmt(d): return "\t".join(f"{k}: {round(v, 4):.4f}" for k, v in d.items())
+    logging.info(f"Eval Epoch: {epoch} [i2t]\t" + _fmt(_i2t))
+    logging.info(f"Eval Epoch: {epoch} [t2i]\t" + _fmt(_t2i))
+    logging.info(f"Eval Epoch: {epoch} [etc]\t" + _fmt(_rest))
 
     log_data = {"val/" + name: val for name, val in metrics.items()}
 
