@@ -19,7 +19,7 @@
 
 
 for logdir in \
-    "wmc_baseline_0506_1337"
+    "wmc_txt2000_0506_1633"
     # "mgap_wm01_0505_1419"
     # "mgap_center_v2_m9_0504_1228"
     # "mgap_center_v2_0504_1228"

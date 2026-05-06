@@ -67,20 +67,29 @@ SIGREG_BASE="--siglip --sigreg-target cls --sigreg-weight 1e-4 \
 # ════════════════════════════════════════════════════════════════════════════
 # Baseline: SigLIP + SIGReg + Muon，无 within-modal
 # ════════════════════════════════════════════════════════════════════════════
-run "baseline" "PE-Core-B-16-dinov3" 29520 "${SIGREG_BASE}"
+# run "baseline" "PE-Core-B-16-dinov3" 29520 "${SIGREG_BASE}"
 
 # ════════════════════════════════════════════════════════════════════════════
 # img-only within-modal repulsion  (within_modal_sides=img)
 # txt-only within-modal repulsion  (within_modal_sides=txt)
 # ════════════════════════════════════════════════════════════════════════════
-run "img550" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 5.0  --within-modal-sides img"
-run "txt550" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 5.0 --within-modal-sides txt"
+# run "img550" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 5.0  --within-modal-sides img"
+# run "txt550" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 5.0 --within-modal-sides txt"
 
-run "img750" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 7.5  --within-modal-sides img"
-run "txt750" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 7.5 --within-modal-sides txt"
+# run "img750" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 7.5  --within-modal-sides img"
+# run "txt750" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 7.5 --within-modal-sides txt"
 
-run "img250" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 2.5  --within-modal-sides img"
-run "txt250" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.5 --within-modal-sides txt"
+# run "img250" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 2.5  --within-modal-sides img"
+# run "txt250" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.5 --within-modal-sides txt"
+
+run "img2000" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 20.0  --within-modal-sides img"
+run "txt2000" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 20.0 --within-modal-sides txt"
+
+run "img1500" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 15.0  --within-modal-sides img"
+run "txt1500" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 15.0 --within-modal-sides txt"
+
+run "img1000" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 10.0  --within-modal-sides img"
+run "txt1000" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 10.0 --within-modal-sides txt"
 
 # ════════════════════════════════════════════════════════════════════════════
 # both-sides within-modal repulsion  (within_modal_sides=both)
