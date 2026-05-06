@@ -107,26 +107,26 @@ SIGREG_BASE="--siglip --sigreg-target cls --sigreg-weight 1e-4 \
 #   λ sweep: 0.25, 0.5, 0.75, 1.0
 # ════════════════════════════════════════════════════════════════════════════
 
-# run "img050" "PE-Core-B-16-dinov3" 29531 "${SIGREG_BASE} --within-modal-weight 0.5  --within-modal-sides img"
-# run "txt050" "PE-Core-B-16-dinov3" 29535 "${SIGREG_BASE} --within-modal-weight 0.5  --within-modal-sides txt"
+# # run "img050" "PE-Core-B-16-dinov3" 29531 "${SIGREG_BASE} --within-modal-weight 0.5  --within-modal-sides img"
+# # run "txt050" "PE-Core-B-16-dinov3" 29535 "${SIGREG_BASE} --within-modal-weight 0.5  --within-modal-sides txt"
 
-# run "img100" "PE-Core-B-16-dinov3" 29532 "${SIGREG_BASE} --within-modal-weight 1.0  --within-modal-sides img"
-# run "txt100" "PE-Core-B-16-dinov3" 29536 "${SIGREG_BASE} --within-modal-weight 1.0  --within-modal-sides txt"
+# # run "img100" "PE-Core-B-16-dinov3" 29532 "${SIGREG_BASE} --within-modal-weight 1.0  --within-modal-sides img"
+# # run "txt100" "PE-Core-B-16-dinov3" 29536 "${SIGREG_BASE} --within-modal-weight 1.0  --within-modal-sides txt"
 
-# run "img150" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 1.5  --within-modal-sides img"
-# run "txt150" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1.5 --within-modal-sides txt"
+# # run "img150" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 1.5  --within-modal-sides img"
+# # run "txt150" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1.5 --within-modal-sides txt"
 
-run "img550" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 5.0  --within-modal-sides img"
-run "txt550" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 5.0 --within-modal-sides txt"
+# run "img550" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 5.0  --within-modal-sides img"
+# run "txt550" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 5.0 --within-modal-sides txt"
 
-run "img750" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 7.5  --within-modal-sides img"
-run "txt750" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 7.5 --within-modal-sides txt"
+# run "img750" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 7.5  --within-modal-sides img"
+# run "txt750" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 7.5 --within-modal-sides txt"
 
-run "img250" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 2.5  --within-modal-sides img"
-run "txt250" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.5 --within-modal-sides txt"
+# run "img250" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 2.5  --within-modal-sides img"
+# run "txt250" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.5 --within-modal-sides txt"
 
-# run "img025" "PE-Core-B-16-dinov3" 29530 "${SIGREG_BASE} --within-modal-weight 0.25 --within-modal-sides img"
-# run "txt025" "PE-Core-B-16-dinov3" 29534 "${SIGREG_BASE} --within-modal-weight 0.25 --within-modal-sides txt"
+# # run "img025" "PE-Core-B-16-dinov3" 29530 "${SIGREG_BASE} --within-modal-weight 0.25 --within-modal-sides img"
+# # run "txt025" "PE-Core-B-16-dinov3" 29534 "${SIGREG_BASE} --within-modal-weight 0.25 --within-modal-sides txt"
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -153,14 +153,14 @@ run "txt250" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2
 #     wm15  : λ=1.5
 #     wm2   : λ=2.0
 # ════════════════════════════════════════════════════════════════════════════
-# run "wm1"   "PE-Core-B-16-dinov3" 29544 "${SIGREG_BASE} --within-modal-weight 1.0"
-run "wm15"  "PE-Core-B-16-dinov3" 29545 "${SIGREG_BASE} --within-modal-weight 1.5"
-run "wm2"   "PE-Core-B-16-dinov3" 29546 "${SIGREG_BASE} --within-modal-weight 2.0"
-run "wm025" "PE-Core-B-16-dinov3" 29542 "${SIGREG_BASE} --within-modal-weight 0.25"
-run "wm075" "PE-Core-B-16-dinov3" 29543 "${SIGREG_BASE} --within-modal-weight 0.75"
+# # run "wm1"   "PE-Core-B-16-dinov3" 29544 "${SIGREG_BASE} --within-modal-weight 1.0"
+# run "wm15"  "PE-Core-B-16-dinov3" 29545 "${SIGREG_BASE} --within-modal-weight 1.5"
+# run "wm2"   "PE-Core-B-16-dinov3" 29546 "${SIGREG_BASE} --within-modal-weight 2.0"
+# run "wm025" "PE-Core-B-16-dinov3" 29542 "${SIGREG_BASE} --within-modal-weight 0.25"
+# run "wm075" "PE-Core-B-16-dinov3" 29543 "${SIGREG_BASE} --within-modal-weight 0.75"
 
 
-echo "======== modality_gap experiments done ========"
+# echo "======== modality_gap experiments done ========"
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -169,7 +169,7 @@ echo "======== modality_gap experiments done ========"
 
 # ── Baseline: 纯 SigLIP + SIGReg，无 gap 干预 ────────────────────────────
 # logs/mgap_baseline_<TS>
-# run "baseline" "PE-Core-B-16-dinov3" 29550 "${SIGREG_BASE}"
+run "baseline" "PE-Core-B-16-dinov3" 29555 "${SIGREG_BASE}"
 
 # ── Gap loss 消融（batch mean distance loss，梯度流过 batch mean）─────────
 # λ=0.001 — 轻微惩罚，对收敛几乎无影响
