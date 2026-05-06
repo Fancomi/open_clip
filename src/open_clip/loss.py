@@ -892,70 +892,25 @@ class KoLeoLoss(nn.Module):
 
 
 class ModalityGapLoss(nn.Module):
-    """Modality-gap regularizer for CLIP-style contrastive training.
+    """Batch-level modality-gap regularizer (pre-L2-norm features).
 
-    Penalizes the L2 distance between the mean image embedding and the mean
-    text embedding in the shared space, encouraging the two modality clouds to
-    share a common center:
+    L_gap = || mean(img_raw) - mean(txt_raw) ||²
 
-        L_gap = || mean(img) - mean(txt) ||²
-
-    Mean estimation can be done at batch level (fast, noisy) or using a
-    running EMA across steps (smoother, recommended for large-batch training).
-
-    Args:
-        ema_momentum: EMA momentum for updating running means. Set to 1.0 to
-                      disable EMA and always use the batch mean (pure batch-level).
-        dim:          Feature dimension. Required when ema_momentum < 1.0.
-                      Will be inferred from the first forward call if not set.
+    Gradient flows through the current-batch means back to the features.
+    No EMA — pure batch statistics. Applied pre-L2-norm.
     """
-
-    def __init__(self, ema_momentum: float = 0.999, dim: Optional[int] = None):
-        super().__init__()
-        self.ema_momentum = ema_momentum
-        self._dim = dim
-        if dim is not None:
-            self.register_buffer("running_img_mean", torch.zeros(dim))
-            self.register_buffer("running_txt_mean", torch.zeros(dim))
-        else:
-            self.running_img_mean = None
-            self.running_txt_mean = None
-
-    def _lazy_init(self, dim: int, device):
-        if self.running_img_mean is None:
-            self._dim = dim
-            self.running_img_mean = torch.zeros(dim, device=device)
-            self.running_txt_mean = torch.zeros(dim, device=device)
 
     def forward(
         self,
-        image_features: torch.Tensor,  # [B, D] l2-normalized
-        text_features: torch.Tensor,   # [B, D] l2-normalized
+        image_features: torch.Tensor,  # [B, D] pre-L2-norm, gradient required
+        text_features: torch.Tensor,   # [B, D] pre-L2-norm, gradient required
     ) -> torch.Tensor:
-        """Return scalar gap loss = ||mean_img - mean_txt||^2."""
-        self._lazy_init(image_features.shape[-1], image_features.device)
-
-        # Synchronise batch means across GPUs (allreduce avg)
         batch_img = image_features.mean(dim=0)
         batch_txt = text_features.mean(dim=0)
         if has_distributed and dist.is_available() and dist.is_initialized():
             dist.all_reduce(batch_img, op=dist.ReduceOp.AVG)
             dist.all_reduce(batch_txt, op=dist.ReduceOp.AVG)
-
-        if self.ema_momentum < 1.0:
-            # EMA update (no gradient through the running mean buffer)
-            m = self.ema_momentum
-            self.running_img_mean = (m * self.running_img_mean.detach()
-                                     + (1 - m) * batch_img.detach())
-            self.running_txt_mean = (m * self.running_txt_mean.detach()
-                                     + (1 - m) * batch_txt.detach())
-            mu_img = self.running_img_mean
-            mu_txt = self.running_txt_mean
-        else:
-            mu_img = batch_img
-            mu_txt = batch_txt
-
-        return (mu_img - mu_txt).pow(2).sum()
+        return (batch_img - batch_txt).pow(2).sum()
 
 
 class SIGRegContrastiveLoss(nn.Module):
@@ -963,7 +918,7 @@ class SIGRegContrastiveLoss(nn.Module):
 
     L = L_clip
       + λ_sigreg  × (SIGReg(image_proj) + SIGReg(text_proj))
-      + λ_gap     × ||mean(img) - mean(txt)||²
+      + modality_gap_loss   (pre-computed by model, pre-L2-norm)
 
     image_proj / text_proj 由 CLIPLeJEPA 模型提供（unnormalized）：
     - sigreg_target in {clip, cls}:      Identity，直接作用于 [B, D] embedding
@@ -975,8 +930,6 @@ class SIGRegContrastiveLoss(nn.Module):
             sigreg_weight: float = 1e-4,
             sigreg_knots: int = 17,
             sigreg_num_slices: int = 256,
-            modality_gap_weight: float = 0.0,
-            modality_gap_ema: float = 0.999,
             use_siglip: bool = False,
             local_loss: bool = False,
             gather_with_grad: bool = False,
@@ -985,10 +938,18 @@ class SIGRegContrastiveLoss(nn.Module):
             world_size: int = 1,
             use_horovod: bool = False,
             dist_impl=None,
+            within_modal_weight: float = 0.0,
+            within_modal_sides: str = 'both',   # 'both' | 'img' | 'txt'
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
-        self.modality_gap_weight = modality_gap_weight
+        self.within_modal_weight = within_modal_weight
+        assert within_modal_sides in ('both', 'img', 'txt'), \
+            f"within_modal_sides must be 'both'/'img'/'txt', got {within_modal_sides!r}"
+        self.within_modal_sides = within_modal_sides
+        self.rank = rank
+        self.world_size = world_size
+        self.gather_with_grad = gather_with_grad
 
         if use_siglip:
             assert not use_horovod, "Horovod not supported for SigLip"
@@ -999,10 +960,83 @@ class SIGRegContrastiveLoss(nn.Module):
                 cache_labels=cache_labels, rank=rank, world_size=world_size, use_horovod=use_horovod,
             )
         self.sigreg = SIGReg(knots=sigreg_knots, num_slices=sigreg_num_slices)
-        if modality_gap_weight > 0:
-            self.gap_loss = ModalityGapLoss(ema_momentum=modality_gap_ema)
+
+    def _cross_modal_positive_only(
+        self,
+        image_features: torch.Tensor,   # [B, D] local rank, L2-normalised
+        text_features: torch.Tensor,    # [B, D] local rank, L2-normalised
+        logit_scale: torch.Tensor,
+        logit_bias: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Cross-modal loss using ONLY positive pairs (diagonal).
+
+        No cross-modal negatives → removes the incentive for modality separation.
+        Alignment is maintained purely through positive pairs.
+
+        No distributed exchange needed: positive pairs are always co-located
+        on the same rank.
+
+        L = -mean_i log σ(scale · img_i⊤txt_i  + bias)
+        Normalisation: sum / B  (same convention as SigLipLoss._loss).
+        """
+        B = image_features.shape[0]
+        # Diagonal similarities: element-wise dot product of matched pairs
+        pos_logits = logit_scale * (image_features * text_features).sum(dim=-1)  # [B]
+        if logit_bias is not None:
+            pos_logits = pos_logits + logit_bias
+        return -F.logsigmoid(pos_logits).sum() / B
+
+    def _within_modal_siglip(
+        self,
+        features: torch.Tensor,       # [B, D] local rank features, L2-normalised
+        logit_scale: torch.Tensor,
+        logit_bias: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Within-modality SigLIP repulsion loss.
+
+        Reuses the exact same formula, logit_scale, logit_bias, and sum/B
+        normalisation as cross-modal SigLipLoss, so the two losses are
+        naturally on the same scale.
+
+        Labels: all off-diagonal pairs = -1 (negatives).
+        Diagonal is masked to 0 (self-similarity carries no signal).
+
+        With logit_bias ≈ -10.4 the loss is near-zero when within-modal
+        cosines are small (features spread out), and grows automatically as
+        features cluster into a modality cloud — self-calibrating.
+
+        With world_size > 1 features are gathered globally so every rank
+        sees the full same-modality negatives (consistent with SigLip gather).
+
+        Gradient scaling reference (λ=0.5):
+          0.5 * (L_wm_img + L_wm_txt) contributes the same total number of
+          negative pairs as the cross-modal SigLIP: 0.5*2*B*(B-1) = B*(B-1).
+        """
+        if self.world_size > 1:
+            if self.gather_with_grad:
+                all_feats = torch.cat(torch.distributed.nn.all_gather(features), dim=0)
+            else:
+                gathered = [torch.zeros_like(features) for _ in range(self.world_size)]
+                dist.all_gather(gathered, features)
+                gathered[self.rank] = features   # keep grad on local slice
+                all_feats = torch.cat(gathered, dim=0)
         else:
-            self.gap_loss = None
+            all_feats = features
+
+        N = all_feats.shape[0]
+        logits = logit_scale * (all_feats @ all_feats.T)
+        if logit_bias is not None:
+            logits = logits + logit_bias
+
+        # All off-diagonal pairs are negatives: -logsigmoid(-logit) = softplus(logit)
+        loss = F.softplus(logits)
+
+        # Mask diagonal (self-similarity = 1.0, no learning signal)
+        eye = torch.eye(N, device=logits.device, dtype=torch.bool)
+        loss = loss.masked_fill(eye, 0.0)
+
+        # Normalise by B (same convention as SigLipLoss._loss: sum / B)
+        return loss.sum() / N
 
     def forward(
             self,
@@ -1012,20 +1046,67 @@ class SIGRegContrastiveLoss(nn.Module):
             logit_bias=None,
             image_proj=None,
             text_proj=None,
+            modality_gap_loss: Optional[torch.Tensor] = None,
             output_dict: bool = False,
     ):
-        main_loss = self.main_loss(image_features, text_features, logit_scale, logit_bias, output_dict=False)
-
         # SIGReg 作用在 unnormalized proj 上（由 CLIPLeJEPA 提供）
         reg = sum(self.sigreg(f) for f in (image_proj, text_proj) if f is not None)
         weighted_reg = self.sigreg_weight * reg
 
-        losses = {"contrastive_loss": main_loss, "sigreg_loss": weighted_reg}
-
-        if self.gap_loss is not None and self.modality_gap_weight > 0:
-            losses["modality_gap_loss"] = self.modality_gap_weight * self.gap_loss(
-                image_features, text_features
+        if self.within_modal_weight > 0:
+            # ── within-modal 模式 ─────────────────────────────────────────────
+            # 三项分解：
+            #
+            #   cross_pos : 仅对角线 B 个正样本对（复用 logit_scale / logit_bias）
+            #               -logsigmoid(s·<img_i,txt_i> + b)  / B
+            #
+            #   wm_img    : img-img 非对角线负样本对（共享 logit_scale / logit_bias）
+            #               softplus(s·<img_i,img_j> + b)     / B   (i≠j)
+            #
+            #   wm_txt    : txt-txt 非对角线负样本对（同上）
+            #               softplus(s·<txt_i,txt_j> + b)     / B   (i≠j)
+            #
+            # 三者共享 logit_scale / logit_bias，维持标准 SigLIP 的自平衡：
+            #   正样本把 b 往下拉，负样本把 b 往上推；b/scale 均有双向梯度。
+            #
+            # within_modal_sides 控制哪侧参与：
+            #   'both' : wm_img + wm_txt（默认，λ=0.5 时负样本对数 = cross-modal）
+            #   'img'  : 仅 wm_img
+            #   'txt'  : 仅 wm_txt
+            cross_loss = self._cross_modal_positive_only(
+                image_features, text_features, logit_scale, logit_bias
             )
+            sides = self.within_modal_sides
+            # logit_bias 同步传入 within_modal，维持正负样本对 bias/scale 的梯度平衡：
+            #   正样本（cross_modal）把 b 往下拉；负样本（within_modal）把 b 往上推。
+            #   缺少任一侧都会导致 bias/scale 单向崩塌。
+            wm_img = self._within_modal_siglip(image_features, logit_scale, logit_bias) \
+                if sides in ('both', 'img') else None
+            wm_txt = self._within_modal_siglip(text_features,  logit_scale, logit_bias) \
+                if sides in ('both', 'txt') else None
+
+            if sides == 'both':
+                wm_loss = self.within_modal_weight * (wm_img + wm_txt) * 0.5
+            elif sides == 'img':
+                wm_loss = self.within_modal_weight * wm_img
+            else:  # 'txt'
+                wm_loss = self.within_modal_weight * wm_txt
+
+            losses = {
+                "contrastive_loss":  cross_loss,
+                "sigreg_loss":       weighted_reg,
+                "within_modal_loss": wm_loss,
+            }
+        else:
+            # ── 标准模式（baseline 行为，完全不变）────────────────────────────
+            main_loss = self.main_loss(
+                image_features, text_features, logit_scale, logit_bias, output_dict=False
+            )
+            losses = {"contrastive_loss": main_loss, "sigreg_loss": weighted_reg}
+
+        # modality_gap_loss pre-computed by model (pre-L2-norm), just accumulate
+        if modality_gap_loss is not None:
+            losses["modality_gap_loss"] = modality_gap_loss
 
         if output_dict:
             return losses
@@ -1127,6 +1208,8 @@ class CLIPWithDINOLoss(nn.Module):
         # SIGReg inputs (unnormalized features for regularization)
         sigreg_feat: Optional[torch.Tensor] = None,
         sigreg_feat_text: Optional[torch.Tensor] = None,
+        # modality gap loss pre-computed by model (pre-L2-norm)
+        modality_gap_loss: Optional[torch.Tensor] = None,
         # teacher temperature (scheduled outside)
         teacher_temp: float = 0.07,
         output_dict: bool = False,
@@ -1171,11 +1254,9 @@ class CLIPWithDINOLoss(nn.Module):
             reg = sum(self.sigreg(f) for f in (sigreg_feat, sigreg_feat_text) if f is not None)
             losses["sigreg_loss"] = self.sigreg_weight * reg
 
-        # 6. Modality gap loss (optional; penalises ||mean_img - mean_txt||^2)
-        if self.gap_loss is not None and self.modality_gap_weight > 0:
-            losses["modality_gap_loss"] = self.modality_gap_weight * self.gap_loss(
-                image_features, text_features
-            )
+        # 6. Modality gap loss pre-computed by model (pre-L2-norm), just accumulate
+        if modality_gap_loss is not None:
+            losses["modality_gap_loss"] = modality_gap_loss
 
         if output_dict:
             return losses

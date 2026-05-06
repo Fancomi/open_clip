@@ -125,14 +125,14 @@ LR_1_50=$(python3 -c "print($LR / 50)")
 # ORI
 # sigreg-only消融: clip_proj / cls / cls_proj 三种目标位置对比（基础 PE-Core-B-16-dinov3，无 DINOv3）
 # 原实验：pe_dinov3_leproj_probe 是 clip_proj，略好于 clip.
-# run_cc3m "pe_dinov3_sigreg_cls_probe"         "PE-Core-B-16-dinov3"     29561 "--siglip --sigreg-target cls       --sigreg-weight 1e-4 --epochs 10 --warmup 512  --lr ${LR} --probe-data ${PROBE_TSV}"
-run_cc3m "pe_dinov3_sigreg_cls_proj_probe"    "PE-Core-B-16-dinov3"     29562 "--siglip --sigreg-target cls_proj  --sigreg-weight 1e-4 --epochs 10 --warmup 512  --lr ${LR} --probe-data ${PROBE_TSV}"
+run_cc3m "pe_dinov3_sigreg_cls_probe"         "PE-Core-B-16-dinov3"     29561 "--siglip --sigreg-target cls       --sigreg-weight 1e-4 --epochs 10 --warmup 512  --lr ${LR} --probe-data ${PROBE_TSV}"
+# run_cc3m "pe_dinov3_sigreg_cls_proj_probe"    "PE-Core-B-16-dinov3"     29562 "--siglip --sigreg-target cls_proj  --sigreg-weight 1e-4 --epochs 10 --warmup 512  --lr ${LR} --probe-data ${PROBE_TSV}"
 
-# 性能拉满的原实验 + sigreg（cls：与 KoLeo 同位，无额外参数；cls_proj 是消融）
-run_cc3m "pe_dinov3_dinov3_muon_sigreg_probe"      "PE-Core-B-16-dinov3" 29550  "--siglip --sigreg-target cls      --sigreg-weight 1e-4 --epochs 10 --warmup 512 --lr ${LR} --opt muon --muon-lr ${MUON_LR}  --dinov3 --dino-n-global-crops 1 --dino-local-crops-number 8 --dino-head-prototypes 8192 --dino-warmup-teacher-temp-epochs 3  --probe-data ${PROBE_TSV}"
-run_cc3m "pe_dinov3_dinov3_muon_sigreg_proj_probe" "PE-Core-B-16-dinov3" 29551  "--siglip --sigreg-target cls_proj --sigreg-weight 1e-4 --epochs 10 --warmup 512 --lr ${LR} --opt muon --muon-lr ${MUON_LR}  --dinov3 --dino-n-global-crops 1 --dino-local-crops-number 8 --dino-head-prototypes 8192 --dino-warmup-teacher-temp-epochs 3  --probe-data ${PROBE_TSV}"
-# 修复后的原实验
-run_cc3m "pe_dinov3_dinov3_muon_probe" "PE-Core-B-16-dinov3" 29540  "--siglip --epochs 10 --warmup 512 --lr ${LR} --opt muon --muon-lr ${MUON_LR}  --dinov3 --dino-n-global-crops 1 --dino-local-crops-number 8 --dino-head-prototypes 8192 --dino-warmup-teacher-temp-epochs 3  --probe-data ${PROBE_TSV}"
+# # 性能拉满的原实验 + sigreg（cls：与 KoLeo 同位，无额外参数；cls_proj 是消融）
+# run_cc3m "pe_dinov3_dinov3_muon_sigreg_probe"      "PE-Core-B-16-dinov3" 29550  "--siglip --sigreg-target cls      --sigreg-weight 1e-4 --epochs 10 --warmup 512 --lr ${LR} --opt muon --muon-lr ${MUON_LR}  --dinov3 --dino-n-global-crops 1 --dino-local-crops-number 8 --dino-head-prototypes 8192 --dino-warmup-teacher-temp-epochs 3  --probe-data ${PROBE_TSV}"
+# run_cc3m "pe_dinov3_dinov3_muon_sigreg_proj_probe" "PE-Core-B-16-dinov3" 29551  "--siglip --sigreg-target cls_proj --sigreg-weight 1e-4 --epochs 10 --warmup 512 --lr ${LR} --opt muon --muon-lr ${MUON_LR}  --dinov3 --dino-n-global-crops 1 --dino-local-crops-number 8 --dino-head-prototypes 8192 --dino-warmup-teacher-temp-epochs 3  --probe-data ${PROBE_TSV}"
+# # 修复后的原实验
+# run_cc3m "pe_dinov3_dinov3_muon_probe" "PE-Core-B-16-dinov3" 29540  "--siglip --epochs 10 --warmup 512 --lr ${LR} --opt muon --muon-lr ${MUON_LR}  --dinov3 --dino-n-global-crops 1 --dino-local-crops-number 8 --dino-head-prototypes 8192 --dino-warmup-teacher-temp-epochs 3  --probe-data ${PROBE_TSV}"
 
 
 # run_cc3m "pe_dinov3_dinov3_probe" "PE-Core-B-16-dinov3" 29540  "--siglip --epochs 10 --warmup 512 --lr ${LR} --dinov3 --dino-n-global-crops 1 --dino-local-crops-number 8 --dino-head-prototypes 8192 --dino-warmup-teacher-temp-epochs 3  --probe-data ${PROBE_TSV}"

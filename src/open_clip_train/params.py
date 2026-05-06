@@ -536,24 +536,37 @@ def parse_args(args):
         help='Number of random slices for the SIGReg estimator.'
     )
 
-    # ============ Modality Gap 正则化参数 ============
+    # ============ Modality Gap ============
     parser.add_argument(
         "--modality-gap-weight",
         type=float,
         default=0.0,
         help=(
-            'Weight λ for modality-gap regularization: λ * ||mean(img) - mean(txt)||². '
-            '0.0 = disabled. Typical range: 0.001 ~ 0.05. '
-            'Can be combined with --sigreg-target or --dinov3.'
+            'Batch gap loss weight λ: λ * ||mean(img_raw) - mean(txt_raw)||². '
+            'Gradient flows through batch means. Applied pre-L2-norm. 0.0 = disabled.'
         )
     )
     parser.add_argument(
-        "--modality-gap-ema",
+        "--within-modal-weight",
         type=float,
-        default=0.999,
+        default=0.0,
         help=(
-            'EMA momentum for tracking running image/text means in ModalityGapLoss. '
-            '1.0 = pure batch-level (no EMA). 0.999 = smooth running mean (default).'
+            'Weight for within-modality SigLIP repulsion loss. '
+            'Adds image-image and/or text-text all-negative sigmoid losses '
+            '(diagonal masked). Pushes same-modality features apart on the '
+            'hypersphere. Default 0.0 = disabled.'
+        )
+    )
+    parser.add_argument(
+        "--within-modal-sides",
+        type=str,
+        default='both',
+        choices=['both', 'img', 'txt'],
+        help=(
+            'Which modality to apply within-modal repulsion to. '
+            '"both" (default): image-image + text-text; '
+            '"img": image-image only; '
+            '"txt": text-text only.'
         )
     )
 

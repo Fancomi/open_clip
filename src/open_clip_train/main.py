@@ -30,6 +30,7 @@ except ImportError:
     hvd = None
 
 from open_clip import create_model_and_transforms, trace_model, get_tokenizer, create_loss
+from open_clip.factory import attach_modality_modules
 from open_clip.model import CLIPLeJEPA, CLIPWithDINO
 from open_clip_train.data import get_data
 from open_clip_train.distributed import is_master, init_distributed_device, broadcast_object
@@ -585,6 +586,7 @@ def main(args):
 
     loss = create_loss(args)
     loss = loss.to(device)
+    attach_modality_modules(model, args)
 
     # DINOv3 调度：teacher temperature warmup + EMA momentum cosine schedule
     dino_schedules = None

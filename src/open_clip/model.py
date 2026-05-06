@@ -29,6 +29,7 @@ from .transformer import (
     lock_text_tower,
 )
 from .utils import to_2tuple
+from .loss import ModalityGapLoss
 
 
 @dataclass
@@ -301,6 +302,10 @@ class CLIP(nn.Module):
         else:
             self.logit_bias = None
 
+        # Gap loss — attached by factory after model creation.
+        self.batch_gap_loss: Optional[ModalityGapLoss] = None
+        self.modality_gap_weight: float = 0.0
+
     def lock_image_tower(self, unlocked_groups=0, freeze_bn_stats=False):
         # lock image tower as per LiT - https://arxiv.org/abs/2111.07991
         self.visual.lock(unlocked_groups=unlocked_groups, freeze_bn_stats=freeze_bn_stats)
@@ -461,8 +466,17 @@ class CLIP(nn.Module):
             image: Optional[torch.Tensor] = None,
             text: Optional[torch.Tensor] = None,
     ):
-        image_features = self.encode_image(image, normalize=True) if image is not None else None
-        text_features = self.encode_text(text, normalize=True) if text is not None else None
+        img_raw = self.encode_image(image, normalize=False) if image is not None else None
+        txt_raw = self.encode_text(text, normalize=False) if text is not None else None
+
+        # Pre-L2 gap loss (batch mean distance, pre-norm)
+        gap_loss_val: Optional[torch.Tensor] = None
+        if img_raw is not None and txt_raw is not None:
+            if self.batch_gap_loss is not None and self.modality_gap_weight > 0 and self.training:
+                gap_loss_val = self.modality_gap_weight * self.batch_gap_loss(img_raw, txt_raw)
+
+        image_features = F.normalize(img_raw, dim=-1) if img_raw is not None else None
+        text_features = F.normalize(txt_raw, dim=-1) if txt_raw is not None else None
 
         if self.output_dict:
             out_dict = {
@@ -472,6 +486,8 @@ class CLIP(nn.Module):
             }
             if self.logit_bias is not None:
                 out_dict['logit_bias'] = self.logit_bias
+            if gap_loss_val is not None:
+                out_dict['modality_gap_loss'] = gap_loss_val
             return out_dict
 
         if self.logit_bias is not None:
@@ -507,6 +523,10 @@ class CustomTextCLIP(nn.Module):
             self.logit_bias = nn.Parameter(torch.ones(lshape) * init_logit_bias)
         else:
             self.logit_bias = None
+
+        # Gap loss — attached by factory after model creation.
+        self.batch_gap_loss: Optional[ModalityGapLoss] = None
+        self.modality_gap_weight: float = 0.0
 
     def lock_image_tower(self, unlocked_groups=0, freeze_bn_stats=False):
         # lock image tower as per LiT - https://arxiv.org/abs/2111.07991
@@ -644,8 +664,17 @@ class CustomTextCLIP(nn.Module):
             image: Optional[torch.Tensor] = None,
             text: Optional[torch.Tensor] = None,
     ):
-        image_features = self.encode_image(image, normalize=True) if image is not None else None
-        text_features = self.encode_text(text, normalize=True) if text is not None else None
+        img_raw = self.encode_image(image, normalize=False) if image is not None else None
+        txt_raw = self.encode_text(text, normalize=False) if text is not None else None
+
+        # Pre-L2 gap loss (batch mean distance, pre-norm)
+        gap_loss_val: Optional[torch.Tensor] = None
+        if img_raw is not None and txt_raw is not None:
+            if self.batch_gap_loss is not None and self.modality_gap_weight > 0 and self.training:
+                gap_loss_val = self.modality_gap_weight * self.batch_gap_loss(img_raw, txt_raw)
+
+        image_features = F.normalize(img_raw, dim=-1) if img_raw is not None else None
+        text_features = F.normalize(txt_raw, dim=-1) if txt_raw is not None else None
 
         if self.output_dict:
             out_dict = {
@@ -655,6 +684,8 @@ class CustomTextCLIP(nn.Module):
             }
             if self.logit_bias is not None:
                 out_dict['logit_bias'] = self.logit_bias
+            if gap_loss_val is not None:
+                out_dict['modality_gap_loss'] = gap_loss_val
             return out_dict
 
         if self.logit_bias is not None:
@@ -768,17 +799,25 @@ class CLIPLeJEPA(nn.Module):
 
         if image is not None:
             image_clip_raw, image_sigreg_raw = self._get_image_raw(image)
-            image_features = F.normalize(image_clip_raw, dim=-1)
             image_proj = self.image_projector(image_sigreg_raw)
         else:
-            image_features = None
+            image_clip_raw = None
 
         if text is not None:
             text_raw = self.clip_model.encode_text(text, normalize=False)
-            text_features = F.normalize(text_raw, dim=-1)
             text_proj = self.text_projector(text_raw)
         else:
-            text_features = None
+            text_raw = None
+
+        # Pre-L2 gap loss (batch mean distance, pre-norm)
+        gap_loss_val: Optional[torch.Tensor] = None
+        base = self.clip_model
+        if image_clip_raw is not None and text_raw is not None:
+            if base.batch_gap_loss is not None and base.modality_gap_weight > 0 and self.training:
+                gap_loss_val = base.modality_gap_weight * base.batch_gap_loss(image_clip_raw, text_raw)
+
+        image_features = F.normalize(image_clip_raw, dim=-1) if image_clip_raw is not None else None
+        text_features = F.normalize(text_raw, dim=-1) if text_raw is not None else None
 
         if self.output_dict:
             out = {
@@ -788,6 +827,8 @@ class CLIPLeJEPA(nn.Module):
             }
             if self.logit_bias is not None:
                 out["logit_bias"] = self.logit_bias
+            if gap_loss_val is not None:
+                out["modality_gap_loss"] = gap_loss_val
             return out
         if self.logit_bias is not None:
             return image_features, text_features, self.logit_scale.exp(), self.logit_bias, image_proj, text_proj
@@ -1291,8 +1332,18 @@ class CLIPWithDINO(nn.Module):
 
         # ---- 1. Contrastive: encode first global crop as image_features ----
         # Use only global crop 1 for the contrastive loss (memory-efficient)
-        image_features = self._base_clip.encode_image(global_crops[:B], normalize=True)
-        text_features = self._base_clip.encode_text(texts, normalize=True)
+        img_raw = self._base_clip.encode_image(global_crops[:B], normalize=False)
+        txt_raw = self._base_clip.encode_text(texts, normalize=False)
+
+        # Pre-L2 gap loss (batch mean distance, pre-norm)
+        gap_loss_val: Optional[torch.Tensor] = None
+        bgl = self._base_clip.batch_gap_loss
+        mgw = self._base_clip.modality_gap_weight
+        if bgl is not None and mgw > 0 and self.training:
+            gap_loss_val = mgw * bgl(img_raw, txt_raw)
+
+        image_features = F.normalize(img_raw, dim=-1)
+        text_features = F.normalize(txt_raw, dim=-1)
 
         # ---- 2. Student: global and local crops through backbone separately ----
         # Global and local crops have different spatial sizes (e.g. 224 vs 96),
@@ -1382,4 +1433,6 @@ class CLIPWithDINO(nn.Module):
         }
         if self.logit_bias is not None:
             out["logit_bias"] = self.logit_bias
+        if gap_loss_val is not None:
+            out["modality_gap_loss"] = gap_loss_val
         return out

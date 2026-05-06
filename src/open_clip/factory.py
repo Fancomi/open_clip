@@ -812,8 +812,6 @@ def create_loss(args):
         return SIGRegContrastiveLoss(
             sigreg_weight=getattr(args, 'sigreg_weight', 1e-4),
             sigreg_num_slices=getattr(args, 'sigreg_slices', 256),
-            modality_gap_weight=getattr(args, 'modality_gap_weight', 0.0),
-            modality_gap_ema=getattr(args, 'modality_gap_ema', 0.999),
             use_siglip=getattr(args, 'siglip', False),
             local_loss=args.local_loss,
             gather_with_grad=args.gather_with_grad,
@@ -822,6 +820,8 @@ def create_loss(args):
             world_size=args.world_size,
             use_horovod=args.horovod,
             dist_impl=getattr(args, 'loss_dist_impl', None),
+            within_modal_weight=getattr(args, 'within_modal_weight', 0.0),
+            within_modal_sides=getattr(args, 'within_modal_sides', 'both'),
         )
     elif getattr(args, 'dinov3', False):
         # CLIPWithDINOLoss：需要从 model 中读取 embed_dim，由 main.py 传入
@@ -837,8 +837,6 @@ def create_loss(args):
             koleo_loss_weight=getattr(args, 'koleo_loss_weight', 0.1),
             sigreg_weight=getattr(args, 'sigreg_weight', 0.0) if sigreg_target != 'none' else 0.0,
             sigreg_num_slices=getattr(args, 'sigreg_slices', 256),
-            modality_gap_weight=getattr(args, 'modality_gap_weight', 0.0),
-            modality_gap_ema=getattr(args, 'modality_gap_ema', 0.999),
             use_siglip=getattr(args, 'siglip', False),
             rank=args.rank,
             world_size=args.world_size,
@@ -861,6 +859,28 @@ def create_loss(args):
         world_size=args.world_size,
         use_horovod=args.horovod,
     )
+
+
+def attach_modality_modules(model, args):
+    """Attach ModalityGapLoss to the base CLIP model if --modality-gap-weight > 0.
+
+    The module is registered as a submodule on the base CLIP so its state
+    is included in model.state_dict() and saved with checkpoints.
+    """
+    gap_weight = getattr(args, 'modality_gap_weight', 0.0)
+
+    # Resolve base CLIP (may be wrapped in CLIPLeJEPA, CLIPWithDINO, or DDP)
+    base = model
+    if hasattr(base, 'module'):
+        base = base.module
+    if hasattr(base, '_base_clip'):
+        base = base._base_clip
+    elif hasattr(base, 'clip_model'):
+        base = base.clip_model
+
+    if gap_weight > 0:
+        base.batch_gap_loss = ModalityGapLoss()
+        base.modality_gap_weight = gap_weight
 
 
 def create_model_and_transforms(
