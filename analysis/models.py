@@ -97,8 +97,9 @@ def load_eupe(repo=None, ckpt=None):
             def __init__(self, base): super().__init__(); self.base = base; self.blocks = base.blocks
             @torch.no_grad()
             def forward_features(self, x):
-                out = self.base.forward_features(x)  # (B, N, 768), CLS at 0
-                return {'x_norm_clstoken': out[:, 0, :].float()}
+                out = self.base.forward_features(x)  # (B, 1+N_patches, 768)
+                return {'x_norm_clstoken':    out[:, 0, :].float(),
+                        'x_norm_patchtokens': out[:, 1:, :].float()}
 
         logging.info('Loading EUPE-ViT-B ...')
         return _EUPEWrapper(m).eval().to(DEVICE)
