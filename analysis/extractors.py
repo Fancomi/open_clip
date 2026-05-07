@@ -95,11 +95,13 @@ def extract_clip_img(model, paths, preproc, out_path, force=False, bs=256):
     # For models without a projection head (proj_cls is None), fall back to backbone_cls.
     _, proj = extract_backbone_cls(model, paths, preproc, next(model.parameters()).device, bs)
     if proj is None:
-        import torch
-        feat = model.encode_image(
-            torch.stack([preproc(Image.open(p).convert('RGB')) for p in paths])
-            .to(next(model.parameters()).device), normalize=True
-        ).cpu().float().numpy()
+        dev = next(model.parameters()).device
+        feats = []
+        for i in range(0, len(paths), bs):
+            x = torch.stack([preproc(Image.open(p).convert('RGB'))
+                             for p in paths[i:i+bs]]).to(dev)
+            feats.append(model.encode_image(x, normalize=True).cpu().float().numpy())
+        feat = np.concatenate(feats)
     else:
         feat = proj
     np.savez_compressed(out_path, features=feat, paths=np.array(paths))

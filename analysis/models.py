@@ -41,12 +41,26 @@ def load_siglip2(ckpt=None):
 
 
 def load_dinov3(repo=None, ckpt=None):
-    repo = repo or CKPT['dino_repo']
-    ckpt = ckpt or CKPT['dino_ckpt']
+    """Load DINOv3 via transformers AutoModel.
+
+    Returns a thin wrapper with .forward_features(x) -> {'x_norm_clstoken': CLS}
+    so call sites in extractors.py need no changes.
+    repo/ckpt args kept for API compatibility but ignored — model is loaded from
+    the HF-format directory at models/dino/dinov3-vitb16-pretrain-lvd1689m.
+    """
+    from transformers import AutoModel
+    _DIR = f'{_BASE}/models/dino/dinov3-vitb16-pretrain-lvd1689m'
     logging.info('Loading DINOv3 ...')
-    m = torch.hub.load(repo, 'dinov3_vitb16', source='local', pretrained=False)
-    m.load_state_dict(torch.load(ckpt, map_location='cpu'), strict=True)
-    return m.eval().to(DEVICE)
+    _m = AutoModel.from_pretrained(_DIR, trust_remote_code=True).eval().to(DEVICE)
+
+    class _DINOv3Wrapper(torch.nn.Module):
+        def __init__(self, m): super().__init__(); self.m = m
+        @torch.no_grad()
+        def forward_features(self, x):
+            out = self.m(x)
+            return {'x_norm_clstoken': out.last_hidden_state[:, 0, :].float()}
+
+    return _DINOv3Wrapper(_m).to(DEVICE)
 
 
 def load_radio(path=None):
