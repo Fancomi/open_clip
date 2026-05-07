@@ -46,8 +46,8 @@ def main():
     p.add_argument('--coco-dir',     default=_DATA['coco_dir'])
     p.add_argument('--cc3m-dir',     default=_DATA['cc3m_dir'])
     p.add_argument('--aniso-dir',    default=_DATA['coco_dir'])
-    p.add_argument('--n-pcs',        type=int, default=16,
-                   help='PCs to compare in pc_alignment mode (default: 16)')
+    p.add_argument('--n-pcs',        type=int, default=20,
+                   help='PCs to compare in pc_alignment mode (default: 20)')
     args = p.parse_args()
 
     if   args.mode == 'pretrained': run_pretrained(args)

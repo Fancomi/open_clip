@@ -119,13 +119,14 @@ fi
 LR_1_100=$(python3 -c "print($LR / 100)")
 LR_1_50=$(python3 -c "print($LR / 50)")
 
-# # run_cc3m "pe_dinov3_e10_warm768_LR_dinov3" "PE-Core-B-16-dinov3" 29540  "--siglip --epochs 10 --warmup 768 --lr ${LR} --dinov3 --dino-local-crops-number 2 --dino-head-prototypes 8192"
+# 含Muon不含Dinov3的目前的baseline
+run_cc3m "pe_dinov3_sigreg_siglip_muon"   "PE-Core-B-16-dinov3" 29560 "--siglip --sigreg-target cls --sigreg-weight 1e-4 --epochs 10 --warmup 512  --lr ${LR} --opt muon --muon-lr ${MUON_LR}  --probe-data ${PROBE_TSV}"
 
 # ===
 # ORI
 # sigreg-only消融: clip_proj / cls / cls_proj 三种目标位置对比（基础 PE-Core-B-16-dinov3，无 DINOv3）
 # 原实验：pe_dinov3_leproj_probe 是 clip_proj，略好于 clip.
-run_cc3m "pe_dinov3_sigreg_cls_probe"         "PE-Core-B-16-dinov3"     29561 "--siglip --sigreg-target cls       --sigreg-weight 1e-4 --epochs 10 --warmup 512  --lr ${LR} --probe-data ${PROBE_TSV}"
+# run_cc3m "pe_dinov3_sigreg_cls_probe"         "PE-Core-B-16-dinov3"     29561 "--siglip --sigreg-target cls       --sigreg-weight 1e-4 --epochs 10 --warmup 512  --lr ${LR} --probe-data ${PROBE_TSV}"
 # run_cc3m "pe_dinov3_sigreg_cls_proj_probe"    "PE-Core-B-16-dinov3"     29562 "--siglip --sigreg-target cls_proj  --sigreg-weight 1e-4 --epochs 10 --warmup 512  --lr ${LR} --probe-data ${PROBE_TSV}"
 
 # # 性能拉满的原实验 + sigreg（cls：与 KoLeo 同位，无额外参数；cls_proj 是消融）
@@ -137,7 +138,7 @@ run_cc3m "pe_dinov3_sigreg_cls_probe"         "PE-Core-B-16-dinov3"     29561 "-
 
 # run_cc3m "pe_dinov3_dinov3_probe" "PE-Core-B-16-dinov3" 29540  "--siglip --epochs 10 --warmup 512 --lr ${LR} --dinov3 --dino-n-global-crops 1 --dino-local-crops-number 8 --dino-head-prototypes 8192 --dino-warmup-teacher-temp-epochs 3  --probe-data ${PROBE_TSV}"
 # run_cc3m "pe_dinov3_dinov3_clip_probe" "PE-Core-B-16-dinov3" 29541  "--epochs 10 --warmup 512 --lr ${LR} --dinov3 --dino-n-global-crops 1 --dino-local-crops-number 8 --dino-head-prototypes 8192 --dino-warmup-teacher-temp-epochs 3  --probe-data ${PROBE_TSV} --probe-freq-steps 176"
-# run_cc3m "pe_dinov3_sigreg_clip_proj_muon"   "PE-Core-B-16-dinov3" 29560 "--siglip --sigreg-target clip_proj --sigreg-weight 1e-4 --epochs 10 --warmup 512  --lr ${LR} --opt muon --muon-lr ${MUON_LR}  --probe-data ${PROBE_TSV} --probe-freq-steps 176"
+# run_cc3m "pe_dinov3_sigreg_siglip_proj_muon"   "PE-Core-B-16-dinov3" 29560 "--siglip --sigreg-target clip_proj --sigreg-weight 1e-4 --epochs 10 --warmup 512  --lr ${LR} --opt muon --muon-lr ${MUON_LR}  --probe-data ${PROBE_TSV} --probe-freq-steps 176"
 
 # run_cc3m "vit_probe"         "ViT-B-16-exp"        29562 "--siglip --epochs 10 --warmup 512  --lr ${LR} --probe-data ${PROBE_TSV} --probe-freq-steps 176"
 
@@ -145,7 +146,7 @@ run_cc3m "pe_dinov3_sigreg_cls_probe"         "PE-Core-B-16-dinov3"     29561 "-
 # run_cc3m "vit_muon"    "ViT-B-16-exp"        29565 "--siglip --epochs 10 --warmup 512  --lr ${LR} --opt muon --muon-lr ${MUON_LR}"
 
 
-run_cc3m "vit"         "ViT-B-16-exp"        29562 "--siglip --epochs 100 --warmup 512  --lr ${LR} "
+# run_cc3m "vit"         "ViT-B-16-exp"        29562 "--siglip --epochs 100 --warmup 512  --lr ${LR} "
 # run_cc3m "pe_dinov3"   "PE-Core-B-16-dinov3" 29563 "--siglip --epochs 10 --warmup 512  --lr ${LR} "
 # run_cc3m "dinov3"    "DINOv3-B-16-ape"       29564 "--siglip --epochs 10 --warmup 512  --lr ${LR} "
 

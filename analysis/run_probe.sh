@@ -15,26 +15,8 @@
 # bash analysis/probe.sh layers eupe
 
 
-
-
-
-for logdir in \
-    "wmc_txt2000_0506_1633"
-    # "mgap_wm01_0505_1419"
-    # "mgap_center_v2_m9_0504_1228"
-    # "mgap_center_v2_0504_1228"
-    # "mgap_center_0503_1729"
-    # "mgap_gap001_0503_1729" 
-    # "cc3m_pe_dinov3_dinov3_clip_probe_0430_1929" \
-    # "cc3m_pe_dinov3_dinov3_probe_0430_1929" \
-    # "cc3m_vit_probe_0430_1218" \
-    # "cc3m_pe_dinov3_leproj_probe_0424_0119" \
-    # "cc3m_pe_dinov3_leproj_muon_lr001_0429_1821" \
-    # "cc3m_pe_dinov3_dinov3_muon_probe_0501_1042"
-do
-    bash analysis/probe.sh epochs "logs/${logdir}/checkpoints/probe"
-    bash analysis/probe.sh pc_alignment "logs/${logdir}/checkpoints/probe"
-done
+# bash analysis/probe.sh epochs       logs  --rerun
+bash analysis/probe.sh pc_alignment logs  --rerun 
 
 # python3 analysis/modality_gap.py \
 #     --probe logs/pe_dinov3_sigreg_cls_probe/probe/step_001740.npz \

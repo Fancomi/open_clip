@@ -1,11 +1,16 @@
 """Feature extraction and NPZ cache management.
 
-ALL cached features are global CLS tokens (NOT patch averages):
-  PE / SigLIP2  → encode_image / encode_text   → L2-normalized CLS
-  DINOv3 / EUPE → forward_features             → x_norm_clstoken
-  RADIO         → model forward                → output.summary
-  TIPSv2 image  → encode_image                 → cls_token
-  TIPSv2 text   → encode_text                  → L2-normalized CLS
+ALL cached image features are raw (un-normalized) global CLS tokens:
+  PE-Core raw   → trunk.forward_features → CLS [B, 768]  (before projection head)
+  PE-Core proj  → encode_image(normalize=True) → [B, 1024]  (CLIP space, modality_gap only)
+  SigLIP2 img   → encode_image(normalize=True) → [B, 768]   (head=Sequential(), effectively CLS)
+  DINOv3 / EUPE → forward_features → x_norm_clstoken        (model-normalized, no extra L2)
+  RADIO         → model forward    → output.summary          (raw)
+  TIPSv2 image  → encode_image     → cls_token               (raw)
+  Text features → always L2-normalized (CLIP-aligned text space)
+
+NOTE: if you have old npz caches with L2-normalized image features, delete them
+      (or pass --force) before re-running pretrained mode.
 """
 import os, logging
 import numpy as np
@@ -108,7 +113,7 @@ def extract_pe_core_img_raw(model, paths, preproc, out_path, force=False, bs=256
         x = torch.stack([preproc(Image.open(p).convert('RGB'))
                          for p in paths[i:i+bs]]).to(DEVICE)
         trunk_out = model.visual.trunk.forward_features(x)   # [B, N, 768]
-        cls = F.normalize(trunk_out[:, 0, :].float(), dim=-1)  # CLS token
+        cls = trunk_out[:, 0, :].float()                      # CLS token, raw
         feats.append(cls.cpu().numpy())
         if (i // bs + 1) % 5 == 0 or i + bs >= len(paths):
             logging.info(f'  [PE-Core raw] {min(i+bs, len(paths))}/{len(paths)}')
@@ -138,7 +143,7 @@ def extract_dinov3_img(model, paths, out_path, force=False, bs=128):
     for i in range(0, len(paths), bs):
         x = torch.stack([_DINO_TF(Image.open(p).convert('RGB'))
                          for p in paths[i:i+bs]]).to(DEVICE)
-        cls = F.normalize(model.forward_features(x)['x_norm_clstoken'], dim=-1)
+        cls = model.forward_features(x)['x_norm_clstoken']
         feats.append(cls.cpu().float().numpy())
         if (i // bs + 1) % 5 == 0 or i + bs >= len(paths):
             logging.info(f'  [DINOv3] {min(i+bs, len(paths))}/{len(paths)}')
@@ -160,7 +165,7 @@ def extract_radio_img(model, cond, paths, out_path, force=False, bs=128):
             x = cond(x)
         out = model(x)
         s = out[0] if isinstance(out, (tuple, list)) else getattr(out, 'summary', out[0])
-        feats.append(F.normalize(s, dim=-1).cpu().float().numpy())
+        feats.append(s.cpu().float().numpy())
         if (i // bs + 1) % 5 == 0 or i + bs >= len(paths):
             logging.info(f'  [RADIO] {min(i+bs, len(paths))}/{len(paths)}')
     feat = np.concatenate(feats)
@@ -178,7 +183,7 @@ def extract_eupe_img(model, paths, out_path, force=False, bs=128):
         x = torch.stack([_EUPE_TF(Image.open(p).convert('RGB'))
                          for p in paths[i:i+bs]]).to(DEVICE)
         with torch.autocast(device_type=dev, dtype=torch.bfloat16, enabled=(dev != 'cpu')):
-            cls = F.normalize(model.forward_features(x)['x_norm_clstoken'], dim=-1)
+            cls = model.forward_features(x)['x_norm_clstoken']
         feats.append(cls.cpu().float().numpy())
         if (i // bs + 1) % 5 == 0 or i + bs >= len(paths):
             logging.info(f'  [EUPE] {min(i+bs, len(paths))}/{len(paths)}')
@@ -201,7 +206,7 @@ def extract_tips_img(model, paths, out_path, force=False, bs=8):
         x = torch.stack(imgs).to(DEVICE)
         with torch.autocast(device_type=dev, dtype=torch.bfloat16, enabled=(dev != 'cpu')):
             out = model.encode_image(x)
-        cls = F.normalize(out.cls_token.squeeze(1).float(), dim=-1)
+        cls = out.cls_token.squeeze(1).float()
         feats.append(cls.cpu().numpy())
         if (i // bs + 1) % 20 == 0 or i + bs >= len(paths):
             logging.info(f'  [TIPSv2] {min(i+bs, len(paths))}/{len(paths)}')
@@ -286,7 +291,7 @@ def extract_wds_features(
         if 'dino_img' in active:
             dx = torch.stack([_DINO_TF(im) for im in imgs]).to(DEVICE)
             acc['dino_img'].append(
-                F.normalize(dino_model.forward_features(dx)['x_norm_clstoken'], dim=-1)
+                dino_model.forward_features(dx)['x_norm_clstoken']
                 .cpu().float().numpy())
         if 'radio_img' in active:
             rx = torch.stack([_RADIO_TF(im) for im in imgs]).to(DEVICE)
@@ -294,14 +299,14 @@ def extract_wds_features(
                 rx = radio_cond(rx)
             out = radio_model(rx)
             s = out[0] if isinstance(out, (tuple, list)) else getattr(out, 'summary', out[0])
-            acc['radio_img'].append(F.normalize(s, dim=-1).cpu().float().numpy())
+            acc['radio_img'].append(s.cpu().float().numpy())
         if 'eupe_img' in active:
             ex = torch.stack([_EUPE_TF(im) for im in imgs]).to(DEVICE)
             with torch.autocast(device_type=DEVICE.type, dtype=torch.bfloat16,
                                 enabled=(DEVICE.type != 'cpu')):
                 eout = eupe_model.forward_features(ex)
             acc['eupe_img'].append(
-                F.normalize(eout['x_norm_clstoken'], dim=-1).cpu().float().numpy())
+                eout['x_norm_clstoken'].cpu().float().numpy())
         if 'tips_img' in active:
             tiles = [_TIPS_TF(im.resize((_TIPS_SZ, _TIPS_SZ), Image.BICUBIC)) for im in imgs]
             chunks = []
@@ -311,7 +316,7 @@ def extract_wds_features(
                                     enabled=(DEVICE.type != 'cpu')):
                     tout = tips_model.encode_image(tx)
                 chunks.append(
-                    F.normalize(tout.cls_token.squeeze(1).float(), dim=-1).cpu().numpy())
+                    tout.cls_token.squeeze(1).float().cpu().numpy())
             acc['tips_img'].append(np.concatenate(chunks))
         if 'tips_txt' in active:
             ids, pads = tips_tok.tokenize(caps, max_len=tips_model.config.max_len)
@@ -375,7 +380,7 @@ def make_dino_crops(fps_paths, seed=42):
 def extract_dinov3_pil(model, pil_imgs):
     """DINOv3 CLS features from PIL images (any size → 224 via _DINO_TF)."""
     x = torch.stack([_DINO_TF(img) for img in pil_imgs]).to(DEVICE)
-    cls = F.normalize(model.forward_features(x)['x_norm_clstoken'], dim=-1)
+    cls = model.forward_features(x)['x_norm_clstoken']
     return cls.cpu().float().numpy()
 
 
@@ -391,7 +396,7 @@ def extract_pe_core_pil_raw(model, preproc, pil_imgs):
     """PE-Core backbone raw CLS from PIL images (before Linear 768→1024 head)."""
     x = torch.stack([preproc(img) for img in pil_imgs]).to(DEVICE)
     trunk_out = model.visual.trunk.forward_features(x)   # [B, N, 768]
-    cls = F.normalize(trunk_out[:, 0, :].float(), dim=-1)
+    cls = trunk_out[:, 0, :].float()
     return cls.cpu().numpy()
 
 
@@ -403,7 +408,7 @@ def extract_radio_pil(model, cond, pil_imgs):
         x = cond(x)
     out = model(x)
     s = out[0] if isinstance(out, (tuple, list)) else getattr(out, 'summary', out[0])
-    return F.normalize(s, dim=-1).cpu().float().numpy()
+    return s.cpu().float().numpy()
 
 
 @torch.no_grad()
@@ -412,7 +417,7 @@ def extract_eupe_pil(model, pil_imgs):
     x = torch.stack([_EUPE_TF(img) for img in pil_imgs]).to(DEVICE)
     dev = DEVICE.type
     with torch.autocast(device_type=dev, dtype=torch.bfloat16, enabled=(dev != 'cpu')):
-        cls = F.normalize(model.forward_features(x)['x_norm_clstoken'], dim=-1)
+        cls = model.forward_features(x)['x_norm_clstoken']
     return cls.cpu().float().numpy()
 
 
@@ -427,5 +432,5 @@ def extract_tips_pil(model, pil_imgs):
         x = torch.stack(imgs).to(DEVICE)
         with torch.autocast(device_type=dev, dtype=torch.bfloat16, enabled=(dev != 'cpu')):
             out = model.encode_image(x)
-        chunks.append(F.normalize(out.cls_token.squeeze(1).float(), dim=-1).cpu().numpy())
+        chunks.append(out.cls_token.squeeze(1).float().cpu().numpy())
     return np.concatenate(chunks)

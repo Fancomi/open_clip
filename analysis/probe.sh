@@ -57,10 +57,42 @@ CC3M_WDS='/root/paddlejob/workspace/env_run/penghaotian/datas/LLaVA-ReCap-CC3M/w
 CC3M_OUT='/root/paddlejob/workspace/env_run/penghaotian/datas/LLaVA-ReCap-CC3M/feature_probe'
 CC3M_PRE="${CC3M_OUT}/pretrained"
 
+# ── helpers ──────────────────────────────────────────────────────────────────
+
+# _run_epochs <probe_dir> <rerun:0|1>
+_run_epochs() {
+    local probe_dir="$1" rerun="${2:-0}"
+    local plots_dir
+    plots_dir="$(realpath "${probe_dir}/../../probe/plots" 2>/dev/null || echo "${probe_dir}/../../probe/plots")"
+    local sentinel="${plots_dir}/aniso_evolution.png"
+    if [[ "$rerun" -eq 0 && -f "$sentinel" ]]; then
+        echo "=== [probe] epochs  SKIP (already done)  ${probe_dir} ==="
+        return
+    fi
+    echo "=== [probe] epoch evolution  probe_dir=${probe_dir} ==="
+    $SCRIPT --mode epochs --probe-dir "$probe_dir"
+}
+
+# _run_pc_alignment <probe_dir> <n_pcs> <rerun:0|1>
+_run_pc_alignment() {
+    local probe_dir="$1" n_pcs="${2:-20}" rerun="${3:-0}"
+    local plots_dir
+    plots_dir="$(realpath "${probe_dir}/../../probe/plots" 2>/dev/null || echo "${probe_dir}/../../probe/plots")"
+    local sentinel="${plots_dir}/pc_alignment_grassmann.png"
+    if [[ "$rerun" -eq 0 && -f "$sentinel" ]]; then
+        echo "=== [probe] pc_alignment  SKIP (already done)  ${probe_dir} ==="
+        return
+    fi
+    echo "=== [probe] PC alignment  probe_dir=${probe_dir}  n_pcs=${n_pcs} ==="
+    $SCRIPT --mode pc_alignment --probe-dir "$probe_dir" --n-pcs "${n_pcs}"
+}
+
+# ── dispatch ──────────────────────────────────────────────────────────────────
+
 case "$MODE" in
     coco|pretrained)
         echo "=== [probe] COCO analysis (cache-first) ==="
-        $SCRIPT --mode pretrained --fps-model DINOv3      
+        $SCRIPT --mode pretrained --fps-model DINOv3
         ;;
     cc3m)
         echo "=== [probe] CC3M analysis (cache-first, wds 100k) ==="
@@ -68,9 +100,21 @@ case "$MODE" in
             --data "${CC3M_WDS}" --out-dir "${CC3M_OUT}"
         ;;
     epochs)
-        PROBE_DIR="${2:?Usage: probe.sh epochs <probe_dir>}"
-        echo "=== [probe] epoch evolution  probe_dir=${PROBE_DIR} ==="
-        $SCRIPT --mode epochs --probe-dir "$PROBE_DIR"
+        # epochs <probe_dir|logs_root> [--rerun]
+        # If $2 is a logs/ root, iterate all subdirs; else treat as single probe_dir.
+        ARG2="${2:?Usage: probe.sh epochs <probe_dir|logs_root> [--rerun]}"
+        RERUN=0; [[ "${3:-}" == "--rerun" || "${2:-}" == "--rerun" ]] && RERUN=1
+        if [[ -d "${ARG2}/checkpoints" || ! -d "$ARG2" ]]; then
+            # single probe_dir
+            _run_epochs "$ARG2" "$RERUN"
+        else
+            # logs root — iterate subdirs
+            for logdir in "${ARG2}"/*/; do
+                probe_dir="${logdir}checkpoints/probe"
+                [[ -d "$probe_dir" ]] || continue
+                _run_epochs "$probe_dir" "$RERUN"
+            done
+        fi
         ;;
     overlap)
         echo "=== [probe] COCO vs CC3M overlap ==="
@@ -91,10 +135,23 @@ case "$MODE" in
         python3 -m analysis.layer_probe --model "${MODEL}" --out-dir "${OUT_DIR}"
         ;;
     pc_alignment)
-        PROBE_DIR="${2:?Usage: probe.sh pc_alignment <probe_dir>}"
-        N_PCS="${3:-16}"
-        echo "=== [probe] PC alignment  probe_dir=${PROBE_DIR}  n_pcs=${N_PCS} ==="
-        $SCRIPT --mode pc_alignment --probe-dir "$PROBE_DIR" --n-pcs "${N_PCS}"
+        # pc_alignment <probe_dir|logs_root> [n_pcs=16] [--rerun]
+        ARG2="${2:?Usage: probe.sh pc_alignment <probe_dir|logs_root> [n_pcs=16] [--rerun]}"
+        N_PCS=20; RERUN=0
+        for arg in "${@:3}"; do
+            [[ "$arg" == "--rerun" ]] && RERUN=1 || N_PCS="$arg"
+        done
+        if [[ -d "${ARG2}/checkpoints" || ! -d "$ARG2" ]]; then
+            # single probe_dir
+            _run_pc_alignment "$ARG2" "$N_PCS" "$RERUN"
+        else
+            # logs root — iterate subdirs
+            for logdir in "${ARG2}"/*/; do
+                probe_dir="${logdir}checkpoints/probe"
+                [[ -d "$probe_dir" ]] || continue
+                _run_pc_alignment "$probe_dir" "$N_PCS" "$RERUN"
+            done
+        fi
         ;;
     crop_probe)
         # crop_probe requires individual image files on disk (tsv/COCO mode).
@@ -108,11 +165,11 @@ case "$MODE" in
         echo "Usage:"
         echo "  bash analysis/probe.sh coco"
         echo "  bash analysis/probe.sh cc3m"
-        echo "  bash analysis/probe.sh epochs <probe_dir>"
+        echo "  bash analysis/probe.sh epochs <probe_dir|logs_root> [--rerun]"
         echo "  bash analysis/probe.sh overlap"
         echo "  bash analysis/probe.sh anisotropy [coco|cc3m]"
         echo "  bash analysis/probe.sh layers <model>  (dinov3|pe_core|siglip2|eupe)"
-        echo "  bash analysis/probe.sh pc_alignment <probe_dir> [n_pcs=16]"
+        echo "  bash analysis/probe.sh pc_alignment <probe_dir|logs_root> [n_pcs=20] [--rerun]"
         echo "  bash analysis/probe.sh crop_probe [out_dir=CC3M_OUT]"
         exit 1
         ;;

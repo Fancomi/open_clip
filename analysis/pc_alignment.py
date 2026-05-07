@@ -151,6 +151,7 @@ def run_pc_alignment(args):
                         id_label, plots_dir)
     _plot_perpc_lines(step_ids, perpc_first, grass_prev, id_label, plots_dir,
                       perpc_prev=perpc_prev)
+    _plot_final_pc_pairs(all_feats[-1], k, step_ids[-1], id_label, plots_dir)
 
 
 # ── Visualisation helpers ─────────────────────────────────────────────────────
@@ -257,6 +258,48 @@ def _plot_perpc_lines(step_ids, perpc_first, grass_prev, id_label, plots_dir,
     fig.suptitle('PCA Direction Stability', fontsize=11, y=1.01)
     plt.tight_layout()
     save_path = os.path.join(plots_dir, 'pc_alignment_lines.png')
+    plt.savefig(save_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f'[pc_align] {save_path}')
+
+
+def _plot_final_pc_pairs(feats: np.ndarray, n_pcs: int,
+                         step_id, id_label: str, plots_dir: str,
+                         cols: int = 5):
+    """Scatter grid: PC1vsPC2, PC3vsPC4, … up to n_pcs, 2 rows × cols panels.
+
+    feats   : (N, D) final-checkpoint raw features
+    n_pcs   : number of PCs (must be even; truncated to nearest even)
+    step_id : checkpoint identifier shown in suptitle
+    """
+    k = (min(n_pcs, feats.shape[1]) // 2) * 2   # round down to even
+    pca   = PCA(n_components=k).fit(feats)
+    proj  = pca.transform(feats)                  # (N, k)
+    vr    = pca.explained_variance_ratio_
+
+    n_pairs = k // 2
+    rows    = (n_pairs + cols - 1) // cols        # ceil div
+    fig, axes = plt.subplots(rows, cols,
+                             figsize=(cols * 3.2, rows * 3.2),
+                             squeeze=False)
+
+    for idx in range(n_pairs):
+        pi, pj = idx * 2, idx * 2 + 1
+        ax = axes[idx // cols][idx % cols]
+        ax.scatter(proj[:, pi], proj[:, pj], s=2, alpha=0.25, rasterized=True)
+        ax.set_xlabel(f'PC{pi+1} ({vr[pi]*100:.1f}%)', fontsize=8)
+        ax.set_ylabel(f'PC{pj+1} ({vr[pj]*100:.1f}%)', fontsize=8)
+        ax.set_title(f'PC{pi+1} vs PC{pj+1}', fontsize=9)
+        ax.tick_params(labelsize=7)
+
+    # hide unused panels
+    for idx in range(n_pairs, rows * cols):
+        axes[idx // cols][idx % cols].set_visible(False)
+
+    fig.suptitle(f'Final {id_label} {step_id} — PCA Pair Scatter (image features)',
+                 fontsize=11)
+    plt.tight_layout()
+    save_path = os.path.join(plots_dir, 'pc_pairs_final.png')
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.close()
     print(f'[pc_align] {save_path}')
