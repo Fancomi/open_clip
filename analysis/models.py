@@ -72,15 +72,36 @@ def load_radio(path=None):
 
 
 def load_eupe(repo=None, ckpt=None):
-    repo = repo or CKPT['eupe_repo']
+    """Load EUPE-ViT-B via timm vit_base_patch16_rope_224 with key remapping.
+
+    EUPE uses timm-style keys (blocks.x.attn.qkv / ls1.gamma / storage_tokens)
+    that don't match any registered timm checkpoint, so we remap manually.
+    Keys skipped: qkv.bias_mask (structural mask), rope_embed.periods (EUPE custom
+    RoPE params — timm uses its own), storage_tokens/mask_token (no timm equivalent;
+    CLS at position 0 is unaffected), projectors.* (distillation heads, not needed).
+    """
+    import timm
     ckpt = ckpt or CKPT['eupe_ckpt']
-    if not os.path.exists(os.path.join(repo, 'hubconf.py')):
-        logging.warning(f'EUPE hubconf.py not found at {repo}')
+    if not os.path.exists(ckpt):
+        logging.warning(f'EUPE weights not found: {ckpt}')
         return None
     try:
-        m = torch.hub.load(repo, 'eupe_vitb16', source='local',
-                           weights=ckpt, trust_repo=True)
-        return m.eval().to(DEVICE)
+        _SKIP = {'qkv.bias_mask', 'rope_embed', 'projectors', 'storage_tokens', 'mask_token'}
+        d = torch.load(ckpt, map_location='cpu', weights_only=True)
+        sd = {k.replace('.ls1.gamma', '.gamma_1').replace('.ls2.gamma', '.gamma_2'): v
+              for k, v in d.items() if not any(s in k for s in _SKIP)}
+        m = timm.create_model('vit_base_patch16_rope_224', pretrained=False, num_classes=0)
+        m.load_state_dict(sd, strict=False)
+
+        class _EUPEWrapper(torch.nn.Module):
+            def __init__(self, base): super().__init__(); self.base = base; self.blocks = base.blocks
+            @torch.no_grad()
+            def forward_features(self, x):
+                out = self.base.forward_features(x)  # (B, N, 768), CLS at 0
+                return {'x_norm_clstoken': out[:, 0, :].float()}
+
+        logging.info('Loading EUPE-ViT-B ...')
+        return _EUPEWrapper(m).eval().to(DEVICE)
     except Exception as e:
         logging.warning(f'EUPE load failed: {e}')
         return None
