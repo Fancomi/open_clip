@@ -7,7 +7,7 @@ File naming:
   epoch-based →  epoch_XX.npz      (kept for backward compat / epoch-only mode)
 
 npz keys:
-  features      — (N, D_bb)   l2-norm backbone CLS / summary token  [always]
+  features      — (N, D_bb)   raw backbone CLS / summary token  [always]
                   PE-Core: trunk CLS [B, 768]  (before Linear 768→1024 projection)
                   Other CLIP (SigLIP2, ViT-B/16, …): encode_image output [B, D]
   proj_features — (N, D_proj) l2-norm projected CLIP image features  [when TimmModel trunk]
@@ -68,9 +68,9 @@ def extract_backbone_cls(model, paths, preprocess, device, batch_size=256):
       This is the correct path for plain ViT CLIP models.
 
     Returns: (backbone_cls, proj_cls)
-      backbone_cls — always present, [B, D_backbone], l2-normalized
+      backbone_cls — always present, [B, D_backbone], raw (un-normalized)
       proj_cls     — only when trunk was used AND trunk dim ≠ encode_image dim, else None
-                     This is the projected [B, 1024] CLIP-space feature.
+                     This is the projected [B, 1024] CLIP-space feature (l2-normalized).
     """
     visual = getattr(model, 'visual', None)
     has_trunk = (visual is not None
@@ -87,8 +87,8 @@ def extract_backbone_cls(model, paths, preprocess, device, batch_size=256):
         imgs = imgs.to(device)
         if has_trunk:
             trunk_out = visual.trunk.forward_features(imgs)
-            # [B, N, D] — CLS token at position 0
-            bb = F.normalize(trunk_out[:, 0, :].float(), dim=-1)
+            # [B, N, D] — CLS token at position 0, raw (un-normalized)
+            bb = trunk_out[:, 0, :].float()
             bb_feats.append(bb.cpu().numpy())
             # Also capture projected output to detect if head is non-trivial
             proj = model.encode_image(imgs, normalize=True).float()

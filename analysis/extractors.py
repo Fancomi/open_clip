@@ -84,11 +84,26 @@ def load_from_cache(out_dir, force=False):
 # ── Batch image/text extractors ───────────────────────────────────────────────
 
 def extract_clip_img(model, paths, preproc, out_path, force=False, bs=256):
+    """Extract L2-normalized CLIP projection features (encode_image output).
+    Used exclusively for modality_gap plots — NOT for anisotropy/scatter."""
     feat = _npz(out_path, force)
     if feat is not None:
         return feat
-    from open_clip_train.probe_hook import extract_image_features
-    feat = extract_image_features(model, paths, preproc, DEVICE, bs)
+    from open_clip_train.probe_hook import extract_backbone_cls
+    # extract_backbone_cls returns (backbone_cls, proj_cls);
+    # for CLIP projection space we want proj_cls (normalized 1024-dim).
+    # For models without a projection head (proj_cls is None), fall back to backbone_cls.
+    _, proj = extract_backbone_cls(model, paths, preproc, next(model.parameters()).device, bs)
+    if proj is None:
+        dev = next(model.parameters()).device
+        feats = []
+        for i in range(0, len(paths), bs):
+            x = torch.stack([preproc(Image.open(p).convert('RGB'))
+                             for p in paths[i:i+bs]]).to(dev)
+            feats.append(model.encode_image(x, normalize=True).detach().cpu().float().numpy())
+        feat = np.concatenate(feats)
+    else:
+        feat = proj
     np.savez_compressed(out_path, features=feat, paths=np.array(paths))
     return feat
 
@@ -274,20 +289,20 @@ def extract_wds_features(
             pb = torch.stack([pe_preproc(im) for im in imgs]).to(DEVICE)
             if 'pe_img' in active:
                 acc['pe_img'].append(
-                    pe_model.encode_image(pb, normalize=True).cpu().float().numpy())
+                    pe_model.encode_image(pb, normalize=True).detach().cpu().float().numpy())
             if 'pe_txt' in active:
                 acc['pe_txt'].append(
                     pe_model.encode_text(pe_tok(caps).to(DEVICE), normalize=True)
-                    .cpu().float().numpy())
+                    .detach().cpu().float().numpy())
         if 'sig2_img' in active or 'sig2_txt' in active:
             sb = torch.stack([sig2_preproc(im) for im in imgs]).to(DEVICE)
             if 'sig2_img' in active:
                 acc['sig2_img'].append(
-                    sig2_model.encode_image(sb, normalize=True).cpu().float().numpy())
+                    sig2_model.encode_image(sb, normalize=True).detach().cpu().float().numpy())
             if 'sig2_txt' in active:
                 acc['sig2_txt'].append(
                     sig2_model.encode_text(sig2_tok(caps).to(DEVICE), normalize=True)
-                    .cpu().float().numpy())
+                    .detach().cpu().float().numpy())
         if 'dino_img' in active:
             dx = torch.stack([_DINO_TF(im) for im in imgs]).to(DEVICE)
             acc['dino_img'].append(
@@ -388,7 +403,7 @@ def extract_dinov3_pil(model, pil_imgs):
 def extract_clip_pil(model, preproc, pil_imgs):
     """CLIP-style image features from PIL images (preproc handles resize)."""
     x = torch.stack([preproc(img) for img in pil_imgs]).to(DEVICE)
-    return model.encode_image(x, normalize=True).cpu().float().numpy()
+    return model.encode_image(x, normalize=True).detach().cpu().float().numpy()
 
 
 @torch.no_grad()

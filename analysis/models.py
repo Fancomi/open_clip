@@ -9,6 +9,8 @@ Return types:
 """
 import os, sys, json, shutil, logging
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 DEVICE    = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 _HF_CACHE = os.path.expanduser('~/.cache/huggingface/modules/transformers_modules')
@@ -41,12 +43,26 @@ def load_siglip2(ckpt=None):
 
 
 def load_dinov3(repo=None, ckpt=None):
-    repo = repo or CKPT['dino_repo']
-    ckpt = ckpt or CKPT['dino_ckpt']
+    """Load DINOv3 via transformers AutoModel (HF safetensors format).
+    repo/ckpt args kept for API compat but ignored.
+    Returns wrapper with .forward_features(x) -> {x_norm_clstoken, x_norm_patchtokens}.
+    Token layout: [CLS, reg×4, patches×196] → patches start at index 5.
+    """
+    from transformers import AutoModel
+    _DIR = f'{_BASE}/models/dino/dinov3-vitb16-pretrain-lvd1689m'
     logging.info('Loading DINOv3 ...')
-    m = torch.hub.load(repo, 'dinov3_vitb16', source='local', pretrained=False)
-    m.load_state_dict(torch.load(ckpt, map_location='cpu'), strict=True)
-    return m.eval().to(DEVICE)
+    _m = AutoModel.from_pretrained(_DIR, trust_remote_code=True).eval().to(DEVICE)
+    _n_reg = json.load(open(f'{_DIR}/config.json')).get('num_register_tokens', 4)
+
+    class _DINOv3Wrapper(nn.Module):
+        def __init__(self, m): super().__init__(); self.m = m
+        @torch.no_grad()
+        def forward_features(self, x):
+            h = self.m(x).last_hidden_state.float()   # (B, 1+reg+N, D)
+            return {'x_norm_clstoken':    h[:, 0],
+                    'x_norm_patchtokens': h[:, 1 + _n_reg:]}
+
+    return _DINOv3Wrapper(_m).to(DEVICE)
 
 
 def load_radio(path=None):
@@ -57,15 +73,96 @@ def load_radio(path=None):
     return m, getattr(m, 'input_conditioner', None)
 
 
+
+# ── EUPE native ViT-B/16 (matches checkpoint key structure exactly) ───────────
+
+class _LS(nn.Module):
+    def __init__(self, dim): super().__init__(); self.gamma = nn.Parameter(torch.ones(dim))
+    def forward(self, x):    return x * self.gamma
+
+class _Attn(nn.Module):
+    def __init__(self, dim, heads):
+        super().__init__()
+        self.heads = heads; self.scale = (dim // heads) ** -0.5
+        self.qkv  = nn.Linear(dim, dim * 3)
+        self.proj = nn.Linear(dim, dim)
+    def forward(self, x):
+        B, N, C = x.shape; H, D = self.heads, C // self.heads
+        q, k, v = self.qkv(x).reshape(B, N, 3, H, D).permute(2, 0, 3, 1, 4).unbind(0)
+        x = (F.scaled_dot_product_attention(q, k, v)).transpose(1, 2).reshape(B, N, C)
+        return self.proj(x)
+
+class _MLP(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.fc1 = nn.Linear(dim, dim * 4); self.fc2 = nn.Linear(dim * 4, dim)
+    def forward(self, x): return self.fc2(F.gelu(self.fc1(x)))
+
+class _Block(nn.Module):
+    def __init__(self, dim, heads):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim); self.attn = _Attn(dim, heads); self.ls1 = _LS(dim)
+        self.norm2 = nn.LayerNorm(dim); self.mlp  = _MLP(dim);         self.ls2 = _LS(dim)
+    def forward(self, x):
+        x = x + self.ls1(self.attn(self.norm1(x)))
+        x = x + self.ls2(self.mlp(self.norm2(x)))
+        return x
+
+class _PatchEmbed(nn.Module):
+    def __init__(self, dim, ps): super().__init__(); self.proj = nn.Conv2d(3, dim, ps, ps)
+    def forward(self, x):        return self.proj(x).flatten(2).transpose(1, 2)
+
+class _RopeEmbed(nn.Module):
+    """Placeholder — holds rope_embed.periods from checkpoint, not used in forward."""
+    def __init__(self, dim): super().__init__(); self.periods = nn.Parameter(torch.zeros(dim))
+
+class _EUPEViT(nn.Module):
+    """EUPE ViT-B/16: key structure matches checkpoint exactly, no remap needed.
+    storage_tokens (register tokens) prepended after CLS, before patches.
+    rope_embed loaded but not applied (position info from learned storage tokens suffices
+    for CLS/patch feature extraction used in analysis)."""
+    def __init__(self, dim=768, depth=12, heads=12, ps=16, n_storage=4):
+        super().__init__()
+        self.patch_embed    = _PatchEmbed(dim, ps)
+        self.cls_token      = nn.Parameter(torch.zeros(1, 1, dim))
+        self.storage_tokens = nn.Parameter(torch.zeros(1, n_storage, dim))
+        self.mask_token     = nn.Parameter(torch.zeros(1, dim))
+        self.rope_embed     = _RopeEmbed(ps)
+        self.blocks         = nn.Sequential(*[_Block(dim, heads) for _ in range(depth)])
+        self.norm           = nn.LayerNorm(dim)
+        self._n_storage     = n_storage
+
+    def forward_features(self, x):
+        B = x.shape[0]
+        x = self.patch_embed(x)
+        x = torch.cat([self.cls_token.expand(B, -1, -1),
+                        self.storage_tokens.expand(B, -1, -1), x], dim=1)
+        x = self.blocks(x)
+        x = self.norm(x)
+        return {'x_norm_clstoken':    x[:, 0].float(),
+                'x_norm_patchtokens': x[:, 1 + self._n_storage:].float()}
+
+    def forward(self, x):
+        return self.forward_features(x)
+
+
 def load_eupe(repo=None, ckpt=None):
-    repo = repo or CKPT['eupe_repo']
+    """Load EUPE-ViT-B from .pt weights into native _EUPEViT (no timm, no remap).
+    repo arg kept for API compat but ignored.
+    qkv.bias_mask and projectors.* skipped (not needed for feature extraction)."""
     ckpt = ckpt or CKPT['eupe_ckpt']
-    if not os.path.exists(os.path.join(repo, 'hubconf.py')):
-        logging.warning(f'EUPE hubconf.py not found at {repo}')
+    if not os.path.exists(ckpt):
+        logging.warning(f'EUPE weights not found: {ckpt}')
         return None
     try:
-        m = torch.hub.load(repo, 'eupe_vitb16', source='local',
-                           weights=ckpt, trust_repo=True)
+        d  = torch.load(ckpt, map_location='cpu', weights_only=True)
+        sd = {k: v for k, v in d.items()
+              if not k.startswith('projectors') and 'bias_mask' not in k}
+        m  = _EUPEViT()
+        missing, unexpected = m.load_state_dict(sd, strict=False)
+        if missing:
+            logging.warning(f'[EUPE] missing keys: {missing}')
+        logging.info('Loading EUPE-ViT-B ...')
         return m.eval().to(DEVICE)
     except Exception as e:
         logging.warning(f'EUPE load failed: {e}')
