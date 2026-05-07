@@ -106,26 +106,41 @@ SIGREG_BASE="--siglip --sigreg-target cls --sigreg-weight 1e-4 \
 #       需要极大 λ 或 Phase 2（解耦 bias）才能产生有效梯度
 # ════════════════════════════════════════════════════════════════════════════
 
+# ── txt-only replace 模式，指数搜索峰值 ─────────────────────────────────
+#
+# 已知：λ=30 (txt3000) = 0.0192，仍在爬坡，尚未饱和
+# 策略：指数步距先定数量级（30→60→150→400→1000→3000）
+#       找到第一个下降点后，下一批次在该区间二分
+#
+# 预计运行时间：6 runs × 30min ≈ 3h
+# ─────────────────────────────────────────────────────────────────────────
+
 # ── 今晚批次（~12h, ~24 runs） ──────────────────────────────────────────
-# 核心验证：auxiliary txt-only，扫 λ
-run "aux_txt5"    "PE-Core-B-16-dinov3" 29551 "${SIGREG_BASE} --within-modal-weight 5.0   --within-modal-sides txt --within-modal-mode auxiliary"
-run "aux_txt20"   "PE-Core-B-16-dinov3" 29552 "${SIGREG_BASE} --within-modal-weight 20.0  --within-modal-sides txt --within-modal-mode auxiliary"
-run "aux_txt50"   "PE-Core-B-16-dinov3" 29553 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-sides txt --within-modal-mode auxiliary"
-run "aux_txt200"  "PE-Core-B-16-dinov3" 29554 "${SIGREG_BASE} --within-modal-weight 200.0 --within-modal-sides txt --within-modal-mode auxiliary"
-run "aux_txt500"  "PE-Core-B-16-dinov3" 29555 "${SIGREG_BASE} --within-modal-weight 500.0 --within-modal-sides txt --within-modal-mode auxiliary"
-run "aux_txt1000" "PE-Core-B-16-dinov3" 29556 "${SIGREG_BASE} --within-modal-weight 1000.0 --within-modal-sides txt --within-modal-mode auxiliary"
+# # 核心验证：auxiliary txt-only，扫 λ
+# run "aux_txt5"    "PE-Core-B-16-dinov3" 29551 "${SIGREG_BASE} --within-modal-weight 5.0   --within-modal-sides txt --within-modal-mode auxiliary"
+# run "aux_txt20"   "PE-Core-B-16-dinov3" 29552 "${SIGREG_BASE} --within-modal-weight 20.0  --within-modal-sides txt --within-modal-mode auxiliary"
+# run "aux_txt50"   "PE-Core-B-16-dinov3" 29553 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-sides txt --within-modal-mode auxiliary"
+# run "aux_txt200"  "PE-Core-B-16-dinov3" 29554 "${SIGREG_BASE} --within-modal-weight 200.0 --within-modal-sides txt --within-modal-mode auxiliary"
+# run "aux_txt500"  "PE-Core-B-16-dinov3" 29555 "${SIGREG_BASE} --within-modal-weight 500.0 --within-modal-sides txt --within-modal-mode auxiliary"
+# run "aux_txt1000" "PE-Core-B-16-dinov3" 29556 "${SIGREG_BASE} --within-modal-weight 1000.0 --within-modal-sides txt --within-modal-mode auxiliary"
 
-# 对照：auxiliary both-sides
-run "aux_both5"   "PE-Core-B-16-dinov3" 29557 "${SIGREG_BASE} --within-modal-weight 5.0   --within-modal-mode auxiliary"
-run "aux_both50"  "PE-Core-B-16-dinov3" 29558 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-mode auxiliary"
-run "aux_both200" "PE-Core-B-16-dinov3" 29559 "${SIGREG_BASE} --within-modal-weight 200.0 --within-modal-mode auxiliary"
+# # 对照：auxiliary both-sides
+# run "aux_both5"   "PE-Core-B-16-dinov3" 29557 "${SIGREG_BASE} --within-modal-weight 5.0   --within-modal-mode auxiliary"
+# run "aux_both50"  "PE-Core-B-16-dinov3" 29558 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-mode auxiliary"
+# run "aux_both200" "PE-Core-B-16-dinov3" 29559 "${SIGREG_BASE} --within-modal-weight 200.0 --within-modal-mode auxiliary"
 
-# 对照：auxiliary img-only（验证 img repulsion 在有 cross-neg 时是否还崩）
-run "aux_img50"   "PE-Core-B-16-dinov3" 29560 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-sides img --within-modal-mode auxiliary"
-run "aux_img200"  "PE-Core-B-16-dinov3" 29561 "${SIGREG_BASE} --within-modal-weight 200.0 --within-modal-sides img --within-modal-mode auxiliary"
+# # 对照：auxiliary img-only（验证 img repulsion 在有 cross-neg 时是否还崩）
+# run "aux_img50"   "PE-Core-B-16-dinov3" 29560 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-sides img --within-modal-mode auxiliary"
+# run "aux_img200"  "PE-Core-B-16-dinov3" 29561 "${SIGREG_BASE} --within-modal-weight 200.0 --within-modal-sides img --within-modal-mode auxiliary"
 
-# baseline（重跑一次确保对齐，可选）
-run "baseline2"   "PE-Core-B-16-dinov3" 29562 "${SIGREG_BASE}"
+# # baseline（重跑一次确保对齐，可选）
+# run "baseline2"   "PE-Core-B-16-dinov3" 29562 "${SIGREG_BASE}"
+
+run "txt6000"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 60.0   --within-modal-sides txt"
+run "txt15000"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 150.0  --within-modal-sides txt"
+run "txt40000"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 400.0  --within-modal-sides txt"
+run "txt100k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1000.0 --within-modal-sides txt"
+run "txt300k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 3000.0 --within-modal-sides txt"
 
 # ════════════════════════════════════════════════════════════════════════════
 # both-sides within-modal repulsion  (within_modal_sides=both)
