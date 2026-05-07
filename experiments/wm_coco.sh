@@ -71,7 +71,7 @@ SIGREG_BASE="--siglip --sigreg-target cls --sigreg-weight 1e-4 \
 
 # ════════════════════════════════════════════════════════════════════════════
 # img-only within-modal repulsion  (within_modal_sides=img)
-# txt-only within-modal repulsion  (within_modal_sides=txt)
+# txt-only within-modal repulsion  (within_modal_sides=txt) # Best: wmc_txt2000_0506_1633, 但是有效秩很低
 # ════════════════════════════════════════════════════════════════════════════
 # run "img550" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 5.0  --within-modal-sides img"
 # run "txt550" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 5.0 --within-modal-sides txt"
@@ -82,21 +82,58 @@ SIGREG_BASE="--siglip --sigreg-target cls --sigreg-weight 1e-4 \
 # run "img250" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 2.5  --within-modal-sides img"
 # run "txt250" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.5 --within-modal-sides txt"
 
-run "img2000" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 20.0  --within-modal-sides img"
-run "txt2000" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 20.0 --within-modal-sides txt"
+# run "img2000" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 20.0  --within-modal-sides img"
+# run "txt2000" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 20.0 --within-modal-sides txt"
 
-run "img1500" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 15.0  --within-modal-sides img"
-run "txt1500" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 15.0 --within-modal-sides txt"
+# run "img1500" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 15.0  --within-modal-sides img"
+# run "txt1500" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 15.0 --within-modal-sides txt"
 
-run "img1000" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 10.0  --within-modal-sides img"
-run "txt1000" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 10.0 --within-modal-sides txt"
+# (已完成) replace 模式实验
+# run "img1000" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 10.0 --within-modal-sides img"
+# run "txt2500" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 25.0 --within-modal-sides txt"
+
+# run "img250" "PE-Core-B-16-dinov3" 29533 "${SIGREG_BASE} --within-modal-weight 2.5 --within-modal-sides img"
+# run "txt3000" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 30.0 --within-modal-sides txt"
+
+# ════════════════════════════════════════════════════════════════════════════
+# Phase 1: auxiliary 模式 — 保留 full SigLIP + 叠加 within-modal
+#
+#   L = standard_siglip(img, txt, scale, bias)   [完整 N×N, 含 cross-neg]
+#     + λ × within_modal(txt/img, scale, bias)   [额外正则]
+#
+# 预期：img eff_rank 不崩塌（cross-neg 维持判别信号），txt 更均匀 → gap 缩小
+# 注意：由于 sigmoid 饱和（bias=-10），λ=5 的 within-modal 贡献仅 ~0.03% of main loss
+#       需要极大 λ 或 Phase 2（解耦 bias）才能产生有效梯度
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── 今晚批次（~12h, ~24 runs） ──────────────────────────────────────────
+# 核心验证：auxiliary txt-only，扫 λ
+run "aux_txt5"    "PE-Core-B-16-dinov3" 29551 "${SIGREG_BASE} --within-modal-weight 5.0   --within-modal-sides txt --within-modal-mode auxiliary"
+run "aux_txt20"   "PE-Core-B-16-dinov3" 29552 "${SIGREG_BASE} --within-modal-weight 20.0  --within-modal-sides txt --within-modal-mode auxiliary"
+run "aux_txt50"   "PE-Core-B-16-dinov3" 29553 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-sides txt --within-modal-mode auxiliary"
+run "aux_txt200"  "PE-Core-B-16-dinov3" 29554 "${SIGREG_BASE} --within-modal-weight 200.0 --within-modal-sides txt --within-modal-mode auxiliary"
+run "aux_txt500"  "PE-Core-B-16-dinov3" 29555 "${SIGREG_BASE} --within-modal-weight 500.0 --within-modal-sides txt --within-modal-mode auxiliary"
+run "aux_txt1000" "PE-Core-B-16-dinov3" 29556 "${SIGREG_BASE} --within-modal-weight 1000.0 --within-modal-sides txt --within-modal-mode auxiliary"
+
+# 对照：auxiliary both-sides
+run "aux_both5"   "PE-Core-B-16-dinov3" 29557 "${SIGREG_BASE} --within-modal-weight 5.0   --within-modal-mode auxiliary"
+run "aux_both50"  "PE-Core-B-16-dinov3" 29558 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-mode auxiliary"
+run "aux_both200" "PE-Core-B-16-dinov3" 29559 "${SIGREG_BASE} --within-modal-weight 200.0 --within-modal-mode auxiliary"
+
+# 对照：auxiliary img-only（验证 img repulsion 在有 cross-neg 时是否还崩）
+run "aux_img50"   "PE-Core-B-16-dinov3" 29560 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-sides img --within-modal-mode auxiliary"
+run "aux_img200"  "PE-Core-B-16-dinov3" 29561 "${SIGREG_BASE} --within-modal-weight 200.0 --within-modal-sides img --within-modal-mode auxiliary"
+
+# baseline（重跑一次确保对齐，可选）
+run "baseline2"   "PE-Core-B-16-dinov3" 29562 "${SIGREG_BASE}"
 
 # ════════════════════════════════════════════════════════════════════════════
 # both-sides within-modal repulsion  (within_modal_sides=both)
 # ════════════════════════════════════════════════════════════════════════════
-run "wm15"  "PE-Core-B-16-dinov3" 29545 "${SIGREG_BASE} --within-modal-weight 1.5"
-run "wm2"   "PE-Core-B-16-dinov3" 29546 "${SIGREG_BASE} --within-modal-weight 2.0"
-run "wm025" "PE-Core-B-16-dinov3" 29542 "${SIGREG_BASE} --within-modal-weight 0.25"
-run "wm075" "PE-Core-B-16-dinov3" 29543 "${SIGREG_BASE} --within-modal-weight 0.75"
+# (已完成) both-sides replace 模式
+# run "wm15"  "PE-Core-B-16-dinov3" 29545 "${SIGREG_BASE} --within-modal-weight 1.5"
+# run "wm2"   "PE-Core-B-16-dinov3" 29546 "${SIGREG_BASE} --within-modal-weight 2.0"
+# run "wm025" "PE-Core-B-16-dinov3" 29542 "${SIGREG_BASE} --within-modal-weight 0.25"
+# run "wm075" "PE-Core-B-16-dinov3" 29543 "${SIGREG_BASE} --within-modal-weight 0.75"
 
-echo "======== wm_coco all done ========"
+echo "======== wm_coco all done (12 runs × ~30min ≈ 6h) ========"

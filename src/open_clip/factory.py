@@ -822,6 +822,7 @@ def create_loss(args):
             dist_impl=getattr(args, 'loss_dist_impl', None),
             within_modal_weight=getattr(args, 'within_modal_weight', 0.0),
             within_modal_sides=getattr(args, 'within_modal_sides', 'both'),
+            within_modal_mode=getattr(args, 'within_modal_mode', 'replace'),
         )
     elif getattr(args, 'dinov3', False):
         # CLIPWithDINOLoss：需要从 model 中读取 embed_dim，由 main.py 传入

@@ -15,7 +15,7 @@ vs_first  : alignment of each step against step 0 → accumulated drift
 vs_final  : alignment of each step against the last checkpoint → convergence
 vs_prev   : alignment between consecutive steps → local rotation speed
 """
-import os
+import json, os
 import logging
 import numpy as np
 import matplotlib
@@ -109,13 +109,23 @@ def run_pc_alignment(args):
 
     logging.info(f'[pc_align] {len(matched)} checkpoints, n_pcs={n_pcs}')
 
-    # ── Load image features from each checkpoint ─────────────────────────────
-    all_feats = []
+    # ── Load image + optional text features from each checkpoint ─────────────
+    all_feats, all_txt_feats = [], []
+    has_txt = None
     for sid, fname in matched:
         data = np.load(os.path.join(probe_dir, fname))
-        key  = 'img' if 'img' in data else list(data.keys())[0]
-        all_feats.append(data[key].astype(np.float32))
-        logging.info(f'  {fname}: {all_feats[-1].shape}')
+        # prefer proj_features (CLIP projection space, same dim as txt_features)
+        img_key = 'proj_features' if 'proj_features' in data else \
+                  ('features' if 'features' in data else list(data.keys())[0])
+        all_feats.append(data[img_key].astype(np.float32))
+        if 'txt_features' in data:
+            all_txt_feats.append(data['txt_features'].astype(np.float32))
+            has_txt = True
+        else:
+            has_txt = False
+        logging.info(f'  {fname}: img={all_feats[-1].shape}'
+                     + (f'  txt={all_txt_feats[-1].shape}' if has_txt else ''))
+    txt_final = all_txt_feats[-1] if has_txt else None
 
     # ── Compute alignment: vs_first, vs_final, vs_prev ───────────────────────
     n = len(all_feats)
@@ -151,7 +161,27 @@ def run_pc_alignment(args):
                         id_label, plots_dir)
     _plot_perpc_lines(step_ids, perpc_first, grass_prev, id_label, plots_dir,
                       perpc_prev=perpc_prev)
-    _plot_final_pc_pairs(all_feats[-1], k, step_ids[-1], id_label, plots_dir)
+    _plot_final_pc_pairs(all_feats[-1], k, step_ids[-1], id_label, plots_dir,
+                         txt_feats=txt_final)
+
+    # ── Export JSON for downstream analysis ──────────────────────────────────
+    data = {
+        "id_label":    id_label,
+        "n_pcs":       k,
+        "step_ids":    step_ids,
+        "grass_first": grass_first.tolist(),
+        "grass_final": grass_final.tolist(),
+        "grass_prev":  grass_prev.tolist(),
+        "perpc_first": perpc_first.tolist(),   # (T, k)
+        "perpc_final": perpc_final.tolist(),
+        "perpc_prev":  perpc_prev.tolist(),     # (T-1, k)
+        "subsp_first": subsp_first.tolist(),
+        "subsp_final": subsp_final.tolist(),
+    }
+    json_path = os.path.join(plots_dir, 'pc_alignment_data.json')
+    with open(json_path, 'w') as fh:
+        json.dump(data, fh)
+    logging.info(f'[pc_align] data → {json_path}')
 
 
 # ── Visualisation helpers ─────────────────────────────────────────────────────
@@ -265,20 +295,25 @@ def _plot_perpc_lines(step_ids, perpc_first, grass_prev, id_label, plots_dir,
 
 def _plot_final_pc_pairs(feats: np.ndarray, n_pcs: int,
                          step_id, id_label: str, plots_dir: str,
+                         txt_feats: np.ndarray | None = None,
                          cols: int = 5):
-    """Scatter grid: PC1vsPC2, PC3vsPC4, … up to n_pcs, 2 rows × cols panels.
+    """Scatter grid: PC1vsPC2, PC3vsPC4, … up to n_pcs.
 
-    feats   : (N, D) final-checkpoint raw features
-    n_pcs   : number of PCs (must be even; truncated to nearest even)
-    step_id : checkpoint identifier shown in suptitle
+    feats     : (N, D) final-checkpoint image features
+    txt_feats : (N, D) final-checkpoint text features (same D); when provided,
+                PCA is fitted on the joint pool and points are colored
+                image=blue (#0055FF), text=red (#FF2200).
     """
-    k = (min(n_pcs, feats.shape[1]) // 2) * 2   # round down to even
-    pca   = PCA(n_components=k).fit(feats)
-    proj  = pca.transform(feats)                  # (N, k)
-    vr    = pca.explained_variance_ratio_
+    _C_IMG, _C_TXT = '#0055FF', '#FF2200'
+    fit_data = np.concatenate([feats, txt_feats]) if txt_feats is not None else feats
+    k = (min(n_pcs, fit_data.shape[1]) // 2) * 2
+    pca  = PCA(n_components=k).fit(fit_data)
+    vr   = pca.explained_variance_ratio_
+    proj_img = pca.transform(feats)                                    # (N, k)
+    proj_txt = pca.transform(txt_feats) if txt_feats is not None else None
 
     n_pairs = k // 2
-    rows    = (n_pairs + cols - 1) // cols        # ceil div
+    rows    = (n_pairs + cols - 1) // cols
     fig, axes = plt.subplots(rows, cols,
                              figsize=(cols * 3.2, rows * 3.2),
                              squeeze=False)
@@ -286,17 +321,33 @@ def _plot_final_pc_pairs(feats: np.ndarray, n_pcs: int,
     for idx in range(n_pairs):
         pi, pj = idx * 2, idx * 2 + 1
         ax = axes[idx // cols][idx % cols]
-        ax.scatter(proj[:, pi], proj[:, pj], s=2, alpha=0.25, rasterized=True)
+        add_legend = (idx == 0) and (proj_txt is not None)
+        # draw Text first, Image on top; both semi-transparent so overlap is visible
+        if proj_txt is not None:
+            ax.scatter(proj_txt[:, pi], proj_txt[:, pj],
+                       s=1, alpha=0.3, color=_C_TXT, rasterized=True,
+                       label='Text' if add_legend else '')
+        ax.scatter(proj_img[:, pi], proj_img[:, pj],
+                   s=1, alpha=0.3, color=_C_IMG, rasterized=True,
+                   label='Image' if add_legend else '')
+        if add_legend:
+            ax.legend(markerscale=4, fontsize=7, loc='best')
         ax.set_xlabel(f'PC{pi+1} ({vr[pi]*100:.1f}%)', fontsize=8)
         ax.set_ylabel(f'PC{pj+1} ({vr[pj]*100:.1f}%)', fontsize=8)
-        ax.set_title(f'PC{pi+1} vs PC{pj+1}', fontsize=9)
+        # show centroid distance in title when text is available
+        if proj_txt is not None:
+            gap = np.linalg.norm(proj_img[:, [pi, pj]].mean(0)
+                                 - proj_txt[:, [pi, pj]].mean(0))
+            ax.set_title(f'PC{pi+1} vs PC{pj+1}  gap={gap:.3f}', fontsize=9)
+        else:
+            ax.set_title(f'PC{pi+1} vs PC{pj+1}', fontsize=9)
         ax.tick_params(labelsize=7)
 
-    # hide unused panels
     for idx in range(n_pairs, rows * cols):
         axes[idx // cols][idx % cols].set_visible(False)
 
-    fig.suptitle(f'Final {id_label} {step_id} — PCA Pair Scatter (image features)',
+    suffix = ' (Image=blue, Text=red)' if proj_txt is not None else ' (image features)'
+    fig.suptitle(f'Final {id_label} {step_id} — PCA Pair Scatter{suffix}',
                  fontsize=11)
     plt.tight_layout()
     save_path = os.path.join(plots_dir, 'pc_pairs_final.png')

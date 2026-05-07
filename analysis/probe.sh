@@ -73,7 +73,26 @@ _run_epochs() {
     $SCRIPT --mode epochs --probe-dir "$probe_dir"
 }
 
-# _run_pc_alignment <probe_dir> <n_pcs> <rerun:0|1>
+# _is_probe_dir <path> — true if path contains .npz files (is a probe dir, not a logs root)
+_is_probe_dir() {
+    compgen -G "${1}/*.npz" > /dev/null 2>&1
+}
+
+_run_log_metrics() {
+    local probe_dir="$1" rerun="${2:-0}"
+    local logdir plots_dir sentinel
+    logdir="$(realpath "${probe_dir}/../.." 2>/dev/null || echo "${probe_dir}/../..")"
+    plots_dir="$(realpath "${probe_dir}/../../probe/plots" 2>/dev/null || echo "${probe_dir}/../../probe/plots")"
+    sentinel="${plots_dir}/training_metrics.csv"
+    if [[ "$rerun" -eq 0 && -f "$sentinel" ]]; then
+        echo "=== [probe] log_metrics  SKIP (already done)  ${logdir} ==="
+        return
+    fi
+    [[ -f "${logdir}/out.log" ]] || { echo "=== [probe] log_metrics  SKIP (no out.log)  ${logdir} ==="; return; }
+    echo "=== [probe] log_metrics  logdir=${logdir} ==="
+    python3 -m analysis.log_parser --single "${logdir}" --out "${sentinel}"
+}
+
 _run_pc_alignment() {
     local probe_dir="$1" n_pcs="${2:-20}" rerun="${3:-0}"
     local plots_dir
@@ -104,7 +123,7 @@ case "$MODE" in
         # If $2 is a logs/ root, iterate all subdirs; else treat as single probe_dir.
         ARG2="${2:?Usage: probe.sh epochs <probe_dir|logs_root> [--rerun]}"
         RERUN=0; [[ "${3:-}" == "--rerun" || "${2:-}" == "--rerun" ]] && RERUN=1
-        if [[ -d "${ARG2}/checkpoints" || ! -d "$ARG2" ]]; then
+        if _is_probe_dir "$ARG2"; then
             # single probe_dir
             _run_epochs "$ARG2" "$RERUN"
         else
@@ -141,7 +160,7 @@ case "$MODE" in
         for arg in "${@:3}"; do
             [[ "$arg" == "--rerun" ]] && RERUN=1 || N_PCS="$arg"
         done
-        if [[ -d "${ARG2}/checkpoints" || ! -d "$ARG2" ]]; then
+        if _is_probe_dir "$ARG2"; then
             # single probe_dir
             _run_pc_alignment "$ARG2" "$N_PCS" "$RERUN"
         else
@@ -149,6 +168,28 @@ case "$MODE" in
             for logdir in "${ARG2}"/*/; do
                 probe_dir="${logdir}checkpoints/probe"
                 [[ -d "$probe_dir" ]] || continue
+                _run_pc_alignment "$probe_dir" "$N_PCS" "$RERUN"
+            done
+        fi
+        ;;
+    probe_full|probe)
+        # probe_full <probe_dir|logs_root> [n_pcs=20] [--rerun]
+        # Runs epochs + pc_alignment in one pass.
+        ARG2="${2:?Usage: probe.sh probe_full <probe_dir|logs_root> [n_pcs=20] [--rerun]}"
+        N_PCS=20; RERUN=0
+        for arg in "${@:3}"; do
+            [[ "$arg" == "--rerun" ]] && RERUN=1 || N_PCS="$arg"
+        done
+        if _is_probe_dir "$ARG2"; then
+            _run_log_metrics   "$ARG2" "$RERUN"
+            _run_epochs        "$ARG2" "$RERUN"
+            _run_pc_alignment  "$ARG2" "$N_PCS" "$RERUN"
+        else
+            for logdir in "${ARG2}"/*/; do
+                probe_dir="${logdir}checkpoints/probe"
+                [[ -d "$probe_dir" ]] || continue
+                _run_log_metrics  "$probe_dir" "$RERUN"
+                _run_epochs       "$probe_dir" "$RERUN"
                 _run_pc_alignment "$probe_dir" "$N_PCS" "$RERUN"
             done
         fi
@@ -161,6 +202,14 @@ case "$MODE" in
         echo "=== [probe] crop_probe  out_dir=${OUT_DIR} ==="
         $SCRIPT --mode crop_probe --out-dir "${OUT_DIR}"
         ;;
+    log_parse)
+        # log_parse [--prefix <prefix>] [--no-plot] [--no-md]
+        # Parse training logs → markdown table + plots
+        PREFIX="${2:-wmc_}"
+        shift 2 2>/dev/null || true
+        echo "=== [probe] log_parse  prefix=${PREFIX} ==="
+        python3 -m analysis.log_parser --prefix "${PREFIX}" "$@"
+        ;;
     *)
         echo "Usage:"
         echo "  bash analysis/probe.sh coco"
@@ -170,7 +219,9 @@ case "$MODE" in
         echo "  bash analysis/probe.sh anisotropy [coco|cc3m]"
         echo "  bash analysis/probe.sh layers <model>  (dinov3|pe_core|siglip2|eupe)"
         echo "  bash analysis/probe.sh pc_alignment <probe_dir|logs_root> [n_pcs=20] [--rerun]"
+        echo "  bash analysis/probe.sh probe_full   <probe_dir|logs_root> [n_pcs=20] [--rerun]"
         echo "  bash analysis/probe.sh crop_probe [out_dir=CC3M_OUT]"
+        echo "  bash analysis/probe.sh log_parse [prefix=wmc_] [--no-plot] [--no-md]"
         exit 1
         ;;
 esac

@@ -1,5 +1,5 @@
 """Analysis pipeline modes: pretrained (COCO/CC3M), overlap, anisotropy, epochs."""
-import glob, logging, os, re
+import csv, glob, json, logging, os, re
 import numpy as np
 import pandas as pd
 import torch
@@ -16,8 +16,9 @@ from .extractors import (load_from_cache,
                           extract_dinov3_pil, extract_clip_pil,
                           extract_pe_core_pil_raw,
                           extract_radio_pil, extract_eupe_pil, extract_tips_pil)
-from .metrics  import fps_sample, compute_anisotropy
-from .viz      import plot_scatter, plot_overlap, plot_anisotropy, plot_aniso_evolution, plot_evolution, plot_crop_probe
+from .metrics      import fps_sample, compute_anisotropy
+from .viz          import plot_scatter, plot_overlap, plot_anisotropy, plot_aniso_evolution, plot_evolution, plot_crop_probe
+from .pc_alignment import _plot_final_pc_pairs
 
 _BASE = '/root/paddlejob/workspace/env_run/penghaotian'
 _DATA = dict(
@@ -351,6 +352,25 @@ def run_epochs(args):
     logging.info(f'[epochs] backbone CLS  EffRank {m0["effective_rank"]:.1f} → {m1["effective_rank"]:.1f}'
                  f'  top4% {m0["pct_var_top4"]:.1f} → {m1["pct_var_top4"]:.1f}'
                  f'  AvgCos {m0["avg_cos_sim"]:.4f} → {m1["avg_cos_sim"]:.4f}')
+
+    # ── Export CSV for downstream analysis ───────────────────────────────────
+    csv_path = os.path.join(out, 'aniso_evolution.csv')
+    _scalar_keys = [k for k, v in aniso_list[0].items() if isinstance(v, (int, float))]
+    fieldnames   = [id_label.lower()] + _scalar_keys
+    with open(csv_path, 'w', newline='') as fh:
+        w = csv.DictWriter(fh, fieldnames=fieldnames)
+        w.writeheader()
+        for sid, row in zip(ids, aniso_list):
+            w.writerow({id_label.lower(): sid,
+                        **{k: row[k] for k in _scalar_keys}})
+    logging.info(f'[epochs] data → {csv_path}')
+
+    # ── PC pairs scatter (final checkpoint, image + text if available) ────────
+    _plot_final_pc_pairs(
+        evo_feats[-1], n_pcs=20,
+        step_id=ids[-1], id_label=id_label, plots_dir=out,
+        txt_feats=txt_feats[-1] if txt_feats is not None else None,
+    )
 
 
 # ── Mode: crop_probe ──────────────────────────────────────────────────────────

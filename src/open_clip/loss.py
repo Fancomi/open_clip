@@ -940,6 +940,7 @@ class SIGRegContrastiveLoss(nn.Module):
             dist_impl=None,
             within_modal_weight: float = 0.0,
             within_modal_sides: str = 'both',   # 'both' | 'img' | 'txt'
+            within_modal_mode: str = 'replace',  # 'replace' | 'auxiliary'
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
@@ -947,6 +948,9 @@ class SIGRegContrastiveLoss(nn.Module):
         assert within_modal_sides in ('both', 'img', 'txt'), \
             f"within_modal_sides must be 'both'/'img'/'txt', got {within_modal_sides!r}"
         self.within_modal_sides = within_modal_sides
+        assert within_modal_mode in ('replace', 'auxiliary'), \
+            f"within_modal_mode must be 'replace'/'auxiliary', got {within_modal_mode!r}"
+        self.within_modal_mode = within_modal_mode
         self.rank = rank
         self.world_size = world_size
         self.gather_with_grad = gather_with_grad
@@ -1055,31 +1059,7 @@ class SIGRegContrastiveLoss(nn.Module):
 
         if self.within_modal_weight > 0:
             # ── within-modal 模式 ─────────────────────────────────────────────
-            # 三项分解：
-            #
-            #   cross_pos : 仅对角线 B 个正样本对（复用 logit_scale / logit_bias）
-            #               -logsigmoid(s·<img_i,txt_i> + b)  / B
-            #
-            #   wm_img    : img-img 非对角线负样本对（共享 logit_scale / logit_bias）
-            #               softplus(s·<img_i,img_j> + b)     / B   (i≠j)
-            #
-            #   wm_txt    : txt-txt 非对角线负样本对（同上）
-            #               softplus(s·<txt_i,txt_j> + b)     / B   (i≠j)
-            #
-            # 三者共享 logit_scale / logit_bias，维持标准 SigLIP 的自平衡：
-            #   正样本把 b 往下拉，负样本把 b 往上推；b/scale 均有双向梯度。
-            #
-            # within_modal_sides 控制哪侧参与：
-            #   'both' : wm_img + wm_txt（默认，λ=0.5 时负样本对数 = cross-modal）
-            #   'img'  : 仅 wm_img
-            #   'txt'  : 仅 wm_txt
-            cross_loss = self._cross_modal_positive_only(
-                image_features, text_features, logit_scale, logit_bias
-            )
             sides = self.within_modal_sides
-            # logit_bias 同步传入 within_modal，维持正负样本对 bias/scale 的梯度平衡：
-            #   正样本（cross_modal）把 b 往下拉；负样本（within_modal）把 b 往上推。
-            #   缺少任一侧都会导致 bias/scale 单向崩塌。
             wm_img = self._within_modal_siglip(image_features, logit_scale, logit_bias) \
                 if sides in ('both', 'img') else None
             wm_txt = self._within_modal_siglip(text_features,  logit_scale, logit_bias) \
@@ -1092,11 +1072,26 @@ class SIGRegContrastiveLoss(nn.Module):
             else:  # 'txt'
                 wm_loss = self.within_modal_weight * wm_txt
 
-            losses = {
-                "contrastive_loss":  cross_loss,
-                "sigreg_loss":       weighted_reg,
-                "within_modal_loss": wm_loss,
-            }
+            if self.within_modal_mode == 'auxiliary':
+                # auxiliary 模式：保留完整 SigLIP（含 cross-neg），叠加 within-modal
+                main_loss = self.main_loss(
+                    image_features, text_features, logit_scale, logit_bias, output_dict=False
+                )
+                losses = {
+                    "contrastive_loss":  main_loss,
+                    "sigreg_loss":       weighted_reg,
+                    "within_modal_loss": wm_loss,
+                }
+            else:
+                # replace 模式（原始行为）：去掉 cross-neg，仅保留 cross-pos
+                cross_loss = self._cross_modal_positive_only(
+                    image_features, text_features, logit_scale, logit_bias
+                )
+                losses = {
+                    "contrastive_loss":  cross_loss,
+                    "sigreg_loss":       weighted_reg,
+                    "within_modal_loss": wm_loss,
+                }
         else:
             # ── 标准模式（baseline 行为，完全不变）────────────────────────────
             main_loss = self.main_loss(

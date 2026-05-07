@@ -569,6 +569,17 @@ def parse_args(args):
             '"txt": text-text only.'
         )
     )
+    parser.add_argument(
+        "--within-modal-mode",
+        type=str,
+        default='replace',
+        choices=['replace', 'auxiliary'],
+        help=(
+            'How within-modal loss interacts with cross-modal loss. '
+            '"replace" (default): remove cross-modal negatives, use positive-only + within-modal. '
+            '"auxiliary": keep full SigLIP (cross-modal pos+neg) and ADD within-modal as extra regularizer.'
+        )
+    )
 
     # ============ DINOv3 自蒸馏参数 ============
     parser.add_argument(

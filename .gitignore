@@ -4,6 +4,7 @@ models/
 features/
 results/
 
+analysis/research/plots/
 output.txt
 tests/data/
 *.pt
