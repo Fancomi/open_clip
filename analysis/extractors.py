@@ -84,11 +84,24 @@ def load_from_cache(out_dir, force=False):
 # ── Batch image/text extractors ───────────────────────────────────────────────
 
 def extract_clip_img(model, paths, preproc, out_path, force=False, bs=256):
+    """Extract L2-normalized CLIP projection features (encode_image output).
+    Used exclusively for modality_gap plots — NOT for anisotropy/scatter."""
     feat = _npz(out_path, force)
     if feat is not None:
         return feat
-    from open_clip_train.probe_hook import extract_image_features
-    feat = extract_image_features(model, paths, preproc, DEVICE, bs)
+    from open_clip_train.probe_hook import extract_backbone_cls
+    # extract_backbone_cls returns (backbone_cls, proj_cls);
+    # for CLIP projection space we want proj_cls (normalized 1024-dim).
+    # For models without a projection head (proj_cls is None), fall back to backbone_cls.
+    _, proj = extract_backbone_cls(model, paths, preproc, next(model.parameters()).device, bs)
+    if proj is None:
+        import torch
+        feat = model.encode_image(
+            torch.stack([preproc(Image.open(p).convert('RGB')) for p in paths])
+            .to(next(model.parameters()).device), normalize=True
+        ).cpu().float().numpy()
+    else:
+        feat = proj
     np.savez_compressed(out_path, features=feat, paths=np.array(paths))
     return feat
 
