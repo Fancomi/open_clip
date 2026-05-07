@@ -1,5 +1,5 @@
 """Analysis pipeline modes: pretrained (COCO/CC3M), overlap, anisotropy, epochs."""
-import glob, logging, os, re
+import glob, logging, os, re, subprocess, sys
 import numpy as np
 import pandas as pd
 import torch
@@ -43,6 +43,62 @@ def _log_aniso_table(aniso: dict):
             f" {m['pct_var_top4']:6.1f} {m['pct_var_top10']:7.1f} {m['pct_var_top50']:7.1f}")
 
 
+# ── GPU assignment: 6 model workers → 6 GPUs (GPU 0..5) ──────────────────────
+# pe and siglip2 are heavier (also extract text), so put them first.
+# eupe is optional (may be skipped if ckpt missing); still gets a GPU slot.
+_WORKER_MODELS = ['pe_img', 'sig2_img', 'dino_img', 'radio_img', 'eupe_img', 'tips_img']
+_GPU_ASSIGN    = {m: i for i, m in enumerate(_WORKER_MODELS)}   # model → GPU index
+
+
+def _run_parallel_workers(args, out_dir, data_type):
+    """Spawn one subprocess per model, each pinned to its own GPU.
+
+    Each subprocess: CUDA_VISIBLE_DEVICES=<id> python -m analysis._worker ...
+    The main process waits for all workers to finish, then the caller reads npzs.
+    """
+    os.makedirs(out_dir, exist_ok=True)
+    py   = sys.executable
+    base_cmd = [
+        py, '-m', 'analysis._worker',
+        '--data-type', data_type,
+        '--data',      args.data,
+        '--out-dir',   os.path.dirname(out_dir),  # worker appends /pretrained itself
+        '--pe-ckpt',   args.pe_ckpt,
+        '--sig2-ckpt', args.sig2_ckpt,
+        '--dino-repo', args.dino_repo,
+        '--dino-ckpt', args.dino_ckpt,
+        '--radio',     args.radio,
+        '--eupe-repo', args.eupe_repo,
+        '--eupe-ckpt', args.eupe_ckpt,
+        '--tips',      args.tips,
+        '--max-samples', str(args.max_samples),
+    ]
+    if args.force:
+        base_cmd.append('--force')
+
+    # Build per-model environment (only CUDA_VISIBLE_DEVICES differs)
+    procs = []
+    for model in _WORKER_MODELS:
+        gpu_id = _GPU_ASSIGN[model]
+        env = os.environ.copy()
+        env['CUDA_VISIBLE_DEVICES'] = str(gpu_id)
+        cmd  = base_cmd + ['--model', model]
+        logging.info(f'[parallel] launching {model} on GPU {gpu_id}')
+        p = subprocess.Popen(cmd, env=env)
+        procs.append((model, gpu_id, p))
+
+    # Wait for all workers; collect failures
+    failed = []
+    for model, gpu_id, p in procs:
+        rc = p.wait()
+        if rc != 0:
+            failed.append(f'{model}(GPU {gpu_id}) exit={rc}')
+        else:
+            logging.info(f'[parallel] {model} on GPU {gpu_id} — done')
+    if failed:
+        logging.warning(f'[parallel] some workers failed: {failed}')
+
+
 # ── Mode: pretrained (COCO tsv or CC3M wds) ──────────────────────────────────
 
 def run_pretrained(args):
@@ -54,23 +110,21 @@ def run_pretrained(args):
 
     if args.data_type == 'wds':
         if cached is None:
-            feats = extract_wds_features(
-                *load_pe_core(args.pe_ckpt),
-                *load_siglip2(args.sig2_ckpt),
-                load_dinov3(args.dino_repo, args.dino_ckpt),
-                *load_radio(args.radio),
-                load_eupe(args.eupe_repo, args.eupe_ckpt),
-                *load_tips(args.tips),
-                args.data, out, max_samples=args.max_samples, force=args.force,
-            )
-        else:
-            feats = cached
-        pe_img,   pe_txt   = feats['pe_img'],   feats['pe_txt']
-        sig2_img, sig2_txt = feats['sig2_img'], feats['sig2_txt']
-        dino_img  = feats['dino_img']
-        radio_img = feats.get('radio_img')
-        eupe_img  = feats.get('eupe_img')
-        tips_img, tips_txt = feats.get('tips_img'), feats.get('tips_txt')
+            _run_parallel_workers(args, out, 'wds')
+        # Load from disk (worker subprocesses already wrote npzs)
+        def _load(fname):
+            p = os.path.join(out, fname)
+            return np.load(p)['features'] if os.path.exists(p) else None
+        pe_img    = _load('pe_core_img.npz')
+        pe_txt    = _load('pe_core_txt.npz')
+        sig2_img  = _load('siglip2_img.npz')
+        sig2_txt  = _load('siglip2_txt.npz')
+        dino_img  = _load('dinov3_img.npz')
+        radio_img = _load('radio_img.npz')
+        eupe_img  = _load('eupe_img.npz')
+        tips_img  = _load('tips_img.npz')
+        tips_txt  = _load('tips_txt.npz')
+        pe_img_raw = None   # wds worker does not extract raw backbone CLS separately
 
     else:   # tsv (COCO)
         if cached is not None:
@@ -84,40 +138,22 @@ def run_pretrained(args):
             _raw_p = os.path.join(out, 'pe_core_img_raw.npz')
             pe_img_raw = np.load(_raw_p)['features'] if os.path.exists(_raw_p) else None
         else:
-            df = pd.read_csv(args.data, sep='\t')
-            paths, caps = df['filepath'].tolist(), df['caption'].tolist()
-
-            pe_m, pe_p, pe_t = load_pe_core(args.pe_ckpt)
-            # projected [B,1024]: kept for modality_gap (CLIP-aligned text-image space)
-            pe_img = extract_clip_img(pe_m, paths, pe_p, os.path.join(out,'pe_core_img.npz'), args.force)
-            # raw backbone CLS [B,768]: used for image_allmodels / anisotropy / crop_probe
-            pe_img_raw = extract_pe_core_img_raw(pe_m, paths, pe_p, os.path.join(out,'pe_core_img_raw.npz'), args.force)
-            pe_txt = extract_clip_txt(pe_m, pe_t, caps, os.path.join(out,'pe_core_txt.npz'), args.force)
-            del pe_m; torch.cuda.empty_cache()
-
-            s2_m, s2_p, s2_t = load_siglip2(args.sig2_ckpt)
-            sig2_img = extract_clip_img(s2_m, paths, s2_p, os.path.join(out,'siglip2_img.npz'), args.force)
-            sig2_txt = extract_clip_txt(s2_m, s2_t, caps, os.path.join(out,'siglip2_txt.npz'), args.force)
-            del s2_m; torch.cuda.empty_cache()
-
-            dn = load_dinov3(args.dino_repo, args.dino_ckpt)
-            dino_img = extract_dinov3_img(dn, paths, os.path.join(out,'dinov3_img.npz'), args.force)
-            del dn; torch.cuda.empty_cache()
-
-            ra, ra_c = load_radio(args.radio)
-            radio_img = extract_radio_img(ra, ra_c, paths, os.path.join(out,'radio_img.npz'), args.force)
-            del ra; torch.cuda.empty_cache()
-
-            eu = load_eupe(args.eupe_repo, args.eupe_ckpt)
-            eupe_img = None
-            if eu is not None:
-                eupe_img = extract_eupe_img(eu, paths, os.path.join(out,'eupe_img.npz'), args.force)
-                del eu; torch.cuda.empty_cache()
-
-            ti_m, ti_t = load_tips(args.tips)
-            tips_img = extract_tips_img(ti_m, paths, os.path.join(out,'tips_img.npz'), args.force)
-            tips_txt = extract_tips_txt(ti_m, ti_t, caps, os.path.join(out,'tips_txt.npz'), args.force)
-            del ti_m; torch.cuda.empty_cache()
+            _run_parallel_workers(args, out, 'tsv')
+            # Load from disk (worker subprocesses already wrote npzs)
+            def _load(fname):
+                p = os.path.join(out, fname)
+                return np.load(p)['features'] if os.path.exists(p) else None
+            pe_img    = _load('pe_core_img.npz')
+            pe_txt    = _load('pe_core_txt.npz')
+            sig2_img  = _load('siglip2_img.npz')
+            sig2_txt  = _load('siglip2_txt.npz')
+            dino_img  = _load('dinov3_img.npz')
+            radio_img = _load('radio_img.npz')
+            eupe_img  = _load('eupe_img.npz')
+            tips_img  = _load('tips_img.npz')
+            tips_txt  = _load('tips_txt.npz')
+            _raw_p    = os.path.join(out, 'pe_core_img_raw.npz')
+            pe_img_raw = np.load(_raw_p)['features'] if os.path.exists(_raw_p) else None
 
     # ── Modality gap plots (models with text towers) ────────────────────────
     _MOD_COLORS = ['#0055FF', '#FF2200']   # Image=blue, Text=red
@@ -398,8 +434,10 @@ def run_crop_probe(args):
     logging.info(f'[crop_probe] FPS indices: {fps_idx.tolist()}')
 
     # Load all available full-distribution features
+    # PE-Core: use raw backbone CLS (768-dim) to match crop extraction dim;
+    # pe_core_img.npz is 1024-dim CLIP projection — only for modality_gap, not here.
     npz_map = {
-        'DINOv3':  'dinov3_img.npz',  'PE-Core':  'pe_core_img.npz',
+        'DINOv3':  'dinov3_img.npz',  'PE-Core':  'pe_core_img_raw.npz',
         'SigLIP2': 'siglip2_img.npz', 'RADIO':    'radio_img.npz',
         'EUPE':    'eupe_img.npz',     'TIPSv2':   'tips_img.npz',
     }

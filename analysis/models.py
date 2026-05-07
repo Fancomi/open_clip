@@ -142,6 +142,9 @@ class _EUPEViT(nn.Module):
         return {'x_norm_clstoken':    x[:, 0].float(),
                 'x_norm_patchtokens': x[:, 1 + self._n_storage:].float()}
 
+    def forward(self, x):
+        return self.forward_features(x)
+
 
 def load_eupe(repo=None, ckpt=None):
     """Load EUPE-ViT-B from .pt weights into native _EUPEViT (no timm, no remap).
