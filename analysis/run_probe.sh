@@ -15,8 +15,15 @@
 # bash analysis/probe.sh layers eupe
 
 
-bash analysis/probe.sh probe_full logs # --rerun
-bash analysis/probe.sh log_parse wmc_
+# bash analysis/probe.sh probe_full logs  # --rerun  (旧 wmc_ 系列)
+# bash analysis/probe.sh log_parse wmc_
+
+bash analysis/probe.sh probe_full logs/20260508_0_ft_book
+bash analysis/probe.sh log_parse ft_ --logs-dir logs/20260508_0_ft_book --plot-dir analysis/research/plots/book_run
+
+bash analysis/probe.sh probe_full logs/20260508_0_ft_cc3m
+bash analysis/probe.sh log_parse ft_ --logs-dir logs/20260508_0_ft_cc3m --plot-dir analysis/research/plots/cc3m_run
+
 
 # python3 analysis/modality_gap.py \
 #     --probe logs/pe_dinov3_sigreg_cls_probe/probe/step_001740.npz \

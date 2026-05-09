@@ -28,6 +28,27 @@ CKPT = dict(
 )
 
 
+def _ensure_hf_module_cache(local_dir, cache_name):
+    """Sync missing .py files from local_dir into the HF transformers_modules cache.
+
+    HF uses two layouts depending on the model:
+      - hash-subdir (RADIO):  {cache_name}/{hash}/*.py
+      - flat        (TIPSv2): {cache_name}/*.py
+    Files are copied into every existing subdir, or into the root when none exist.
+    """
+    import glob as _glob
+    cache_root = os.path.join(_HF_CACHE, cache_name)
+    os.makedirs(cache_root, exist_ok=True)
+    subdirs = [d for d in _glob.glob(os.path.join(cache_root, '*')) if os.path.isdir(d)]
+    targets = subdirs if subdirs else [cache_root]
+    for tgt in targets:
+        for src in _glob.glob(os.path.join(local_dir, '*.py')):
+            dst = os.path.join(tgt, os.path.basename(src))
+            if not os.path.exists(dst):
+                shutil.copy(src, dst)
+                logging.info(f'[hf_cache] copied {os.path.basename(src)} → {tgt}')
+
+
 def load_pe_core(ckpt=None):
     import open_clip
     m, _, p = open_clip.create_model_and_transforms(
@@ -68,6 +89,7 @@ def load_dinov3(repo=None, ckpt=None):
 def load_radio(path=None):
     from transformers import AutoModel
     path = path or CKPT['radio']
+    _ensure_hf_module_cache(path, 'C_hyphen_RADIOv4_hyphen_SO400M')
     logging.info('Loading C-RADIOv4 ...')
     m = AutoModel.from_pretrained(path, trust_remote_code=True).eval().to(DEVICE)
     return m, getattr(m, 'input_conditioner', None)
@@ -174,10 +196,7 @@ def load_tips(path=None):
     from safetensors.torch import load_file as sf_load
     path  = path or CKPT['tips']
     cache = os.path.join(_HF_CACHE, 'tipsv2_hyphen_b14')
-    for f in ('image_encoder.py', 'text_encoder.py'):
-        dst, src = os.path.join(cache, f), os.path.join(path, f)
-        if not os.path.exists(dst) and os.path.exists(src):
-            shutil.copy(src, dst)
+    _ensure_hf_module_cache(path, 'tipsv2_hyphen_b14')
     if _HF_CACHE not in sys.path:
         sys.path.insert(0, _HF_CACHE)
     from transformers_modules.tipsv2_hyphen_b14.configuration_tips import TIPSv2Config

@@ -1,13 +1,13 @@
 #!/bin/bash
-# finetune_pretrained.sh — 预训练模型在 CC3M 上的微调实验
+# finetune_pretrained.sh — 预训练模型在目标域（book）数据上的微调实验
 #
-# 与 finetune_pretrained_book.sh 并行，验证同一组实验轴：
+# 实验轴设计（正交）：
 #   主轴：学习率 1e-5 / 5e-5 / 2e-4
-#   冻结轴：full / partial-3
-#   叠加项：SigReg 5e-4
-#   消融：无 SigReg
+#   冻结轴：full（全参数）/ partial（锁视觉，解锁最后 N 组）
+#   叠加项：SigReg 5e-4（默认开启）
+#   消融：同 LR 去掉 SigReg / 同 LR 对比 full vs partial
 #
-# CC3M 数据更规范（286 万对，英文 LLaVA-ReCap），验证结论的泛化性
+# 目标：在下游域数据上获得比预训练 zero-shot 更好的视觉塔
 
 set -e
 source /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/activate
@@ -16,14 +16,15 @@ export TZ='Asia/Shanghai'
 
 TS=$(date +%m%d_%H%M)
 
-# ============ 数据 ============
-CC3M_SRC="/root/paddlejob/workspace/env_run/penghaotian/datas/LLaVA-ReCap-CC3M/wds"
-CC3M="/dev/shm/cc3m_wds"
-CC3M_TRAIN="${CC3M}/{00000..00280}.tar"
-CC3M_N_TRAIN=2857622
+# ============ 数据（自动生成 TSV） ============
+BOOK="/root/paddlejob/workspace/env_run/penghaotian/datas/book_20260507/annotations"
+TRAIN="${BOOK}/train.tsv"
+VAL="${BOOK}/val.tsv"
 
-COCO="/root/paddlejob/workspace/env_run/penghaotian/datas/coco/annotations"
-VAL="${COCO}/karpathy_5cap.tsv"
+if [ ! -f "${TRAIN}" ] || [ ! -f "${VAL}" ]; then
+    echo "[ft] TSV not found, generating..."
+    python3 scripts/build_book_tsv.py
+fi
 
 # ============ 模型 ============
 MODEL_DIR="/root/paddlejob/workspace/env_run/penghaotian/models/timm"
@@ -33,28 +34,18 @@ SIG2_CKPT="${MODEL_DIR}/ViT-B-16-SigLIP2/open_clip_model.safetensors"
 # ============ 硬件 ============
 GPUS=8
 BS=512
-# CC3M: 2857622 / (512*8) ≈ 697 steps/epoch
-# 5 epochs = 3485 steps, warmup 10% = 348
-EPOCHS=5
-WARMUP=348
+# book: 22687 / (512*8) ≈ 6 steps/epoch
+# 100 epochs = 600 steps, warmup 10% = 60 steps
+EPOCHS=100
+WARMUP=60
 
 # ============ 公共参数 ============
-BASE="--precision amp_bf16 --workers 32 --batch-size ${BS} \
+BASE="--precision amp_bf16 --workers 8 --batch-size ${BS} \
     --beta1 0.9 --beta2 0.98 --eps 1e-6 --wd 0.05 \
-    --save-frequency 1 --grad-checkpointing --log-every-n-steps 1 --val-frequency 1 \
-    --dataset-type webdataset --train-num-samples ${CC3M_N_TRAIN} \
-    --csv-img-key filepath --csv-caption-key caption \
-    --val-num-captions-per-image 5 \
+    --save-frequency 10 --grad-checkpointing --log-every-n-steps 1 --val-frequency 5 \
+    --dataset-type csv --csv-img-key filepath --csv-caption-key caption \
+    --val-num-captions-per-image 1 \
     --epochs ${EPOCHS} --warmup ${WARMUP}"
-
-# ============ CC3M 加载到内存 ============
-if [ ! -d "${CC3M}" ]; then
-    echo "[ft] Loading CC3M to /dev/shm ..."
-    cp -r "${CC3M_SRC}" "${CC3M}"
-    echo "[ft] Done: $(du -sh ${CC3M} | cut -f1)"
-else
-    echo "[ft] CC3M already in /dev/shm"
-fi
 
 # ============ 运行函数 ============
 run() {
@@ -64,7 +55,7 @@ run() {
     torchrun --nproc_per_node=${GPUS} --master_port=${PORT} \
         -m open_clip_train.main \
         --model "${MODEL}" \
-        --train-data "${CC3M_TRAIN}" --val-data "${VAL}" \
+        --train-data "${TRAIN}" --val-data "${VAL}" \
         ${BASE} "$@" \
         --name "${NAME}" < /dev/null
 }
@@ -79,62 +70,69 @@ eval_only() {
         --val-data "${VAL}" \
         --precision amp_bf16 --batch-size 512 --workers 8 \
         --dataset-type csv --csv-img-key filepath --csv-caption-key caption \
-        --val-num-captions-per-image 5 \
+        --val-num-captions-per-image 1 \
         "$@" --name "${NAME}" < /dev/null
 }
 
+# ============ SigReg 公共选项 ============
 SIG="--sigreg-target cls --sigreg-weight 5e-4"
 
 # ============================================================
 # 0. 预训练 zero-shot 基线
 # ============================================================
-eval_only "pe_cc3m_zeroshot"   "PE-Core-B-16"     29600 --pretrained "${PE_CKPT}"
-eval_only "sig2_cc3m_zeroshot" "ViT-B-16-SigLIP2" 29601 --pretrained "${SIG2_CKPT}" --siglip
+eval_only "pe_book_zeroshot"   "PE-Core-B-16"     29600 --pretrained "${PE_CKPT}"
+eval_only "sig2_book_zeroshot" "ViT-B-16-SigLIP2" 29601 --pretrained "${SIG2_CKPT}" --siglip
 
 # ============================================================
 # 1. PE-Core-B-16
 # ============================================================
-run "pe_cc3m_lr1e5" "PE-Core-B-16" 29610 \
+# --- Full fine-tune: LR 梯度 ---
+run "pe_book_lr1e5" "PE-Core-B-16" 29610 \
     --pretrained "${PE_CKPT}" --lr 1e-5 ${SIG}
 
-run "pe_cc3m_lr5e5" "PE-Core-B-16" 29611 \
+run "pe_book_lr5e5" "PE-Core-B-16" 29611 \
     --pretrained "${PE_CKPT}" --lr 5e-5 ${SIG}
 
-run "pe_cc3m_lr2e4" "PE-Core-B-16" 29612 \
+run "pe_book_lr2e4" "PE-Core-B-16" 29612 \
     --pretrained "${PE_CKPT}" --lr 2e-4 ${SIG}
 
-run "pe_cc3m_partial_lr5e5" "PE-Core-B-16" 29613 \
+# --- Partial: 锁视觉，解锁最后 3 组（proj + 2 blocks），LR 可更高 ---
+run "pe_book_partial_lr5e5" "PE-Core-B-16" 29613 \
     --pretrained "${PE_CKPT}" --lr 5e-5 ${SIG} \
     --lock-image --lock-image-unlocked-groups 3
 
-run "pe_cc3m_partial_lr2e4" "PE-Core-B-16" 29614 \
+run "pe_book_partial_lr2e4" "PE-Core-B-16" 29614 \
     --pretrained "${PE_CKPT}" --lr 2e-4 ${SIG} \
     --lock-image --lock-image-unlocked-groups 3
 
-run "pe_cc3m_lr5e5_nosig" "PE-Core-B-16" 29615 \
+# --- 消融：无 SigReg ---
+run "pe_book_lr5e5_nosig" "PE-Core-B-16" 29615 \
     --pretrained "${PE_CKPT}" --lr 5e-5
 
 # ============================================================
 # 2. ViT-B-16-SigLIP2
 # ============================================================
-run "sig2_cc3m_lr1e5" "ViT-B-16-SigLIP2" 29620 \
+# --- Full fine-tune ---
+run "sig2_book_lr1e5" "ViT-B-16-SigLIP2" 29620 \
     --pretrained "${SIG2_CKPT}" --siglip --lr 1e-5 ${SIG}
 
-run "sig2_cc3m_lr5e5" "ViT-B-16-SigLIP2" 29621 \
+run "sig2_book_lr5e5" "ViT-B-16-SigLIP2" 29621 \
     --pretrained "${SIG2_CKPT}" --siglip --lr 5e-5 ${SIG}
 
-run "sig2_cc3m_lr2e4" "ViT-B-16-SigLIP2" 29622 \
+run "sig2_book_lr2e4" "ViT-B-16-SigLIP2" 29622 \
     --pretrained "${SIG2_CKPT}" --siglip --lr 2e-4 ${SIG}
 
-run "sig2_cc3m_partial_lr5e5" "ViT-B-16-SigLIP2" 29623 \
+# --- Partial ---
+run "sig2_book_partial_lr5e5" "ViT-B-16-SigLIP2" 29623 \
     --pretrained "${SIG2_CKPT}" --siglip --lr 5e-5 ${SIG} \
     --lock-image --lock-image-unlocked-groups 3
 
-run "sig2_cc3m_partial_lr2e4" "ViT-B-16-SigLIP2" 29624 \
+run "sig2_book_partial_lr2e4" "ViT-B-16-SigLIP2" 29624 \
     --pretrained "${SIG2_CKPT}" --siglip --lr 2e-4 ${SIG} \
     --lock-image --lock-image-unlocked-groups 3
 
-run "sig2_cc3m_lr5e5_nosig" "ViT-B-16-SigLIP2" 29625 \
+# --- 消融 ---
+run "sig2_book_lr5e5_nosig" "ViT-B-16-SigLIP2" 29625 \
     --pretrained "${SIG2_CKPT}" --siglip --lr 5e-5
 
 echo "======== finetune_pretrained all done ========"

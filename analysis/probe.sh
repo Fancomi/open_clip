@@ -79,10 +79,16 @@ _is_probe_dir() {
 }
 
 _run_log_metrics() {
-    local probe_dir="$1" rerun="${2:-0}"
+    # $1 可以是 probe_dir (checkpoints/probe) 或 logdir (实验根目录)
+    local input="$1" rerun="${2:-0}"
     local logdir plots_dir sentinel
-    logdir="$(realpath "${probe_dir}/../.." 2>/dev/null || echo "${probe_dir}/../..")"
-    plots_dir="$(realpath "${probe_dir}/../../probe/plots" 2>/dev/null || echo "${probe_dir}/../../probe/plots")"
+    # 如果传入的是 probe_dir，向上两级得到 logdir；否则直接用
+    if [[ "$(basename "$(dirname "$input")")" == "checkpoints" ]]; then
+        logdir="$(realpath "${input}/../.." 2>/dev/null || echo "${input}/../..")"
+    else
+        logdir="$(realpath "$input" 2>/dev/null || echo "$input")"
+    fi
+    plots_dir="${logdir}/probe/plots"
     sentinel="${plots_dir}/training_metrics.csv"
     if [[ "$rerun" -eq 0 && -f "$sentinel" ]]; then
         echo "=== [probe] log_metrics  SKIP (already done)  ${logdir} ==="
@@ -186,11 +192,15 @@ case "$MODE" in
             _run_pc_alignment  "$ARG2" "$N_PCS" "$RERUN"
         else
             for logdir in "${ARG2}"/*/; do
+                [[ -d "$logdir" ]] || continue
+                # log_metrics: only needs out.log, always run
+                _run_log_metrics "${logdir}" "$RERUN"
+                # epochs + pc_alignment: need probe npz — skip if not present
                 probe_dir="${logdir}checkpoints/probe"
-                [[ -d "$probe_dir" ]] || continue
-                _run_log_metrics  "$probe_dir" "$RERUN"
-                _run_epochs       "$probe_dir" "$RERUN"
-                _run_pc_alignment "$probe_dir" "$N_PCS" "$RERUN"
+                if [[ -d "$probe_dir" ]]; then
+                    _run_epochs       "$probe_dir" "$RERUN"
+                    _run_pc_alignment "$probe_dir" "$N_PCS" "$RERUN"
+                fi
             done
         fi
         ;;
@@ -203,12 +213,27 @@ case "$MODE" in
         $SCRIPT --mode crop_probe --out-dir "${OUT_DIR}"
         ;;
     log_parse)
-        # log_parse [--prefix <prefix>] [--no-plot] [--no-md]
-        # Parse training logs → markdown table + plots
-        PREFIX="${2:-wmc_}"
-        shift 2 2>/dev/null || true
-        echo "=== [probe] log_parse  prefix=${PREFIX} ==="
-        python3 -m analysis.log_parser --prefix "${PREFIX}" "$@"
+        # log_parse [prefix_or_dir] [--logs-dir DIR] [--plot-dir DIR] [--no-plot] [--no-md]
+        #
+        # Examples:
+        #   bash analysis/probe.sh log_parse ft_
+        #     → prefix=ft_, plots → analysis/research/plots/ft
+        #   bash analysis/probe.sh log_parse --logs-dir logs/20260508_0_ft_book
+        #     → all experiments in that dir, plots → logs/20260508_0_ft_book/plots
+        #   bash analysis/probe.sh log_parse ft_ --logs-dir logs/20260508_0_ft_book
+        #     → prefix=ft_ inside that dir
+
+        # $2 is prefix if it doesn't start with '--'; pass everything through
+        if [[ "${2:-}" != --* && -n "${2:-}" ]]; then
+            PREFIX="${2}"
+            shift 2 2>/dev/null || true
+            echo "=== [probe] log_parse  prefix=${PREFIX} ==="
+            python3 -m analysis.log_parser --prefix "${PREFIX}" "$@"
+        else
+            shift 1 2>/dev/null || true
+            echo "=== [probe] log_parse ==="
+            python3 -m analysis.log_parser "$@"
+        fi
         ;;
     *)
         echo "Usage:"
@@ -221,7 +246,7 @@ case "$MODE" in
         echo "  bash analysis/probe.sh pc_alignment <probe_dir|logs_root> [n_pcs=20] [--rerun]"
         echo "  bash analysis/probe.sh probe_full   <probe_dir|logs_root> [n_pcs=20] [--rerun]"
         echo "  bash analysis/probe.sh crop_probe [out_dir=CC3M_OUT]"
-        echo "  bash analysis/probe.sh log_parse [prefix=wmc_] [--no-plot] [--no-md]"
+        echo "  bash analysis/probe.sh log_parse [prefix]  [--logs-dir DIR] [--plot-dir DIR] [--no-plot] [--no-md]"
         exit 1
         ;;
 esac

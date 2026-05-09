@@ -1,10 +1,11 @@
 """Parse training logs and render result tables + plots.
 
 Usage (from repo root):
-    python -m analysis.log_parser                        # all wmc_* logs → MD + plots
-    python -m analysis.log_parser --prefix wmc_aux_      # filter prefix
-    python -m analysis.log_parser --no-plot               # table only
-    python -m analysis.log_parser --single <logdir> --out <csv>  # per-epoch CSV
+    python -m analysis.log_parser                             # all logs → MD + plots
+    python -m analysis.log_parser --prefix ft_               # filter prefix
+    python -m analysis.log_parser --logs-dir logs/book_run   # custom log root
+    python -m analysis.log_parser --no-plot                  # table only
+    python -m analysis.log_parser --single <logdir> --out <csv>
 """
 import argparse, csv, re, json, logging
 import numpy as np
@@ -15,7 +16,7 @@ from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
 
-LOGS_DIR    = Path("logs")
+LOGS_DIR    = Path("logs")   # default; overridden by --logs-dir at runtime
 MD_PATH     = Path("analysis/research/modality_gap_wm.md")
 TABLE_START = "<!-- RESULTS_TABLE_START -->"
 TABLE_END   = "<!-- RESULTS_TABLE_END -->"
@@ -37,15 +38,15 @@ def _decode_wm_lam(s: str) -> float:
     return int(s) / 10.0                              # 15→1.5
 
 def parse_tag(dirname: str):
-    """dirname wmc_{tag}_{MMDD}_{HHMM} → (tag, sides, lambda)
+    """dirname {anything}[_{MMDD}_{HHMM}] → (tag, sides, lambda)
 
-    sides encodes both modality and series prefix, e.g. "aux_txt", "v2_img".
-    Any prefix before the modifier is preserved automatically.
+    Supports any prefix (wmc_, ft_, eval_, etc.) and any naming convention.
+    The trailing _{4digits}_{4digits} timestamp is stripped if present; the
+    rest becomes the tag. Without a timestamp the full dirname is used as tag.
     """
-    m = re.match(r"wmc_(.+?)_\d{4}_\d{4}/?$", dirname)
-    if not m:
-        return None, None, None
-    tag = m.group(1)
+    # Strip optional trailing timestamp  _DDDD_DDDD  (e.g. _0506_2307)
+    m = re.match(r"^(.+?)_(\d{4}_\d{4})/?$", dirname)
+    tag = m.group(1) if m else dirname.rstrip("/")
 
     if re.match(r"^baseline\d*$", tag):
         return tag, "—", 0.0
@@ -291,10 +292,13 @@ def _plot_results(entries: list, out_dir: Path):
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
-def collect_entries(prefix: str = "wmc_") -> list:
+def collect_entries(prefix: str = "", logs_dir: Path = None) -> list:
+    root = logs_dir or LOGS_DIR
     entries = []
-    for d in sorted(LOGS_DIR.iterdir()):
-        if not d.name.startswith(prefix):
+    for d in sorted(root.iterdir()):
+        if not d.is_dir():
+            continue
+        if prefix and not d.name.startswith(prefix):
             continue
         tag, sides, lam = parse_tag(d.name)
         if tag is None:
@@ -390,16 +394,20 @@ def export_single(logdir: Path, out_path: Path) -> bool:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--prefix",   default="wmc_",
-                    help="log dir prefix filter (default: wmc_)")
-    ap.add_argument("--no-plot",  action="store_true", help="skip plot generation")
-    ap.add_argument("--plot-dir", default="analysis/research/plots",
-                    help="output dir for plots (default: analysis/research/plots)")
-    ap.add_argument("--no-md",    action="store_true", help="skip MD injection")
+    ap.add_argument("--prefix",    default="",
+                    help="log dir prefix filter; empty = all dirs (default: all)")
+    ap.add_argument("--logs-dir",  default=None, metavar="DIR",
+                    help="root directory containing experiment log dirs "
+                         "(default: logs/)")
+    ap.add_argument("--no-plot",   action="store_true", help="skip plot generation")
+    ap.add_argument("--plot-dir",  default=None,
+                    help="output dir for plots; auto-derived from --logs-dir / "
+                         "--prefix when omitted")
+    ap.add_argument("--no-md",     action="store_true", help="skip MD injection")
     # single-experiment export
-    ap.add_argument("--single",   default=None, metavar="LOGDIR",
+    ap.add_argument("--single",    default=None, metavar="LOGDIR",
                     help="export per-epoch CSV for one logdir (skips global scan)")
-    ap.add_argument("--out",      default=None, metavar="CSV",
+    ap.add_argument("--out",       default=None, metavar="CSV",
                     help="output CSV path for --single (required with --single)")
     args = ap.parse_args()
 
@@ -414,9 +422,27 @@ def main():
             logging.warning(f"[log_parser] no eval data in {logdir / 'out.log'}")
         return
 
-    entries = collect_entries(args.prefix)
+    logs_dir = Path(args.logs_dir) if args.logs_dir else None
+
+    # Auto-derive plot_dir:
+    #   --logs-dir provided → plots/  inside that dir
+    #   --prefix provided   → analysis/research/plots/<prefix stripped _>
+    #   neither             → analysis/research/plots
+    if args.plot_dir:
+        plot_dir = Path(args.plot_dir)
+    elif logs_dir is not None:
+        plot_dir = logs_dir / "plots"
+    elif args.prefix:
+        slug = args.prefix.strip("_")
+        plot_dir = Path("analysis/research/plots") / slug
+    else:
+        plot_dir = Path("analysis/research/plots")
+
+    entries = collect_entries(args.prefix, logs_dir)
     if not entries:
-        logging.warning(f"[log_parser] no logs found with prefix '{args.prefix}'")
+        logging.warning(f"[log_parser] no logs found"
+                        + (f" with prefix '{args.prefix}'" if args.prefix else "")
+                        + (f" in '{logs_dir}'" if logs_dir else ""))
         return
 
     table = build_table(entries)
@@ -426,9 +452,9 @@ def main():
         inject_md(table)
 
     if not args.no_plot:
-        _plot_results(entries, Path(args.plot_dir))
+        _plot_results(entries, plot_dir)
 
-    logging.info(f"[log_parser] {len(entries)} experiments")
+    logging.info(f"[log_parser] {len(entries)} experiments  plots→{plot_dir}")
 
 
 if __name__ == "__main__":
