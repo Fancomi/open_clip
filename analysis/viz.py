@@ -534,6 +534,144 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
     plt.savefig(traj_path, dpi=150); plt.close(); print(f'[viz] {traj_path}')
 
 
+# ── UMAP evolution & trajectory ───────────────────────────────────────────────
+
+def _fit_umap(all_feats, n_neighbors=15, min_dist=0.1, seed=42):
+    """Fit UMAP on concatenated features; return reducer and 2-D embedding."""
+    try:
+        import umap
+    except ImportError:
+        raise ImportError("umap-learn is required: pip install umap-learn")
+    reducer = umap.UMAP(n_components=2, n_neighbors=n_neighbors,
+                        min_dist=min_dist, random_state=seed, verbose=False)
+    embedding = reducer.fit_transform(all_feats)
+    return reducer, embedding
+
+
+def plot_umap_evolution(step_feats, step_ids, save_dir,
+                        n_traj=100, seed=42, id_label='Step',
+                        fps=4, txt_feats=None,
+                        n_neighbors=15, min_dist=0.1,
+                        subsample=2000):
+    """UMAP-based epoch/step evolution outputs.
+
+    Fits a single UMAP on a subsample drawn from ALL checkpoints (and text when
+    available) so the coordinate system is stable across frames.
+
+    Outputs
+    -------
+    umap_evolution.gif    : cloud snapshot per checkpoint
+    umap_trajectory.png   : static full-path overlay for N random samples
+    """
+    import os
+    from matplotlib.animation import FuncAnimation, PillowWriter
+
+    n_ckpt = len(step_ids)
+    N      = len(step_feats[0])
+
+    # ── Build the joint pool for UMAP fit ────────────────────────────────────
+    rng = np.random.default_rng(seed)
+
+    def _sub(arr):
+        """Subsample rows for faster UMAP fit."""
+        if subsample and len(arr) > subsample:
+            idx = rng.choice(len(arr), subsample, replace=False)
+            return arr[idx]
+        return arr
+
+    pool_parts = [_sub(f) for f in step_feats]
+    if txt_feats is not None:
+        pool_parts += [_sub(f) for f in txt_feats]
+    pool = np.concatenate(pool_parts).astype(np.float32)
+
+    # ── Fit UMAP on the joint pool ────────────────────────────────────────────
+    try:
+        import umap as umap_lib
+    except ImportError:
+        raise ImportError("umap-learn is required: pip install umap-learn")
+    reducer = umap_lib.UMAP(n_components=2, n_neighbors=n_neighbors,
+                             min_dist=min_dist, random_state=seed, verbose=False)
+    reducer.fit(pool)
+
+    # ── Transform all checkpoints ─────────────────────────────────────────────
+    projs     = [reducer.transform(f.astype(np.float32)) for f in step_feats]
+    txt_projs = ([reducer.transform(f.astype(np.float32)) for f in txt_feats]
+                 if txt_feats is not None else None)
+
+    all_pts = np.concatenate(projs + (txt_projs if txt_projs else []))
+    pad = 0.05
+    x0, x1 = all_pts[:, 0].min(), all_pts[:, 0].max()
+    y0, y1 = all_pts[:, 1].min(), all_pts[:, 1].max()
+    xp = (x1 - x0) * pad; yp = (y1 - y0) * pad
+    xlim = (x0 - xp, x1 + xp); ylim = (y0 - yp, y1 + yp)
+
+    colors_n = cm.viridis(np.linspace(0, 1, n_ckpt))
+    _C_IMG = '#0055FF'
+    _C_TXT = '#FF2200'
+
+    # ── GIF: UMAP cloud snapshot per checkpoint ───────────────────────────────
+    fig_gif, ax_gif = plt.subplots(figsize=(5, 5))
+    scat_img = ax_gif.scatter([], [], s=3, alpha=0.35, color=_C_IMG,
+                              label='Image', rasterized=True)
+    scat_txt = (ax_gif.scatter([], [], s=3, alpha=0.35, color=_C_TXT,
+                               label='Text', rasterized=True)
+                if txt_projs is not None else None)
+    ax_gif.set_xlim(xlim); ax_gif.set_ylim(ylim); ax_gif.axis('off')
+    if scat_txt is not None:
+        ax_gif.legend(markerscale=3, fontsize=7, loc='lower right')
+    title_obj = ax_gif.set_title('', fontsize=10)
+    _artists = [scat_img] + ([scat_txt] if scat_txt else []) + [title_obj]
+
+    def _init():
+        scat_img.set_offsets(np.empty((0, 2)))
+        if scat_txt is not None:
+            scat_txt.set_offsets(np.empty((0, 2)))
+        return _artists
+
+    def _update(frame):
+        scat_img.set_offsets(projs[frame])
+        if scat_txt is not None and txt_projs is not None:
+            scat_txt.set_offsets(txt_projs[frame])
+        pct = (frame + 1) / n_ckpt * 100
+        sfx = '+Text' if txt_projs is not None else ''
+        title_obj.set_text(f'{id_label} {step_ids[frame]}  ({pct:.0f}%)'
+                           f'  [UMAP{sfx}]')
+        return _artists
+
+    anim = FuncAnimation(fig_gif, _update, init_func=_init,
+                         frames=n_ckpt, interval=1000 // fps, blit=True)
+    gif_path = os.path.join(save_dir, 'umap_evolution.gif')
+    anim.save(gif_path, writer=PillowWriter(fps=fps))
+    plt.close(fig_gif)
+    print(f'[viz] {gif_path}')
+
+    # ── Static UMAP trajectory ────────────────────────────────────────────────
+    traj_idx    = rng.choice(N, min(n_traj, N), replace=False)
+    traj_colors = cm.tab20(np.linspace(0, 1, len(traj_idx)))
+    sample_pts  = [np.array([pr[si] for pr in projs]) for si in traj_idx]
+
+    alphas = np.linspace(0.10, 1.00, n_ckpt)
+    lws    = np.linspace(0.3, 1.8, n_ckpt)
+    fig, ax = plt.subplots(figsize=(8, 7))
+    for pts, color in zip(sample_pts, traj_colors):
+        for t in range(len(pts) - 1):
+            ax.plot(pts[t:t+2, 0], pts[t:t+2, 1], '-', color=color,
+                    alpha=float(alphas[t + 1]), lw=float(lws[t + 1]))
+        ax.scatter(pts[0, 0],  pts[0, 1],  color=color, s=12, marker='o',
+                   alpha=float(alphas[0]), zorder=3)
+        ax.scatter(pts[-1, 0], pts[-1, 1], color=color, s=40, marker='*',
+                   alpha=1.0, zorder=4)
+    ax.set_xlim(xlim); ax.set_ylim(ylim)
+    ax.set_title(f'UMAP Sample Trajectories  N={len(traj_idx)}\n'
+                 f'o=start  *=end  light→dark = early→late {id_label.lower()}',
+                 fontsize=9)
+    ax.set_xlabel('UMAP-1'); ax.set_ylabel('UMAP-2')
+    plt.tight_layout()
+    traj_path = os.path.join(save_dir, 'umap_trajectory.png')
+    plt.savefig(traj_path, dpi=150); plt.close()
+    print(f'[viz] {traj_path}')
+
+
 # ── Crop probe: original vs global crop vs local crop across all models ────────
 
 def plot_crop_probe(img_feats, crops_feats, fps_idx, out_path):

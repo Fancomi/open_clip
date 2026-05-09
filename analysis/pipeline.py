@@ -17,7 +17,7 @@ from .extractors import (load_from_cache,
                           extract_pe_core_pil_raw,
                           extract_radio_pil, extract_eupe_pil, extract_tips_pil)
 from .metrics      import fps_sample, compute_anisotropy
-from .viz          import plot_scatter, plot_overlap, plot_anisotropy, plot_aniso_evolution, plot_evolution, plot_crop_probe
+from .viz          import plot_scatter, plot_overlap, plot_anisotropy, plot_aniso_evolution, plot_evolution, plot_crop_probe, plot_umap_evolution
 from .pc_alignment import _plot_final_pc_pairs
 
 _BASE = '/root/paddlejob/workspace/env_run/penghaotian'
@@ -377,6 +377,22 @@ def run_epochs(args):
     evo_feats = proj_feats if proj_feats is not None else feats
     plot_evolution(evo_feats, ids, out, n_traj=args.n_traj, id_label=id_label,
                    txt_feats=txt_feats)
+
+    # ── UMAP evolution + trajectory (backbone CLS space) ─────────────────────
+    # Uses backbone CLS (feats) — same space as anisotropy, not the projection head.
+    # UMAP is slower to fit; guarded by a sentinel so rerun is opt-in.
+    _umap_sentinel = os.path.join(out, 'umap_trajectory.png')
+    if not os.path.exists(_umap_sentinel) or args.force:
+        try:
+            logging.info(f'[epochs] fitting UMAP on {len(feats)} checkpoints...')
+            plot_umap_evolution(feats, ids, out,
+                                n_traj=args.n_traj, id_label=id_label,
+                                txt_feats=txt_feats)
+        except ImportError:
+            logging.warning('[epochs] umap-learn not installed — skip UMAP plots'
+                            '  (pip install umap-learn)')
+    else:
+        logging.info('[epochs] UMAP sentinel found — skip (pass --force to rerun)')
 
     # ── Anisotropy evolution (backbone CLS — geometry of the VLM-usable features) ──
     logging.info(f'[epochs] computing anisotropy for {len(feats)} checkpoints...')
