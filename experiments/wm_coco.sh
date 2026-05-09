@@ -41,7 +41,7 @@ BASE="--precision amp_bf16 --workers 32 --batch-size ${PreGpuBS} \
     --log-every-n-steps 2 --val-frequency 2 \
     --delete-previous-checkpoint"
 
-COMMON="--warmup 42 ${BASE} --epochs 20 \
+COMMON="--warmup 42 ${BASE} --epochs 5 \
     --dataset-type csv --csv-img-key filepath --csv-caption-key caption \
     --val-num-captions-per-image 5"
 
@@ -200,15 +200,15 @@ SIGREG_BASE="--siglip --sigreg-target cls --sigreg-weight 1e-4 \
 # run "ada01"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.1   --within-modal-sides txt --within-modal-adaptive"
 # run "ada02"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.2   --within-modal-sides txt --within-modal-adaptive"
 # run "ada05"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.5   --within-modal-sides txt --within-modal-adaptive"
-# run "ada1"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1.0   --within-modal-sides txt --within-modal-adaptive"
+run "ada1"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1.0   --within-modal-sides txt --within-modal-adaptive"
 # run "ada2"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.0   --within-modal-sides txt --within-modal-adaptive"
-# run "ada5"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 5.0   --within-modal-sides txt --within-modal-adaptive"
+run "ada5"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 5.0   --within-modal-sides txt --within-modal-adaptive"
 # run "ada10"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 10.0  --within-modal-sides txt --within-modal-adaptive"
-# run "ada20"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 20.0  --within-modal-sides txt --within-modal-adaptive"
+run "ada20"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 20.0  --within-modal-sides txt --within-modal-adaptive"
 # run "ada50"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-sides txt --within-modal-adaptive"
-# run "ada100"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 100.0 --within-modal-sides txt --within-modal-adaptive"
-# run "ada300"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 300.0 --within-modal-sides txt --within-modal-adaptive"
-run "ada1k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1000.0 --within-modal-sides txt --within-modal-adaptive"
+run "ada100"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 100.0 --within-modal-sides txt --within-modal-adaptive"
+run "ada300"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 300.0 --within-modal-sides txt --within-modal-adaptive"
+# run "ada1k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1000.0 --within-modal-sides txt --within-modal-adaptive"
 
 # ── B. Auxiliary txt 超高 λ：验证 sigmoid 饱和的真实上限 ────────────────
 # 已知 aux_txt1000 有效，更高 λ 是否继续受益？
