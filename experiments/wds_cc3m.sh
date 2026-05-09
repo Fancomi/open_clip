@@ -59,17 +59,39 @@ run_wds() {
 }
 
 # ── baseline replicated on cc3m-wds ──────────────────────────────────────────
+
+# ORRI VIT
+run_wds "vit"  "ViT-B-16-exp" 29562 \
+    "--siglip \
+    --epochs 10 --warmup 512 \
+    --probe-data ${PROBE_TSV}"
+
+# ORI
+run_wds "pe_dinov3_siglip" "PE-Core-B-16-dinov3" 29560 \
+    "--siglip \
+    --epochs 10 --warmup 512 \
+    --probe-data ${PROBE_TSV}"
+
+# + Muon
+run_wds "pe_dinov3_siglip_muon" "PE-Core-B-16-dinov3" 29561 \
+    "--siglip \
+    --epochs 10 --warmup 512 \
+    --lr ${LR} --opt muon --muon-lr ${MUON_LR} \
+    --probe-data ${PROBE_TSV}"
+
+# # + Muon + SigREG
 # run_wds "pe_dinov3_sigreg_siglip_muon" "PE-Core-B-16-dinov3" 29560 \
 #     "--siglip --sigreg-target cls --sigreg-weight 1e-4 \
 #      --epochs 10 --warmup 512 \
 #      --lr ${LR} --opt muon --muon-lr ${MUON_LR} \
 #      --probe-data ${PROBE_TSV}"
 
-run_wds "pe_dinov3_sigreg_siglip_muon_dino" "PE-Core-B-16-dinov3" 29560 \
-    "--siglip --sigreg-target cls --sigreg-weight 1e-4 \
-     --epochs 10 --warmup 512 \
-     --lr ${LR} --opt muon --muon-lr ${MUON_LR} \
-     --dinov3 --dino-n-global-crops 1 --dino-local-crops-number 8 --dino-head-prototypes 8192 --dino-warmup-teacher-temp-epochs 3 \
-     --probe-data ${PROBE_TSV}"
+# + Muon + SigREG + dino
+# run_wds "pe_dinov3_sigreg_siglip_muon_dino" "PE-Core-B-16-dinov3" 29560 \
+#     "--siglip --sigreg-target cls --sigreg-weight 1e-4 \
+#      --epochs 10 --warmup 512 \
+#      --lr ${LR} --opt muon --muon-lr ${MUON_LR} \
+#      --dinov3 --dino-n-global-crops 1 --dino-local-crops-number 8 --dino-head-prototypes 8192 --dino-warmup-teacher-temp-epochs 3 \
+#      --probe-data ${PROBE_TSV}"
 
 echo "======== wds_cc3m all done ========"
