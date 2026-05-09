@@ -580,17 +580,31 @@ def parse_args(args):
             '"auxiliary": keep full SigLIP (cross-modal pos+neg) and ADD within-modal as extra regularizer.'
         )
     )
+
+    # ============ Representation uniformity losses ============
     parser.add_argument(
-        "--within-modal-adaptive",
-        default=False,
-        action="store_true",
+        "--uniformity-weight",
+        type=float,
+        default=0.0,
         help=(
-            'Enable adaptive scale/bias for within-modal txt loss (only with --within-modal-sides txt '
-            'and --within-modal-mode replace). '
-            'Adds independent learnable logit_scale_wm_txt and logit_bias_wm_txt. '
-            'Both cross_pos and wm_txt share these params, creating a self-balancing equilibrium. '
-            'Init from λ=30 equivalence: bias_init≈-6.6, scale_init=10. '
-            'Allows --within-modal-weight 1.0 instead of ~30.'
+            'Weight for Wang & Isola (2020) uniformity loss on L2-normalized CLIP features. '
+            'Applied to both image and text. 0.0 = disabled.'
+        )
+    )
+    parser.add_argument(
+        "--uniformity-t",
+        type=float,
+        default=2.0,
+        help='Temperature for uniformity loss kernel: exp(-t * ||z_i - z_j||^2). Default 2.0.'
+    )
+    parser.add_argument(
+        "--koleo-weight",
+        type=float,
+        default=0.0,
+        help=(
+            'Weight for KoLeo nearest-neighbor entropy loss on L2-normalized CLIP features. '
+            'Applied to both image and text. 0.0 = disabled. '
+            'Note: this is independent of the DINOv3 --koleo-loss-weight.'
         )
     )
 

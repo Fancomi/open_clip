@@ -915,6 +915,31 @@ class ModalityGapLoss(nn.Module):
         return (batch_img - batch_txt).pow(2).sum()
 
 
+class UniformityLoss(nn.Module):
+    """Wang & Isola (2020) uniformity loss on the hypersphere.
+
+    L_uniform = log(mean(exp(-t * ||z_i - z_j||^2)))
+             = log(mean(exp(-2t * (1 - cos_ij))))   for L2-normalized z
+
+    Lower values = more uniform distribution. Minimum at perfect uniformity.
+    """
+
+    def __init__(self, t: float = 2.0):
+        super().__init__()
+        self.t = t
+
+    def forward(self, features: torch.Tensor) -> torch.Tensor:
+        # features: [N, D], assumed L2-normalized
+        # ||z_i - z_j||^2 = 2 - 2*cos_ij for unit vectors
+        cos_sim = features @ features.T  # [N, N]
+        sq_dists = 2.0 - 2.0 * cos_sim
+        # Exclude diagonal (self-pairs)
+        n = features.shape[0]
+        mask = ~torch.eye(n, dtype=torch.bool, device=features.device)
+        # logsumexp for numerical stability, then subtract log(count) to get log(mean)
+        return torch.logsumexp(-self.t * sq_dists[mask], dim=0) - math.log(n * (n - 1))
+
+
 class SIGRegContrastiveLoss(nn.Module):
     """SIGReg 正则化 + CLIP/SigLIP 主损失 (+ optional modality-gap regularizer)
 
@@ -943,7 +968,9 @@ class SIGRegContrastiveLoss(nn.Module):
             within_modal_weight: float = 0.0,
             within_modal_sides: str = 'both',   # 'both' | 'img' | 'txt'
             within_modal_mode: str = 'replace',  # 'replace' | 'auxiliary'
-            within_modal_adaptive: bool = False,  # 独立可学习 scale/bias，仅 sides='txt', mode='replace' 时生效
+            uniformity_weight: float = 0.0,
+            uniformity_t: float = 2.0,
+            koleo_weight: float = 0.0,
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
@@ -954,26 +981,6 @@ class SIGRegContrastiveLoss(nn.Module):
         assert within_modal_mode in ('replace', 'auxiliary'), \
             f"within_modal_mode must be 'replace'/'auxiliary', got {within_modal_mode!r}"
         self.within_modal_mode = within_modal_mode
-        self.within_modal_adaptive = within_modal_adaptive
-        if within_modal_adaptive:
-            assert within_modal_sides == 'txt' and within_modal_mode == 'replace', \
-                "within_modal_adaptive 仅支持 sides='txt' + mode='replace'"
-            # 初始化策略：以最坏情况（cos_wm_max=1.0）为准，确保 wm_loss 在
-            # 随机初始化的特征塌缩状态下不爆炸。
-            #
-            # 均衡条件：(N-1) × σ(s × cos_wm + b) ≈ 1  (with N=4096, s=10)
-            # 最坏情况 cos_wm=1.0：b_init = -log(λ(N-1)) - s × 1.0
-            #                           ≈ -log(λ × 4095) - 10
-            #
-            # 参数学习动态：
-            #   cross_pos 对 bias 提供持续上推梯度（≈ +lr/step）
-            #   wm 负样本在 b 极负时梯度近零，不阻止 b 上升
-            #   → b 从 init 缓慢爬升至稳态 b* ≈ -log(λ(N-1)) - s × μ_cos_wm
-            #   在 CC3M（6830 steps/epoch × 10 epoch = 68k steps）上可完成收敛
-            _log_lN = math.log(max(1e-6, within_modal_weight) * 4095.0)
-            _b_init = float(-_log_lN - 10.0)   # scale_init=10, cos_wm_max=1.0
-            self.logit_scale_wm_txt = nn.Parameter(torch.log(torch.tensor(10.0)))
-            self.logit_bias_wm_txt = nn.Parameter(torch.tensor(_b_init))
         self.rank = rank
         self.world_size = world_size
         self.gather_with_grad = gather_with_grad
@@ -987,6 +994,12 @@ class SIGRegContrastiveLoss(nn.Module):
                 cache_labels=cache_labels, rank=rank, world_size=world_size, use_horovod=use_horovod,
             )
         self.sigreg = SIGReg(knots=sigreg_knots, num_slices=sigreg_num_slices)
+
+        # Representation uniformity losses
+        self.uniformity_weight = uniformity_weight
+        self.uniformity_loss = UniformityLoss(t=uniformity_t) if uniformity_weight > 0 else None
+        self.koleo_weight = koleo_weight
+        self.koleo_loss = KoLeoLoss() if koleo_weight > 0 else None
 
     def _cross_modal_positive_only(
         self,
@@ -1104,22 +1117,6 @@ class SIGRegContrastiveLoss(nn.Module):
                     "sigreg_loss":       weighted_reg,
                     "within_modal_loss": wm_loss,
                 }
-            elif self.within_modal_adaptive:
-                # replace + adaptive 模式：
-                #   cross_pos 和 wm_txt 共用独立可学习 (scale_wm, bias_wm)
-                #   两者对冲形成自平衡均衡点，λ=1.0 有真实量纲意义
-                scale_wm = self.logit_scale_wm_txt.exp()
-                bias_wm = self.logit_bias_wm_txt
-                cross_loss = self._cross_modal_positive_only(
-                    image_features, text_features, scale_wm, bias_wm
-                )
-                wm_txt = self._within_modal_siglip(text_features, scale_wm, bias_wm)
-                wm_loss = self.within_modal_weight * wm_txt
-                losses = {
-                    "contrastive_loss":  cross_loss,
-                    "sigreg_loss":       weighted_reg,
-                    "within_modal_loss": wm_loss,
-                }
             else:
                 # replace 模式（原始行为）：去掉 cross-neg，仅保留 cross-pos
                 wm_img = self._within_modal_siglip(image_features, logit_scale, logit_bias) \
@@ -1150,6 +1147,36 @@ class SIGRegContrastiveLoss(nn.Module):
         # modality_gap_loss pre-computed by model (pre-L2-norm), just accumulate
         if modality_gap_loss is not None:
             losses["modality_gap_loss"] = modality_gap_loss
+
+        # Representation uniformity losses (on L2-normalized features in CLIP space)
+        if self.uniformity_weight > 0 or self.koleo_weight > 0:
+            # Gather features across GPUs (same pattern as _within_modal_siglip)
+            if self.world_size > 1:
+                if self.gather_with_grad:
+                    all_img = torch.cat(torch.distributed.nn.all_gather(image_features), dim=0)
+                    all_txt = torch.cat(torch.distributed.nn.all_gather(text_features), dim=0)
+                else:
+                    gathered_img = [torch.zeros_like(image_features) for _ in range(self.world_size)]
+                    gathered_txt = [torch.zeros_like(text_features) for _ in range(self.world_size)]
+                    dist.all_gather(gathered_img, image_features)
+                    dist.all_gather(gathered_txt, text_features)
+                    gathered_img[self.rank] = image_features
+                    gathered_txt[self.rank] = text_features
+                    all_img = torch.cat(gathered_img, dim=0)
+                    all_txt = torch.cat(gathered_txt, dim=0)
+            else:
+                all_img = image_features
+                all_txt = text_features
+
+            if self.uniformity_weight > 0:
+                uni_img = self.uniformity_loss(all_img)
+                uni_txt = self.uniformity_loss(all_txt)
+                losses["uniformity_loss"] = self.uniformity_weight * 0.5 * (uni_img + uni_txt)
+
+            if self.koleo_weight > 0:
+                koleo_img = self.koleo_loss(all_img)
+                koleo_txt = self.koleo_loss(all_txt)
+                losses["koleo_loss"] = self.koleo_weight * 0.5 * (koleo_img + koleo_txt)
 
         if output_dict:
             return losses

@@ -41,7 +41,7 @@ BASE="--precision amp_bf16 --workers 32 --batch-size ${PreGpuBS} \
     --log-every-n-steps 2 --val-frequency 2 \
     --delete-previous-checkpoint"
 
-COMMON="--warmup 42 ${BASE} --epochs 5 \
+COMMON="--warmup 42 ${BASE} --epochs 20 \
     --dataset-type csv --csv-img-key filepath --csv-caption-key caption \
     --val-num-captions-per-image 5"
 
@@ -173,9 +173,9 @@ SIGREG_BASE="--siglip --sigreg-target cls --sigreg-weight 1e-4 \
 # ════════════════════════════════════════════════════════════════════════════
 # (已完成) Adaptive 小规模验证（3 runs，已被下方 20-run 全量实验取代）
 # ════════════════════════════════════════════════════════════════════════════
-# run "ada1"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1.0  --within-modal-sides txt --within-modal-adaptive"
-# run "ada05" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.5  --within-modal-sides txt --within-modal-adaptive"
-# run "ada2"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.0  --within-modal-sides txt --within-modal-adaptive"
+# run "ada1"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1.0  --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada05" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.5  --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada2"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.0  --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
 
 # ════════════════════════════════════════════════════════════════════════════
 # ★ 20-run 全量一步到位：覆盖所有关键参数空间 (~10h)
@@ -195,31 +195,31 @@ SIGREG_BASE="--siglip --sigreg-target cls --sigreg-weight 1e-4 \
 # λ 越小 → cross_pos 权重越大，接近纯正样本对齐
 # λ 越大 → wm_txt 权重越大，scale_wm 会自动放大来维持均衡
 # 预期：存在一个最优区间，两侧性能下降
-# run "ada002"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.02  --within-modal-sides txt --within-modal-adaptive"
-# run "ada005"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.05  --within-modal-sides txt --within-modal-adaptive"
-# run "ada01"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.1   --within-modal-sides txt --within-modal-adaptive"
-# run "ada02"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.2   --within-modal-sides txt --within-modal-adaptive"
-# run "ada05"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.5   --within-modal-sides txt --within-modal-adaptive"
-run "ada1"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1.0   --within-modal-sides txt --within-modal-adaptive"
-# run "ada2"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.0   --within-modal-sides txt --within-modal-adaptive"
-run "ada5"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 5.0   --within-modal-sides txt --within-modal-adaptive"
-# run "ada10"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 10.0  --within-modal-sides txt --within-modal-adaptive"
-run "ada20"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 20.0  --within-modal-sides txt --within-modal-adaptive"
-# run "ada50"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-sides txt --within-modal-adaptive"
-run "ada100"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 100.0 --within-modal-sides txt --within-modal-adaptive"
-run "ada300"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 300.0 --within-modal-sides txt --within-modal-adaptive"
-# run "ada1k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1000.0 --within-modal-sides txt --within-modal-adaptive"
+# run "ada002"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.02  --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada005"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.05  --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada01"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.1   --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada02"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.2   --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada05"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.5   --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada1"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1.0   --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada2"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.0   --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada5"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 5.0   --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada10"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 10.0  --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada20"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 20.0  --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada50"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada100"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 100.0 --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada300"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 300.0 --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
+# run "ada1k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1000.0 --within-modal-sides txt"  # [REMOVED: --within-modal-adaptive]
 
 # ── B. Auxiliary txt 超高 λ：验证 sigmoid 饱和的真实上限 ────────────────
 # 已知 aux_txt1000 有效，更高 λ 是否继续受益？
-run "aux3k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 3000.0   --within-modal-sides txt --within-modal-mode auxiliary"
-run "aux10k"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 10000.0  --within-modal-sides txt --within-modal-mode auxiliary"
-run "aux50k"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 50000.0  --within-modal-sides txt --within-modal-mode auxiliary"
-run "aux200k" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 200000.0 --within-modal-sides txt --within-modal-mode auxiliary"
+# run "aux3k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 3000.0   --within-modal-sides txt --within-modal-mode auxiliary"
+# run "aux10k"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 10000.0  --within-modal-sides txt --within-modal-mode auxiliary"
+# run "aux50k"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 50000.0  --within-modal-sides txt --within-modal-mode auxiliary"
+# run "aux200k" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 200000.0 --within-modal-sides txt --within-modal-mode auxiliary"
 
 # ── C. Baseline 方差估计：量化 COCO 随机波动底线 ─────────────────────────
-run "base2"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE}"
-run "base3"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE}"
+# run "base2"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE}"
+# run "base3"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE}"
 
 # ════════════════════════════════════════════════════════════════════════════
 # both-sides within-modal repulsion  (within_modal_sides=both)
@@ -230,4 +230,40 @@ run "base3"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE}"
 # run "wm025" "PE-Core-B-16-dinov3" 29542 "${SIGREG_BASE} --within-modal-weight 0.25"
 # run "wm075" "PE-Core-B-16-dinov3" 29543 "${SIGREG_BASE} --within-modal-weight 0.75"
 
-echo "======== wm_coco 20-run full sweep done (20 runs × ~30min ≈ 10h) ========"
+# ════════════════════════════════════════════════════════════════════════════
+# ★ 表示空间优化实验：Gap Loss + Uniformity + KoLeo
+#
+# 三条线：
+#   D. Gap Loss COCO 扫参       (5 runs): λ ∈ {0.001, 0.005, 0.01, 0.05, 0.1}
+#   E. Uniformity Loss 扫权重   (5 runs): w ∈ {0.01, 0.05, 0.1, 0.5, 1.0}, t=2.0
+#   F. KoLeo Loss 扫权重        (5 runs): w ∈ {0.01, 0.05, 0.1, 0.5, 1.0}
+#
+# 预计运行时间：15 runs × ~15min ≈ 4h
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── D. Gap Loss：batch mean distance loss ──────────────────────────────────
+# CC3M 最优 λ=0.005 (+0.92% i2t R@1)，COCO baseline 无 gap，验证是否仍有 regularizer 收益
+run "gap001"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.001"
+run "gap005"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.005"
+run "gap01"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.01"
+run "gap05"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.05"
+run "gap1"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.1"
+
+# ── E. Uniformity Loss (Wang & Isola 2020)：log(mean(exp(-t*||z_i-z_j||^2))) ──
+# 直接优化 hypersphere 均匀性，不依赖 gap 存在与否
+# t=2.0 是论文默认值，先固定 t 扫 weight
+run "uni001"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.01"
+run "uni005"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.05"
+run "uni01"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.1"
+run "uni05"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.5"
+run "uni1"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 1.0"
+
+# ── F. KoLeo Loss：-log(dist_to_nn).mean()，近邻熵正则 ─────────────────────
+# 已在 DINOv3 中验证有效，现在接入 CLIP 路径
+run "koleo001" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.01"
+run "koleo005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05"
+run "koleo01"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.1"
+run "koleo05"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.5"
+run "koleo1"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 1.0"
+
+echo "======== wm_coco representation space sweep done (15 runs × ~15min ≈ 4h) ========"

@@ -358,14 +358,6 @@ def main(args):
             # Note: static_graph and find_unused_parameters are mutually exclusive.
             ddp_args['static_graph'] = True
             ddp_args.pop('find_unused_parameters', None)
-        if getattr(args, 'within_modal_adaptive', False):
-            # adaptive 模式下 logit_scale/logit_bias 不参与 loss 计算。
-            # 冻结这两个参数（requires_grad=False），DDP 不会为它们注册 hook，
-            # 同时避免 find_unused_parameters + grad_checkpointing 的双重触发冲突。
-            for name, p in model.named_parameters():
-                if name.endswith('logit_scale') or name.endswith('logit_bias'):
-                    p.requires_grad_(False)
-                    logging.info(f"Froze {name} for adaptive wm mode")
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
     
         if args.distill:
@@ -594,30 +586,6 @@ def main(args):
 
     loss = create_loss(args)
     loss = loss.to(device)
-
-    # adaptive wm 参数（logit_scale_wm_txt / logit_bias_wm_txt）在 loss module 中，
-    # 不在 model.parameters() 里，需要手动加入 optimizer 的 Adam (no-wd) 组。
-    if optimizer is not None and hasattr(loss, 'logit_scale_wm_txt'):
-        wm_params = [loss.logit_scale_wm_txt, loss.logit_bias_wm_txt]
-        # 取第一个 Adam 组的超参（no-wd，与 logit_scale/logit_bias 同策略）
-        adam_group = next((g for g in optimizer.param_groups if not g.get('use_muon', False)), None)
-        if adam_group is not None:
-            pg = {
-                'params': wm_params,
-                'lr': adam_group['lr'],
-                'betas': adam_group.get('betas', (0.9, 0.95)),
-                'eps': adam_group.get('eps', 1e-6),
-                'weight_decay': 0.0,
-                'use_muon': False,
-            }
-        else:
-            pg = {'params': wm_params, 'lr': args.lr, 'weight_decay': 0.0}
-        optimizer.add_param_group(pg)
-        logging.info(
-            f"Added adaptive wm params to optimizer: "
-            f"scale_init={loss.logit_scale_wm_txt.exp().item():.3f}, "
-            f"bias_init={loss.logit_bias_wm_txt.item():.3f}"
-        )
 
     attach_modality_modules(model, args)
 
