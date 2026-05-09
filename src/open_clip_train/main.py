@@ -359,11 +359,13 @@ def main(args):
             ddp_args['static_graph'] = True
             ddp_args.pop('find_unused_parameters', None)
         if getattr(args, 'within_modal_adaptive', False):
-            # adaptive 模式下 model 的 logit_scale/logit_bias 不参与 loss 计算，
-            # DDP 会报 "unused parameters" 错误，需要显式声明允许未使用参数。
-            # static_graph 与 find_unused_parameters 互斥，移除 static_graph。
-            ddp_args.pop('static_graph', None)
-            ddp_args['find_unused_parameters'] = True
+            # adaptive 模式下 logit_scale/logit_bias 不参与 loss 计算。
+            # 冻结这两个参数（requires_grad=False），DDP 不会为它们注册 hook，
+            # 同时避免 find_unused_parameters + grad_checkpointing 的双重触发冲突。
+            for name, p in model.named_parameters():
+                if name.endswith('logit_scale') or name.endswith('logit_bias'):
+                    p.requires_grad_(False)
+                    logging.info(f"Froze {name} for adaptive wm mode")
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
     
         if args.distill:
