@@ -136,11 +136,90 @@ SIGREG_BASE="--siglip --sigreg-target cls --sigreg-weight 1e-4 \
 # # baseline（重跑一次确保对齐，可选）
 # run "baseline2"   "PE-Core-B-16-dinov3" 29562 "${SIGREG_BASE}"
 
-run "txt6000"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 60.0   --within-modal-sides txt"
-run "txt15000"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 150.0  --within-modal-sides txt"
-run "txt40000"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 400.0  --within-modal-sides txt"
-run "txt100k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1000.0 --within-modal-sides txt"
-run "txt300k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 3000.0 --within-modal-sides txt"
+# ════════════════════════════════════════════════════════════════════════════
+# (已完成) Binary search round 1: [30, 60]
+#   结论: txt4000(λ=40) i2t=0.0154 异常低谷, txt5000(λ=50) i2t=0.0172 回升
+#         λ=40 疑似噪声/不稳定区，需补 λ=45 确认
+# ════════════════════════════════════════════════════════════════════════════
+# run "txt4000"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 40.0 --within-modal-sides txt"
+# run "txt5000"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 50.0 --within-modal-sides txt"
+
+# ════════════════════════════════════════════════════════════════════════════
+# (已完成) Round 2: 填充 [30,60] 空洞
+#   结论: λ=30 全局峰(0.0192), λ=35 急跌至 0.0158, λ=45-60 宽平台 ~0.016
+#         峰型尖窄，跌幅远超噪声，需确认峰是否在 λ=28-30 附近
+# ════════════════════════════════════════════════════════════════════════════
+# run "txt3500"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 35.0 --within-modal-sides txt"
+# run "txt4500"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 45.0 --within-modal-sides txt"
+# run "txt5500"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 55.0 --within-modal-sides txt"
+
+# ════════════════════════════════════════════════════════════════════════════
+# (已完成) Round 3: 精细扫描 λ ∈ [25, 35]
+#   结论: 30>28>32, λ=27 暴跌低于 25 和 28
+#         噪声分析: R@1 差异仅 3-5 张图(5K val set), COCO 400 steps 噪声底不可忽视
+#         λ=30 是否真实峰值存疑，需复现性验证
+# ════════════════════════════════════════════════════════════════════════════
+# run "txt2700"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 27.0 --within-modal-sides txt"
+# run "txt2800"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 28.0 --within-modal-sides txt"
+# run "txt3200"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 32.0 --within-modal-sides txt"
+
+# ════════════════════════════════════════════════════════════════════════════
+# (已完成) Round 4: 复现性验证 — λ=30 两次复现一致，COCO 调参到此为止
+# ════════════════════════════════════════════════════════════════════════════
+# run "txt3000b" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 30.0 --within-modal-sides txt"
+# run "txt2800b" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 28.0 --within-modal-sides txt"
+# run "txt3200b" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 32.0 --within-modal-sides txt"
+
+# ════════════════════════════════════════════════════════════════════════════
+# (已完成) Adaptive 小规模验证（3 runs，已被下方 20-run 全量实验取代）
+# ════════════════════════════════════════════════════════════════════════════
+# run "ada1"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1.0  --within-modal-sides txt --within-modal-adaptive"
+# run "ada05" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.5  --within-modal-sides txt --within-modal-adaptive"
+# run "ada2"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.0  --within-modal-sides txt --within-modal-adaptive"
+
+# ════════════════════════════════════════════════════════════════════════════
+# ★ 20-run 全量一步到位：覆盖所有关键参数空间 (~10h)
+#
+# 三条探索线：
+#   A. Adaptive replace txt  (14 runs): λ ∈ [0.02, 1000]，5 个数量级，确认最优区间
+#   B. Auxiliary txt 超高 λ  ( 4 runs): λ ∈ [3k, 200k]，验证 sigmoid 饱和边界
+#   C. Baseline 方差估计     ( 2 runs): 确认 COCO 随机性基线
+#
+# 参照点（已有）：
+#   baseline:          i2t=0.0168
+#   txt3000 (λ=30):    i2t=0.0192  ← 当前 non-adaptive 最优
+#   aux_txt1000:       [已有数据]
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── A. Adaptive replace txt：独立可学习 (scale_wm, bias_wm)，init from λ=30 equiv ──
+# λ 越小 → cross_pos 权重越大，接近纯正样本对齐
+# λ 越大 → wm_txt 权重越大，scale_wm 会自动放大来维持均衡
+# 预期：存在一个最优区间，两侧性能下降
+# run "ada002"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.02  --within-modal-sides txt --within-modal-adaptive"
+# run "ada005"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.05  --within-modal-sides txt --within-modal-adaptive"
+# run "ada01"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.1   --within-modal-sides txt --within-modal-adaptive"
+# run "ada02"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.2   --within-modal-sides txt --within-modal-adaptive"
+# run "ada05"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 0.5   --within-modal-sides txt --within-modal-adaptive"
+# run "ada1"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1.0   --within-modal-sides txt --within-modal-adaptive"
+# run "ada2"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 2.0   --within-modal-sides txt --within-modal-adaptive"
+# run "ada5"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 5.0   --within-modal-sides txt --within-modal-adaptive"
+# run "ada10"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 10.0  --within-modal-sides txt --within-modal-adaptive"
+# run "ada20"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 20.0  --within-modal-sides txt --within-modal-adaptive"
+# run "ada50"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 50.0  --within-modal-sides txt --within-modal-adaptive"
+# run "ada100"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 100.0 --within-modal-sides txt --within-modal-adaptive"
+# run "ada300"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 300.0 --within-modal-sides txt --within-modal-adaptive"
+run "ada1k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 1000.0 --within-modal-sides txt --within-modal-adaptive"
+
+# ── B. Auxiliary txt 超高 λ：验证 sigmoid 饱和的真实上限 ────────────────
+# 已知 aux_txt1000 有效，更高 λ 是否继续受益？
+run "aux3k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 3000.0   --within-modal-sides txt --within-modal-mode auxiliary"
+run "aux10k"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 10000.0  --within-modal-sides txt --within-modal-mode auxiliary"
+run "aux50k"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 50000.0  --within-modal-sides txt --within-modal-mode auxiliary"
+run "aux200k" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weight 200000.0 --within-modal-sides txt --within-modal-mode auxiliary"
+
+# ── C. Baseline 方差估计：量化 COCO 随机波动底线 ─────────────────────────
+run "base2"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE}"
+run "base3"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE}"
 
 # ════════════════════════════════════════════════════════════════════════════
 # both-sides within-modal repulsion  (within_modal_sides=both)
@@ -151,4 +230,4 @@ run "txt300k"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --within-modal-weigh
 # run "wm025" "PE-Core-B-16-dinov3" 29542 "${SIGREG_BASE} --within-modal-weight 0.25"
 # run "wm075" "PE-Core-B-16-dinov3" 29543 "${SIGREG_BASE} --within-modal-weight 0.75"
 
-echo "======== wm_coco all done (12 runs × ~30min ≈ 6h) ========"
+echo "======== wm_coco 20-run full sweep done (20 runs × ~30min ≈ 10h) ========"

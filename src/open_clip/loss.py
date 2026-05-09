@@ -1,5 +1,7 @@
 from typing import Optional
 
+import math
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -941,6 +943,7 @@ class SIGRegContrastiveLoss(nn.Module):
             within_modal_weight: float = 0.0,
             within_modal_sides: str = 'both',   # 'both' | 'img' | 'txt'
             within_modal_mode: str = 'replace',  # 'replace' | 'auxiliary'
+            within_modal_adaptive: bool = False,  # 独立可学习 scale/bias，仅 sides='txt', mode='replace' 时生效
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
@@ -951,6 +954,26 @@ class SIGRegContrastiveLoss(nn.Module):
         assert within_modal_mode in ('replace', 'auxiliary'), \
             f"within_modal_mode must be 'replace'/'auxiliary', got {within_modal_mode!r}"
         self.within_modal_mode = within_modal_mode
+        self.within_modal_adaptive = within_modal_adaptive
+        if within_modal_adaptive:
+            assert within_modal_sides == 'txt' and within_modal_mode == 'replace', \
+                "within_modal_adaptive 仅支持 sides='txt' + mode='replace'"
+            # 初始化策略：以最坏情况（cos_wm_max=1.0）为准，确保 wm_loss 在
+            # 随机初始化的特征塌缩状态下不爆炸。
+            #
+            # 均衡条件：(N-1) × σ(s × cos_wm + b) ≈ 1  (with N=4096, s=10)
+            # 最坏情况 cos_wm=1.0：b_init = -log(λ(N-1)) - s × 1.0
+            #                           ≈ -log(λ × 4095) - 10
+            #
+            # 参数学习动态：
+            #   cross_pos 对 bias 提供持续上推梯度（≈ +lr/step）
+            #   wm 负样本在 b 极负时梯度近零，不阻止 b 上升
+            #   → b 从 init 缓慢爬升至稳态 b* ≈ -log(λ(N-1)) - s × μ_cos_wm
+            #   在 CC3M（6830 steps/epoch × 10 epoch = 68k steps）上可完成收敛
+            _log_lN = math.log(max(1e-6, within_modal_weight) * 4095.0)
+            _b_init = float(-_log_lN - 10.0)   # scale_init=10, cos_wm_max=1.0
+            self.logit_scale_wm_txt = nn.Parameter(torch.log(torch.tensor(10.0)))
+            self.logit_bias_wm_txt = nn.Parameter(torch.tensor(_b_init))
         self.rank = rank
         self.world_size = world_size
         self.gather_with_grad = gather_with_grad
@@ -1060,20 +1083,19 @@ class SIGRegContrastiveLoss(nn.Module):
         if self.within_modal_weight > 0:
             # ── within-modal 模式 ─────────────────────────────────────────────
             sides = self.within_modal_sides
-            wm_img = self._within_modal_siglip(image_features, logit_scale, logit_bias) \
-                if sides in ('both', 'img') else None
-            wm_txt = self._within_modal_siglip(text_features,  logit_scale, logit_bias) \
-                if sides in ('both', 'txt') else None
-
-            if sides == 'both':
-                wm_loss = self.within_modal_weight * (wm_img + wm_txt) * 0.5
-            elif sides == 'img':
-                wm_loss = self.within_modal_weight * wm_img
-            else:  # 'txt'
-                wm_loss = self.within_modal_weight * wm_txt
 
             if self.within_modal_mode == 'auxiliary':
                 # auxiliary 模式：保留完整 SigLIP（含 cross-neg），叠加 within-modal
+                wm_img = self._within_modal_siglip(image_features, logit_scale, logit_bias) \
+                    if sides in ('both', 'img') else None
+                wm_txt = self._within_modal_siglip(text_features, logit_scale, logit_bias) \
+                    if sides in ('both', 'txt') else None
+                if sides == 'both':
+                    wm_loss = self.within_modal_weight * (wm_img + wm_txt) * 0.5
+                elif sides == 'img':
+                    wm_loss = self.within_modal_weight * wm_img
+                else:
+                    wm_loss = self.within_modal_weight * wm_txt
                 main_loss = self.main_loss(
                     image_features, text_features, logit_scale, logit_bias, output_dict=False
                 )
@@ -1082,8 +1104,34 @@ class SIGRegContrastiveLoss(nn.Module):
                     "sigreg_loss":       weighted_reg,
                     "within_modal_loss": wm_loss,
                 }
+            elif self.within_modal_adaptive:
+                # replace + adaptive 模式：
+                #   cross_pos 和 wm_txt 共用独立可学习 (scale_wm, bias_wm)
+                #   两者对冲形成自平衡均衡点，λ=1.0 有真实量纲意义
+                scale_wm = self.logit_scale_wm_txt.exp()
+                bias_wm = self.logit_bias_wm_txt
+                cross_loss = self._cross_modal_positive_only(
+                    image_features, text_features, scale_wm, bias_wm
+                )
+                wm_txt = self._within_modal_siglip(text_features, scale_wm, bias_wm)
+                wm_loss = self.within_modal_weight * wm_txt
+                losses = {
+                    "contrastive_loss":  cross_loss,
+                    "sigreg_loss":       weighted_reg,
+                    "within_modal_loss": wm_loss,
+                }
             else:
                 # replace 模式（原始行为）：去掉 cross-neg，仅保留 cross-pos
+                wm_img = self._within_modal_siglip(image_features, logit_scale, logit_bias) \
+                    if sides in ('both', 'img') else None
+                wm_txt = self._within_modal_siglip(text_features, logit_scale, logit_bias) \
+                    if sides in ('both', 'txt') else None
+                if sides == 'both':
+                    wm_loss = self.within_modal_weight * (wm_img + wm_txt) * 0.5
+                elif sides == 'img':
+                    wm_loss = self.within_modal_weight * wm_img
+                else:
+                    wm_loss = self.within_modal_weight * wm_txt
                 cross_loss = self._cross_modal_positive_only(
                     image_features, text_features, logit_scale, logit_bias
                 )

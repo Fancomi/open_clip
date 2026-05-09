@@ -580,6 +580,19 @@ def parse_args(args):
             '"auxiliary": keep full SigLIP (cross-modal pos+neg) and ADD within-modal as extra regularizer.'
         )
     )
+    parser.add_argument(
+        "--within-modal-adaptive",
+        default=False,
+        action="store_true",
+        help=(
+            'Enable adaptive scale/bias for within-modal txt loss (only with --within-modal-sides txt '
+            'and --within-modal-mode replace). '
+            'Adds independent learnable logit_scale_wm_txt and logit_bias_wm_txt. '
+            'Both cross_pos and wm_txt share these params, creating a self-balancing equilibrium. '
+            'Init from λ=30 equivalence: bias_init≈-6.6, scale_init=10. '
+            'Allows --within-modal-weight 1.0 instead of ~30.'
+        )
+    )
 
     # ============ DINOv3 自蒸馏参数 ============
     parser.add_argument(
