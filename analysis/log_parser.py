@@ -197,7 +197,7 @@ def _sides_sort_key(sides: str) -> tuple:
     return (_MOD_ORDER.get(mod, 99), prefix)
 
 def _plot_results(entries: list, out_dir: Path):
-    """Bar chart: best i2t/t2i R@1 per experiment; line chart: best R@1 vs λ per side."""
+    """Bar chart: best i2t/t2i R@1 per experiment; training curves."""
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # bar: sorted by tag name
@@ -219,48 +219,7 @@ def _plot_results(entries: list, out_dir: Path):
     ax.legend()
     ax.grid(axis='y', alpha=0.3)
     plt.tight_layout()
-    p = out_dir / 'wmc_r1_bar.png'
-    plt.savefig(p, dpi=150, bbox_inches='tight'); plt.close()
-    logging.info(f'[log_parser] {p}')
-
-    # ── line: best R@1 vs λ, grouped by sides ────────────────────────────
-    groups: dict[str, list] = {}
-    for tag, sides, lam, r in entries:
-        if sides == "—": continue
-        groups.setdefault(sides, []).append(
-            (lam, r.get('best_i2t_r1') or 0, r.get('best_t2i_r1') or 0))
-    if not groups:
-        return
-
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-    # Color by modifier family; cycle shades for multiple series in same family
-    _family_base = {'img': '#1f77b4', 'txt': '#d62728', 'both': '#2ca02c'}
-    _family_members: dict[str, list] = {}
-    for s in sorted(groups):
-        mod = s.split('_')[-1]   # last segment is always the modifier
-        _family_members.setdefault(mod, []).append(s)
-    # build color map: first member gets base color, rest lighten progressively
-    _color: dict[str, str] = {}
-    import colorsys
-    for mod, members in _family_members.items():
-        base_hex = _family_base.get(mod, '#888888')
-        r, g, b = (int(base_hex[i:i+2], 16)/255 for i in (1, 3, 5))
-        h, s_val, v = colorsys.rgb_to_hsv(r, g, b)
-        for i, sid in enumerate(members):
-            lightness = min(0.95, v + i * 0.22)
-            r2, g2, b2 = colorsys.hsv_to_rgb(h, max(0.25, s_val - i * 0.3), lightness)
-            _color[sid] = '#{:02x}{:02x}{:02x}'.format(int(r2*255), int(g2*255), int(b2*255))
-    for sides, pts in groups.items():
-        pts.sort()
-        lams, i2t, t2i = zip(*pts)
-        c = _color.get(sides, 'gray')
-        axes[0].plot(lams, i2t, 'o-', label=sides, color=c)
-        axes[1].plot(lams, t2i, 'o-', label=sides, color=c)
-    for ax, title in zip(axes, ['i2t R@1 (best) vs λ', 't2i R@1 (best) vs λ']):
-        ax.set_xlabel('λ'); ax.set_ylabel('R@1')
-        ax.set_title(title); ax.legend(); ax.grid(alpha=0.3)
-    plt.tight_layout()
-    p = out_dir / 'wmc_r1_vs_lambda.png'
+    p = out_dir / 'r1_bar.png'
     plt.savefig(p, dpi=150, bbox_inches='tight'); plt.close()
     logging.info(f'[log_parser] {p}')
 
@@ -285,7 +244,7 @@ def _plot_results(entries: list, out_dir: Path):
         ax.set_title(title); ax.grid(alpha=0.3)
     axes[0].legend(fontsize=6, ncol=2)
     plt.tight_layout()
-    p = out_dir / 'wmc_training_curves.png'
+    p = out_dir / 'training_curves.png'
     plt.savefig(p, dpi=150, bbox_inches='tight'); plt.close()
     logging.info(f'[log_parser] {p}')
 
@@ -403,7 +362,9 @@ def main():
     ap.add_argument("--plot-dir",  default=None,
                     help="output dir for plots; auto-derived from --logs-dir / "
                          "--prefix when omitted")
-    ap.add_argument("--no-md",     action="store_true", help="skip MD injection")
+    ap.add_argument("--inject-md", action="store_true",
+                    help="inject results table into analysis/research/modality_gap_wm.md "
+                         "(default: off)")
     # single-experiment export
     ap.add_argument("--single",    default=None, metavar="LOGDIR",
                     help="export per-epoch CSV for one logdir (skips global scan)")
@@ -448,11 +409,11 @@ def main():
     table = build_table(entries)
     print(table)
 
-    if not args.no_md:
-        inject_md(table)
-
     if not args.no_plot:
         _plot_results(entries, plot_dir)
+
+    if args.inject_md:
+        inject_md(table)
 
     logging.info(f"[log_parser] {len(entries)} experiments  plots→{plot_dir}")
 
