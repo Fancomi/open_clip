@@ -551,28 +551,29 @@ def create_model(
         if os.path.isfile(pretrained_text_path):
             logging.info(f"Attempting to load text tower weights from: {pretrained_text_path}")
             try:
-                # Load the state dict from the file
                 text_state_dict = load_state_dict(
                     pretrained_text_path,
                     device='cpu',
                     weights_only=weights_only
                 )
-                # Safely get the text attribute (usually 'text', but could be different)
+                # Auto-strip 'text.' prefix if this is a full CLIP checkpoint
+                if any(k.startswith('text.') for k in text_state_dict):
+                    text_state_dict = {
+                        k[len('text.'):]: v for k, v in text_state_dict.items()
+                        if k.startswith('text.')
+                    }
+                    logging.info("Stripped 'text.' prefix from state dict (full CLIP checkpoint detected).")
                 text_module = getattr(model, 'text', model)
                 if text_module is not None:
-                    # Load into the text tower, use strict=False for flexibility
                     incompatible_keys = text_module.load_state_dict(text_state_dict, strict=False)
-                    logging.info(f"Loaded text tower weights from {pretrained_text_path}. Incompatible keys: {incompatible_keys}")
-                    pretrained_text_loaded = True # Mark specific text weights as loaded
+                    logging.info(f"Loaded text tower weights. Incompatible keys: {incompatible_keys}")
+                    pretrained_text_loaded = True
                 else:
-                    # Model structure doesn't match expectation
-                    logging.warning(f"Model does not have a standard 'text' attribute, cannot load text tower weights from {pretrained_text_path}")
+                    logging.warning(f"Model has no 'text' attribute, cannot load text tower weights.")
             except Exception as e:
-                # Handle errors during text tower weight loading
                 logging.error(f"Error loading text tower weights from {pretrained_text_path}: {e}")
         else:
-            # Path provided is not a valid file
-            logging.warning(f"Invalid file path specified for pretrained_text_path: {pretrained_text_path}")
+            logging.warning(f"Invalid file path for pretrained_text_path: {pretrained_text_path}")
 
     partially_loaded = enable_default_text_weights or enable_default_image_weights \
         or pretrained_image_loaded or pretrained_text_loaded

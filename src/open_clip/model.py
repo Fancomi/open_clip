@@ -342,7 +342,7 @@ class CLIP(nn.Module):
         x = self.ln_final(x)  # [batch_size, n_ctx, transformer.width]
         x = text_global_pool(x, text, self.text_pool_type, eos_token_id=getattr(self, "text_eos_id", None))
         if self.text_projection is not None:
-            if isinstance(self.text_projection, nn.Linear):
+            if isinstance(self.text_projection, nn.Module):
                 x = self.text_projection(x)
             else:
                 x = x @ self.text_projection
@@ -436,7 +436,7 @@ class CLIP(nn.Module):
                 x = self.ln_final(x)  # [batch_size, n_ctx, transformer.width]
                 x = text_global_pool(x, text, self.text_pool_type, eos_token_id=getattr(self, "text_eos_id", None))
                 if self.text_projection is not None:
-                    if isinstance(self.text_projection, nn.Linear):
+                    if isinstance(self.text_projection, nn.Module):
                         x = self.text_projection(x)
                     else:
                         x = x @ self.text_projection

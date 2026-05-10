@@ -237,6 +237,20 @@ def parse_args(args):
         help="Load imagenet pretrained weights for image tower backbone if available.",
     )
     parser.add_argument(
+        "--pretrained-text-path",
+        default=None,
+        type=str,
+        help="Path to checkpoint for text tower weights only. "
+             "Supports full CLIP checkpoints (auto-strips 'text.' prefix).",
+    )
+    parser.add_argument(
+        "--text-proj-type",
+        default=None,
+        type=str,
+        choices=["linear", "mlp"],
+        help="Override text projection type. 'mlp' replaces linear with 2-layer MLP (for reverse-LiT bridge).",
+    )
+    parser.add_argument(
         "--lock-image",
         default=False,
         action='store_true',

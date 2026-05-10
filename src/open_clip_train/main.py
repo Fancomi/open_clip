@@ -12,6 +12,7 @@ from functools import partial
 
 import numpy as np
 import torch
+import torch.nn as nn
 from torch import optim
 
 try:
@@ -240,6 +241,7 @@ def main(args):
         image_resize_mode=args.image_resize_mode,  # only effective for inference
         aug_cfg=args.aug_cfg,
         pretrained_image=args.pretrained_image,
+        pretrained_text_path=getattr(args, 'pretrained_text_path', None),
         output_dict=True,
         cache_dir=args.cache_dir,
         **model_kwargs,
@@ -320,6 +322,24 @@ def main(args):
     if args.trace:
         model = trace_model(model, batch_size=args.batch_size, device=device)
 
+    # Replace text projection with MLP if requested (reverse-LiT bridge)
+    text_proj_override = getattr(args, 'text_proj_type', None)
+    if text_proj_override == 'mlp':
+        text_module = getattr(model, 'text', model)
+        width = text_module.width
+        output_dim = text_module.output_dim
+        # Remove existing Parameter/Linear before registering new Module
+        if hasattr(text_module, 'text_projection'):
+            del text_module.text_projection
+        mlp = nn.Sequential(
+            nn.Linear(width, width * 4),
+            nn.GELU(),
+            nn.LayerNorm(width * 4),
+            nn.Linear(width * 4, output_dim),
+        ).to(device)
+        text_module.text_projection = mlp
+        logging.info(f"Replaced text_projection with MLP: {width} -> {width*4} -> {output_dim}")
+
     if args.lock_image:
         # lock image tower as per LiT - https://arxiv.org/abs/2111.07991
         model.lock_image_tower(
@@ -329,6 +349,12 @@ def main(args):
         model.lock_text_tower(
             unlocked_layers=args.lock_text_unlocked_layers,
             freeze_layer_norm=args.lock_text_freeze_layer_norm)
+        # Unfreeze MLP text projection if it was just frozen by lock_text_tower
+        if text_proj_override == 'mlp':
+            text_module = getattr(model, 'text', model)
+            for p in text_module.text_projection.parameters():
+                p.requires_grad = True
+            logging.info("Unfroze MLP text_projection (trainable bridge on frozen text encoder)")
 
     if args.grad_checkpointing:
         model.set_grad_checkpointing()

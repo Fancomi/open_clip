@@ -449,11 +449,18 @@ class HFTokenizer:
 
         # Standard HuggingFace tokenizer initialization
         from transformers import AutoTokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            tokenizer_name,
-            cache_dir=cache_dir,
-            **kwargs
-        )
+        from pathlib import Path
+        # Local path takes priority (no network)
+        _path = Path(str(tokenizer_name))
+        if _path.is_dir() and (_path / 'tokenizer.json').exists():
+            self.tokenizer = AutoTokenizer.from_pretrained(str(_path), **kwargs)
+        else:
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    tokenizer_name, cache_dir=cache_dir, local_files_only=True, **kwargs)
+            except (OSError, ValueError, Exception):
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    tokenizer_name, cache_dir=cache_dir, **kwargs)
 
         # Set language function if available
         set_lang_fn = getattr(self.tokenizer, 'set_src_lang_special_tokens', None)

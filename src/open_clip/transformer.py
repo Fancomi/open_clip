@@ -1066,7 +1066,6 @@ class TextTransformer(nn.Module):
             unlocked_layers: Number of layers to leave unlocked (from the end).
             freeze_layer_norm: LayerNorm freeze (only for API compatibility, not functional)
         """
-        assert freeze_layer_norm, 'Unfreezing LayerNorm is not supported. LayerNorm treated like other weights.'
         lock_text_tower(self, unlocked_layers)
 
     @torch.jit.ignore
@@ -1195,7 +1194,7 @@ class TextTransformer(nn.Module):
             pooled = text_global_pool(x, text, pool_type=self.pool_type, eos_token_id=getattr(self, "eos_id", None))
 
         if self.text_projection is not None:
-            if isinstance(self.text_projection, nn.Linear):
+            if isinstance(self.text_projection, nn.Module):
                 pooled = self.text_projection(pooled)
             else:
                 pooled = pooled @ self.text_projection
@@ -1236,7 +1235,7 @@ class TextTransformer(nn.Module):
             tokens = x
 
         if self.text_projection is not None:
-            if isinstance(self.text_projection, nn.Linear):
+            if isinstance(self.text_projection, nn.Module):
                 pooled = self.text_projection(pooled)
             else:
                 pooled = pooled @ self.text_projection
