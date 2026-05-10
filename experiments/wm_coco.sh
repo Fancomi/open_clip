@@ -243,27 +243,72 @@ SIGREG_BASE="--siglip --sigreg-target cls --sigreg-weight 1e-4 \
 
 # ── D. Gap Loss：batch mean distance loss ──────────────────────────────────
 # CC3M 最优 λ=0.005 (+0.92% i2t R@1)，COCO baseline 无 gap，验证是否仍有 regularizer 收益
-run "gap001"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.001"
-run "gap005"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.005"
-run "gap01"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.01"
-run "gap05"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.05"
-run "gap1"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.1"
+# run "gap001"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.001"
+# run "gap005"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.005"
+# run "gap01"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.01"
+# run "gap05"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.05"
+# run "gap1"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --modality-gap-weight 0.1"
 
 # ── E. Uniformity Loss (Wang & Isola 2020)：log(mean(exp(-t*||z_i-z_j||^2))) ──
 # 直接优化 hypersphere 均匀性，不依赖 gap 存在与否
 # t=2.0 是论文默认值，先固定 t 扫 weight
-run "uni001"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.01"
-run "uni005"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.05"
-run "uni01"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.1"
-run "uni05"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.5"
-run "uni1"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 1.0"
+# run "uni001"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.01"
+# run "uni005"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.05"
+# run "uni01"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.1"
+# run "uni05"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.5"
+# run "uni1"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 1.0"
 
 # ── F. KoLeo Loss：-log(dist_to_nn).mean()，近邻熵正则 ─────────────────────
 # 已在 DINOv3 中验证有效，现在接入 CLIP 路径
-run "koleo001" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.01"
-run "koleo005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05"
-run "koleo01"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.1"
-run "koleo05"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.5"
-run "koleo1"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 1.0"
+# run "koleo001" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.01"
+# run "koleo005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05"
+# run "koleo01"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.1"
+# run "koleo05"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.5"
+# run "koleo1"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 1.0"
 
 echo "======== wm_coco representation space sweep done (15 runs × ~15min ≈ 4h) ========"
+
+# ════════════════════════════════════════════════════════════════════════════
+# ★ Round 2: 系数细调 + 混合实验
+#
+# 基于 Round 1 结果：
+#   Top-3:  koleo005 (w=0.05, +15%), gap001 (λ=0.001, +15%), uni05 (w=0.5, +10.5%)
+#   KoLeo 有效区间宽: [0.005, 1.0]
+#   Uniformity 最优区间: [0.5, 1.0]
+#   Gap Loss 仅 λ=0.001 有效
+#
+# 策略：
+#   G. KoLeo 细调      (5 runs): w ∈ {0.02, 0.03, 0.05, 0.07, 0.1} 细化峰
+#   H. Uniformity 细调  (3 runs): w ∈ {0.3, 0.5, 0.7} 确认峰
+#   I. 混合实验         (6 runs): 最优组合
+#
+# 预计运行时间：14 runs × ~15min ≈ 3.5h
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── G. KoLeo 细调：确认 w=0.05 是否为真实峰 ─────────────────────────────
+run "koleo002" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.02"
+run "koleo003" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03"
+run "koleo005b" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05"
+run "koleo007" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.07"
+run "koleo015" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.15"
+
+# ── H. Uniformity 细调：确认 w=0.5 附近 ──────────────────────────────────
+run "uni03"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.3"
+run "uni05b" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.5"
+run "uni07"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.7"
+
+# ── I. 混合实验：top performers 组合 ─────────────────────────────────────
+# I1: KoLeo + Gap (两个 +15% 的组合)
+run "mix_koleo005_gap001" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --modality-gap-weight 0.001"
+# I2: KoLeo + Uniformity
+run "mix_koleo005_uni05"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --uniformity-weight 0.5"
+# I3: Uniformity + Gap
+run "mix_uni05_gap001"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.5 --modality-gap-weight 0.001"
+# I4: 三合一
+run "mix_all3"            "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --uniformity-weight 0.5 --modality-gap-weight 0.001"
+# I5: KoLeo + Uniformity (降低 uni 防止冲突)
+run "mix_koleo005_uni03"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --uniformity-weight 0.3"
+# I6: KoLeo higher + Uniformity
+run "mix_koleo1_uni05"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 1.0 --uniformity-weight 0.5"
+
+echo "======== Round 2: fine-tune + mix done (14 runs × ~15min ≈ 3.5h) ========"

@@ -126,6 +126,8 @@ SigLIP2 zero-shot 在 COCO eval 仅 35%（远低于 PE 的 48.7%），但 lr=3e-
 | `scripts/finetune_pretrained_v3.sh` | CC3M v3（低LR/partial层数/SigReg weight） |
 | `scripts/finetune_pretrained_book.sh` | Book v2 |
 | `scripts/finetune_pretrained_book_v3.sh` | Book v3 |
+| `scripts/finetune_pretrained_book_clean.sh` | Book clean-v1（新数据，AdamW+Muon） |
+| `scripts/finetune_pretrained_book_clean_v2.sh` | Book clean-v2（PE only，高LR/低muon_lr/SigReg精调） |
 | `scripts/build_book_tsv.py` | book JSON→TSV |
 
 ## 实验日志

@@ -378,14 +378,15 @@ def run_epochs(args):
     plot_evolution(evo_feats, ids, out, n_traj=args.n_traj, id_label=id_label,
                    txt_feats=txt_feats)
 
-    # ── UMAP evolution + trajectory (backbone CLS space) ─────────────────────
-    # Uses backbone CLS (feats) — same space as anisotropy, not the projection head.
+    # ── UMAP evolution + trajectory (projected CLIP space, same as plot_evolution) ─
+    # Uses evo_feats (proj_features when available, else backbone CLS) so that the
+    # modality gap is visible in the same coordinate system as step_evolution GIF.
     # UMAP is slower to fit; guarded by a sentinel so rerun is opt-in.
     _umap_sentinel = os.path.join(out, 'umap_trajectory.png')
     if not os.path.exists(_umap_sentinel) or args.force:
         try:
-            logging.info(f'[epochs] fitting UMAP on {len(feats)} checkpoints...')
-            plot_umap_evolution(feats, ids, out,
+            logging.info(f'[epochs] fitting UMAP on {len(evo_feats)} checkpoints...')
+            plot_umap_evolution(evo_feats, ids, out,
                                 n_traj=args.n_traj, id_label=id_label,
                                 txt_feats=txt_feats)
         except ImportError:
