@@ -250,6 +250,44 @@ def parse_args(args):
         choices=["linear", "mlp"],
         help="Override text projection type. 'mlp' replaces linear with 2-layer MLP (for reverse-LiT bridge).",
     )
+    # ── Dual-teacher mode ──────────────────────────────────────────────────
+    parser.add_argument(
+        "--dual-teacher",
+        default=False,
+        action='store_true',
+        help="Enable dual-teacher mode: one image encoder aligns with two frozen text encoders.",
+    )
+    parser.add_argument(
+        "--dual-cls",
+        default=False,
+        action='store_true',
+        help="Use dual MAP pooling (two independent latent queries) instead of shared pool.",
+    )
+    parser.add_argument(
+        "--teacher-pe-ckpt",
+        default=None,
+        type=str,
+        help="Path to PE-Core teacher checkpoint (full CLIP model).",
+    )
+    parser.add_argument(
+        "--teacher-sig-ckpt",
+        default=None,
+        type=str,
+        help="Path to SigLIP2 teacher checkpoint (full CLIP model).",
+    )
+    parser.add_argument(
+        "--teacher-sig-model",
+        default=None,
+        type=str,
+        help="SigLIP2 model config name (for tokenizer resolution, e.g. 'local-dir:/path/to/ViT-B-16-SigLIP2').",
+    )
+    parser.add_argument(
+        "--pretrained-image-init",
+        default=None,
+        type=str,
+        help="Path to checkpoint for image backbone initialization in dual-teacher mode.",
+    )
+
     parser.add_argument(
         "--lock-image",
         default=False,

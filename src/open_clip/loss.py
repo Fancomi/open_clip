@@ -466,6 +466,25 @@ class SigLipLoss(nn.Module):
         return {"siglip_loss": loss} if output_dict else loss
 
 
+class DualSigLipLoss(nn.Module):
+    """Sum of two SigLipLoss for dual-teacher training."""
+
+    def __init__(self, cache_labels=False, rank=0, world_size=1, dist_impl=None):
+        super().__init__()
+        self.loss_pe = SigLipLoss(cache_labels, rank, world_size, dist_impl)
+        self.loss_sig = SigLipLoss(cache_labels, rank, world_size, dist_impl)
+
+    def forward(self, image_features_pe, text_features_pe, logit_scale_pe,
+                image_features_sig, text_features_sig, logit_scale_sig, logit_bias_sig,
+                output_dict=False, **kwargs):
+        lp = self.loss_pe(image_features_pe, text_features_pe, logit_scale_pe, None, output_dict=True)
+        ls = self.loss_sig(image_features_sig, text_features_sig, logit_scale_sig, logit_bias_sig, output_dict=True)
+        loss = lp["siglip_loss"] + ls["siglip_loss"]
+        if output_dict:
+            return {"dual_loss": loss, "loss_pe": lp["siglip_loss"], "loss_sig": ls["siglip_loss"]}
+        return loss
+
+
 def _dist_all_reduce_avg(x):
     """跨 GPU 平均归约，未初始化时直接返回。"""
     if has_distributed and dist.is_available() and dist.is_initialized():

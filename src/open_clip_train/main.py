@@ -32,7 +32,7 @@ except ImportError:
 
 from open_clip import create_model_and_transforms, trace_model, get_tokenizer, create_loss
 from open_clip.factory import attach_modality_modules
-from open_clip.model import CLIPLeJEPA, CLIPWithDINO
+from open_clip.model import CLIPLeJEPA, CLIPWithDINO, DualTeacherCLIP
 from open_clip_train.data import get_data
 from open_clip_train.distributed import is_master, init_distributed_device, broadcast_object
 from open_clip_train.logger import setup_logging
@@ -295,6 +295,75 @@ def main(args):
         )
         model = model.to(device)
 
+    # ── Dual-teacher mode ────────────────────────────────────────────────────
+    tokenizer_secondary = None
+    if getattr(args, 'dual_teacher', False):
+        from open_clip import create_model_and_transforms as _create
+        from safetensors.torch import load_file as _load_safetensors
+        import torch.nn as nn
+
+        logging.info("=> Setting up dual-teacher mode")
+
+        # 1. Load PE-Core teacher text encoder
+        pe_model, _, _ = _create(
+            args.model, args.teacher_pe_ckpt,
+            device=device, precision=args.precision, output_dict=True,
+        )
+        teacher_pe_text = pe_model.text
+        teacher_pe_text.requires_grad_(False)
+        teacher_pe_text.eval()
+        pe_backbone_dim = pe_model.visual.trunk.num_features  # 768
+        pe_dim = pe_model.visual.trunk.head.out_features if hasattr(pe_model.visual.trunk.head, 'out_features') else pe_backbone_dim
+        del pe_model.visual  # free image tower memory
+        logging.info(f"   PE teacher text loaded: output_dim={pe_dim}, backbone_dim={pe_backbone_dim}")
+
+        # 2. Load SigLIP2 teacher text encoder
+        sig_model_name = args.teacher_sig_model or "ViT-B-16-SigLIP2"
+        sig_model, _, _ = _create(
+            sig_model_name, args.teacher_sig_ckpt,
+            device=device, precision=args.precision, output_dict=True,
+        )
+        teacher_sig_text = sig_model.text
+        teacher_sig_text.requires_grad_(False)
+        teacher_sig_text.eval()
+        sig_dim = getattr(sig_model, 'embed_dim', 768) or 768
+        del sig_model.visual
+        logging.info(f"   SigLIP2 teacher text loaded: output_dim={sig_dim}")
+
+        # 3. Image backbone from the already-created model (PE-Core architecture)
+        image_backbone = model.visual
+
+        # Optionally load pretrained image weights
+        if getattr(args, 'pretrained_image_init', None):
+            logging.info(f"   Loading pretrained image init from: {args.pretrained_image_init}")
+            ckpt = _load_safetensors(args.pretrained_image_init)
+            # Extract visual.* keys
+            vis_keys = {k.replace('visual.', ''): v for k, v in ckpt.items() if k.startswith('visual.')}
+            if not vis_keys:
+                vis_keys = ckpt
+            image_backbone.load_state_dict(vis_keys, strict=False)
+
+        # 4. Assemble DualTeacherCLIP
+        dual_cls = getattr(args, 'dual_cls', False)
+        model = DualTeacherCLIP(
+            image_backbone=image_backbone,
+            teacher_pe_text=teacher_pe_text,
+            teacher_sig_text=teacher_sig_text,
+            backbone_dim=pe_backbone_dim,
+            pe_dim=pe_dim,
+            sig_dim=sig_dim,
+            dual_cls=dual_cls,
+            output_dict=True,
+        ).to(device)
+
+        # 5. Secondary tokenizer for SigLIP2
+        tokenizer_secondary = get_tokenizer(
+            sig_model_name, cache_dir=args.cache_dir,
+            context_length=args.force_context_length,
+        )
+        logging.info(f"   DualTeacherCLIP assembled: dual_cls={dual_cls}, backbone_dim={pe_backbone_dim}, "
+                     f"pe_dim={pe_dim}, sig_dim={sig_dim}")
+
     if args.distill:
         # FIXME: currently assumes the model you're distilling from has the same tokenizer & transforms.
         dist_model, _, _ = create_model_and_transforms(
@@ -384,6 +453,8 @@ def main(args):
             # Note: static_graph and find_unused_parameters are mutually exclusive.
             ddp_args['static_graph'] = True
             ddp_args.pop('find_unused_parameters', None)
+        if getattr(args, 'dual_teacher', False):
+            ddp_args['static_graph'] = True
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
     
         if args.distill:
@@ -524,6 +595,7 @@ def main(args):
         (preprocess_train, preprocess_val),
         epoch=start_epoch,
         tokenizer=tokenizer,
+        tokenizer_secondary=tokenizer_secondary,
     )
     assert len(data), 'At least one train or eval dataset must be specified.'
 

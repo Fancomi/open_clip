@@ -15,8 +15,8 @@
 # bash analysis/probe.sh layers eupe
 
 
-# bash analysis/probe.sh probe_full logs  # --rerun  (旧 wmc_ 系列)
-# bash analysis/probe.sh log_parse wmc_
+bash analysis/probe.sh probe_full logs  # --rerun  (旧 wmc_ 系列)
+bash analysis/probe.sh log_parse dt_
 
 bash analysis/probe.sh probe_full logs/20260510_wmc #--rerun
 bash analysis/probe.sh log_parse wmc_ --logs-dir logs/20260510_wmc --plot-dir analysis/research/plots/20260510_wmc

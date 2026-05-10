@@ -119,9 +119,16 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             freeze_epochs = getattr(args, 'freeze_last_layer_epochs', 1)
             freeze_last = (epoch < freeze_epochs)
         else:
-            images, texts = batch
-            images = images.to(device=device, dtype=input_dtype, non_blocking=True)
-            texts  = texts.to(device=device, non_blocking=True)
+            is_dual_teacher = getattr(args, 'dual_teacher', False)
+            if is_dual_teacher:
+                images, texts, texts2 = batch
+                images = images.to(device=device, dtype=input_dtype, non_blocking=True)
+                texts = texts.to(device=device, non_blocking=True)
+                texts2 = texts2.to(device=device, non_blocking=True)
+            else:
+                images, texts = batch
+                images = images.to(device=device, dtype=input_dtype, non_blocking=True)
+                texts  = texts.to(device=device, non_blocking=True)
             teacher_temp = None
             ema_momentum = None
 
@@ -140,8 +147,11 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                     )
                     model_out["teacher_temp"] = teacher_temp
                 else:
-                    model_out = model(images, texts)
-                logit_scale = model_out["logit_scale"]
+                    if is_dual_teacher:
+                        model_out = model(images, texts, texts2)
+                    else:
+                        model_out = model(images, texts)
+                logit_scale = model_out.get("logit_scale", model_out.get("logit_scale_pe", None))
                 logit_bias = model_out.get("logit_bias", None)
                 if args.distill:
                     with torch.no_grad():
@@ -164,10 +174,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             # === DIAG: print key grad/feature stats for first 5 steps ===
             if is_master(args) and i_accum < 5:
                 m = unwrap_model(model)
-                lb = getattr(m, 'logit_bias', None)
-                ls = getattr(m, 'logit_scale', None)
-                img_f = model_out.get("image_features", None)
-                txt_f = model_out.get("text_features", None)
+                lb = getattr(m, 'logit_bias', getattr(m, 'logit_bias_sig', None))
+                ls = getattr(m, 'logit_scale', getattr(m, 'logit_scale_pe', None))
+                img_f = model_out.get("image_features", model_out.get("image_features_pe", None))
+                txt_f = model_out.get("text_features", model_out.get("text_features_pe", None))
                 lb_grad = lb.grad.item() if (lb is not None and lb.grad is not None) else None
                 ls_grad = ls.grad.item() if (ls is not None and ls.grad is not None) else None
                 logging.info(
@@ -184,9 +194,12 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             # First, cache the features without any gradient tracking.
             with torch.no_grad():
                 with autocast():
-                    model_out = model(images, texts)
+                    if is_dual_teacher:
+                        model_out = model(images, texts, texts2)
+                    else:
+                        model_out = model(images, texts)
 
-                    for f in ("logit_scale", "logit_bias"):
+                    for f in ("logit_scale", "logit_bias", "logit_scale_pe", "logit_scale_sig", "logit_bias_sig"):
                         model_out.pop(f, None)
 
                     for key, val in model_out.items():
@@ -197,6 +210,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
 
                 accum_images.append(images)
                 accum_texts.append(texts)
+                if is_dual_teacher:
+                    accum_texts2 = getattr(args, '_accum_texts2', [])
+                    accum_texts2.append(texts2)
+                    args._accum_texts2 = accum_texts2
 
             # If (i + 1) % accum_freq is not zero, move on to the next batch.
             if ((i + 1) % args.accum_freq) > 0:
@@ -211,14 +228,21 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 images = accum_images[j]
                 texts = accum_texts[j]
                 with autocast():
-                    model_out = model(images, texts)
+                    if is_dual_teacher:
+                        texts2 = args._accum_texts2[j]
+                        model_out = model(images, texts, texts2)
+                    else:
+                        model_out = model(images, texts)
 
                     inputs_no_accum = {}
-                    inputs_no_accum["logit_scale"] = logit_scale = model_out.pop("logit_scale")
-                    logit_bias = None
+                    if "logit_scale" in model_out:
+                        inputs_no_accum["logit_scale"] = logit_scale = model_out.pop("logit_scale")
                     if "logit_bias" in model_out:
                         logit_bias = model_out["logit_bias"]
                         inputs_no_accum["logit_bias"] = model_out.pop("logit_bias")
+                    for f in ("logit_scale_pe", "logit_scale_sig", "logit_bias_sig"):
+                        if f in model_out:
+                            inputs_no_accum[f] = model_out.pop(f)
 
                     inputs = {}
                     for key, val in accum_features.items():
@@ -248,8 +272,8 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 # diag3: read true grads after unscale, before step
                 if is_master(args) and i_accum < 5:
                     m = unwrap_model(model)
-                    lb = getattr(m, 'logit_bias', None)
-                    ls = getattr(m, 'logit_scale', None)
+                    lb = getattr(m, 'logit_bias', getattr(m, 'logit_bias_sig', None))
+                    ls = getattr(m, 'logit_scale', getattr(m, 'logit_scale_pe', None))
                     vp = next(iter(m.visual.parameters()))
                     _vp_before = vp.data.float().clone()
                     _lb_grad = lb.grad.item() if (lb is not None and lb.grad is not None) else None
@@ -270,8 +294,8 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 m = unwrap_model(model)
                 vp = next(iter(m.visual.parameters()))
                 _vp_before = vp.data.float().clone()
-                lb = getattr(m, 'logit_bias', None)
-                ls = getattr(m, 'logit_scale', None)
+                lb = getattr(m, 'logit_bias', getattr(m, 'logit_bias_sig', None))
+                ls = getattr(m, 'logit_scale', getattr(m, 'logit_scale_pe', None))
                 _lb_grad = lb.grad.item() if (lb is not None and lb.grad is not None) else None
                 _ls_grad = ls.grad.item() if (ls is not None and ls.grad is not None) else None
                 logging.info(f"  [diag3] lb.grad={_lb_grad}  ls.grad={_ls_grad}"
@@ -291,7 +315,14 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
 
         # Note: we clamp to 4.6052 = ln(100), as in the original paper.
         with torch.no_grad():
-            unwrap_model(model).logit_scale.clamp_(0, math.log(100))
+            m_ = unwrap_model(model)
+            if hasattr(m_, 'logit_scale'):
+                m_.logit_scale.clamp_(0, math.log(100))
+            else:
+                if hasattr(m_, 'logit_scale_pe'):
+                    m_.logit_scale_pe.clamp_(0, math.log(100))
+                if hasattr(m_, 'logit_scale_sig'):
+                    m_.logit_scale_sig.clamp_(0, math.log(100))
 
         batch_time_m.update(time.time() - end)
         end = time.time()

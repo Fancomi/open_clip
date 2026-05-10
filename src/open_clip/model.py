@@ -847,6 +847,139 @@ class CLIPLeJEPA(nn.Module):
         return self.clip_model.no_weight_decay() if hasattr(self.clip_model, 'no_weight_decay') else set()
 
 
+class DualTeacherCLIP(nn.Module):
+    """One trainable image encoder aligned with two frozen text teachers (PE-Core + SigLIP2).
+
+    Supports two pooling modes:
+      - single CLS (dual_cls=False): shared MAP pool → two linear heads
+      - dual CLS (dual_cls=True): two independent MAP pools → two linear heads
+    """
+    output_dict: torch.jit.Final[bool]
+
+    def __init__(
+            self,
+            image_backbone: TimmModel,
+            teacher_pe_text: nn.Module,
+            teacher_sig_text: nn.Module,
+            backbone_dim: int = 768,
+            pe_dim: int = 1024,
+            sig_dim: int = 768,
+            dual_cls: bool = False,
+            init_logit_scale: float = np.log(1 / 0.07),
+            output_dict: bool = True,
+    ):
+        super().__init__()
+        self.output_dict = output_dict
+        self.dual_cls = dual_cls
+        self.backbone_dim = backbone_dim
+
+        # Trainable image encoder
+        self.visual = image_backbone
+
+        # Frozen text teachers
+        self.teacher_pe = teacher_pe_text
+        self.teacher_pe.requires_grad_(False)
+        self.teacher_sig = teacher_sig_text
+        self.teacher_sig.requires_grad_(False)
+
+        # Pooling
+        if dual_cls:
+            from timm.layers import AttentionPoolLatent
+            self.pool_pe = AttentionPoolLatent(
+                in_features=backbone_dim, out_features=0,
+                num_heads=8, mlp_ratio=4.0,
+                norm_layer=partial(nn.LayerNorm, eps=1e-5),
+                act_layer=nn.GELU,
+            )
+            self.norm_pe = nn.LayerNorm(backbone_dim, eps=1e-5)
+            self.pool_sig = AttentionPoolLatent(
+                in_features=backbone_dim, out_features=0,
+                num_heads=8, mlp_ratio=4.0,
+                norm_layer=partial(nn.LayerNorm, eps=1e-5),
+                act_layer=nn.GELU,
+            )
+            self.norm_sig = nn.LayerNorm(backbone_dim, eps=1e-5)
+
+        # Projection heads
+        self.head_pe = nn.Linear(backbone_dim, pe_dim)
+        self.head_sig = nn.Linear(backbone_dim, sig_dim)
+
+        # Logit scale/bias (independent per teacher)
+        self.logit_scale_pe = nn.Parameter(torch.ones([]) * init_logit_scale)
+        self.logit_scale_sig = nn.Parameter(torch.ones([]) * init_logit_scale)
+        self.logit_bias_sig = nn.Parameter(torch.ones([]) * (-10.0))
+
+    def train(self, mode=True):
+        super().train(mode)
+        self.teacher_pe.eval()
+        self.teacher_sig.eval()
+        return self
+
+    @torch.jit.ignore
+    def set_grad_checkpointing(self, enable=True):
+        if hasattr(self.visual, 'trunk') and hasattr(self.visual.trunk, 'set_grad_checkpointing'):
+            self.visual.trunk.set_grad_checkpointing(enable)
+        elif hasattr(self.visual, 'set_grad_checkpointing'):
+            self.visual.set_grad_checkpointing(enable)
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        nwd = set()
+        if hasattr(self.visual, 'trunk') and hasattr(self.visual.trunk, 'no_weight_decay'):
+            nwd |= {f'visual.trunk.{p}' for p in self.visual.trunk.no_weight_decay()}
+        return nwd
+
+    def _pool_features(self, tokens: torch.Tensor):
+        """Pool token sequence → (feat_pe, feat_sig)."""
+        if self.dual_cls:
+            feat_pe = self.norm_pe(self.pool_pe(tokens))
+            feat_sig = self.norm_sig(self.pool_sig(tokens))
+        else:
+            trunk = self.visual.trunk
+            pooled = trunk.pool(tokens)
+            pooled = trunk.fc_norm(pooled)
+            feat_pe = feat_sig = pooled
+        return feat_pe, feat_sig
+
+    def forward(self, images: torch.Tensor, texts_pe: torch.Tensor, texts_sig: Optional[torch.Tensor] = None):
+        # Image forward: get token sequence before pooling
+        tokens = self.visual.trunk.forward_features(images)
+
+        # Pool and project
+        feat_pe, feat_sig = self._pool_features(tokens)
+        image_features_pe = F.normalize(self.head_pe(feat_pe), dim=-1)
+
+        # Frozen text forward (PE always needed)
+        with torch.no_grad():
+            text_features_pe = self.teacher_pe(texts_pe)
+            text_features_pe = F.normalize(text_features_pe, dim=-1)
+
+        # Validation mode: texts_sig is None → return standard keys for PE branch
+        if texts_sig is None:
+            return {
+                "image_features": image_features_pe,
+                "text_features": text_features_pe,
+                "logit_scale": self.logit_scale_pe.exp(),
+            }
+
+        # Training mode: compute both branches
+        image_features_sig = F.normalize(self.head_sig(feat_sig), dim=-1)
+        with torch.no_grad():
+            text_features_sig = self.teacher_sig(texts_sig)
+            text_features_sig = F.normalize(text_features_sig, dim=-1)
+
+        out = {
+            "image_features_pe": image_features_pe,
+            "text_features_pe": text_features_pe,
+            "logit_scale_pe": self.logit_scale_pe.exp(),
+            "image_features_sig": image_features_sig,
+            "text_features_sig": text_features_sig,
+            "logit_scale_sig": self.logit_scale_sig.exp(),
+            "logit_bias_sig": self.logit_bias_sig,
+        }
+        return out
+
+
 def convert_weights_to_lp(model: nn.Module, dtype=torch.float16):
     """Convert applicable model parameters to low-precision (bf16 or fp16)"""
 

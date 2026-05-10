@@ -325,7 +325,7 @@ class ResampledShards2(IterableDataset):
                 yield dict(url=self.rng.choices(self.urls, weights=self.weights, k=1)[0])
 
 
-def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokenizer=None):
+def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokenizer=None, **kwargs):
     input_shards = args.train_data if is_train else args.val_data
     assert input_shards is not None
     resampled = getattr(args, 'dataset_resampled', False) and is_train
@@ -446,15 +446,32 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             # at this point, we have an iterator over the shards assigned to each worker
             wds.tarfile_to_samples(handler=log_and_continue),
         ])
-    pipeline.extend([
-        wds.select(filter_no_caption_or_no_image),
-        wds.decode("pilrgb", handler=log_and_continue),
-        wds.rename(image="jpg;png;jpeg;webp", text="txt"),
-        wds.map_dict(image=preprocess_img, text=lambda text: tokenizer(text)[0]),
-        wds.to_tuple("image", "text"),
-        wds.batched(args.batch_size, partial=not is_train,
-                    collation_fn=_collate_dino if use_dinov3 else wds.filters.default_collation_fn)
-    ])
+    tokenizer_secondary = kwargs.get('tokenizer_secondary', None)
+    if tokenizer_secondary is not None:
+        def _dual_tokenize(sample):
+            sample['text2'] = tokenizer_secondary(sample['text'])[0]
+            sample['text'] = tokenizer(sample['text'])[0]
+            return sample
+        pipeline.extend([
+            wds.select(filter_no_caption_or_no_image),
+            wds.decode("pilrgb", handler=log_and_continue),
+            wds.rename(image="jpg;png;jpeg;webp", text="txt"),
+            wds.map_dict(image=preprocess_img),
+            wds.map(_dual_tokenize),
+            wds.to_tuple("image", "text", "text2"),
+            wds.batched(args.batch_size, partial=not is_train,
+                        collation_fn=_collate_dino if use_dinov3 else wds.filters.default_collation_fn)
+        ])
+    else:
+        pipeline.extend([
+            wds.select(filter_no_caption_or_no_image),
+            wds.decode("pilrgb", handler=log_and_continue),
+            wds.rename(image="jpg;png;jpeg;webp", text="txt"),
+            wds.map_dict(image=preprocess_img, text=lambda text: tokenizer(text)[0]),
+            wds.to_tuple("image", "text"),
+            wds.batched(args.batch_size, partial=not is_train,
+                        collation_fn=_collate_dino if use_dinov3 else wds.filters.default_collation_fn)
+        ])
 
     dataset = wds.DataPipeline(*pipeline)
 
@@ -543,6 +560,7 @@ class SyntheticDataset(Dataset):
             caption="Dummy caption",
             dataset_size=100,
             tokenizer=None,
+            tokenizer_secondary=None,
     ):
         self.transform = transform
         self.image_size = image_size
@@ -551,6 +569,7 @@ class SyntheticDataset(Dataset):
         self.dataset_size = dataset_size
 
         self.preprocess_txt = lambda text: tokenizer(text)[0]
+        self.preprocess_txt2 = (lambda text: tokenizer_secondary(text)[0]) if tokenizer_secondary else None
 
     def __len__(self):
         return self.dataset_size
@@ -558,13 +577,17 @@ class SyntheticDataset(Dataset):
     def __getitem__(self, idx):
         if self.transform is not None:
             image = self.transform(self.image)
+        if self.preprocess_txt2 is not None:
+            return image, self.preprocess_txt(self.caption), self.preprocess_txt2(self.caption)
         return image, self.preprocess_txt(self.caption)
 
 
-def get_synthetic_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None):
+def get_synthetic_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None, **kwargs):
     image_size = preprocess_fn.transforms[0].size
+    tokenizer_secondary = kwargs.get('tokenizer_secondary', None)
     dataset = SyntheticDataset(
-        transform=preprocess_fn, image_size=image_size, dataset_size=args.train_num_samples, tokenizer=tokenizer)
+        transform=preprocess_fn, image_size=image_size, dataset_size=args.train_num_samples,
+        tokenizer=tokenizer, tokenizer_secondary=tokenizer_secondary)
     num_samples = len(dataset)
     sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     shuffle = is_train and sampler is None
@@ -604,13 +627,14 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
     
 
-def get_data(args, preprocess_fns, epoch=0, tokenizer=None):
+def get_data(args, preprocess_fns, epoch=0, tokenizer=None, tokenizer_secondary=None):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
     if args.train_data or args.dataset_type == "synthetic":
         data["train"] = get_dataset_fn(args.train_data, args.dataset_type)(
-            args, preprocess_train, is_train=True, epoch=epoch, tokenizer=tokenizer)
+            args, preprocess_train, is_train=True, epoch=epoch, tokenizer=tokenizer,
+            tokenizer_secondary=tokenizer_secondary)
 
     if args.val_data:
         # val data may differ from train format (e.g. train=webdataset, val=tsv),
