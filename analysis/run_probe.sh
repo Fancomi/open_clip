@@ -21,10 +21,10 @@ bash analysis/probe.sh probe_full logs --rerun
 # bash analysis/probe.sh probe_full logs/20260510_0_ft_book #--rerun
 # bash analysis/probe.sh log_parse ft_ --logs-dir logs/20260510_0_ft_book --plot-dir analysis/research/plots/20260510_0_ft_book
 
-bash analysis/probe.sh probe_full logs/20260510_wmc
-bash analysis/probe.sh log_parse wmc_ --logs-dir logs/20260510_wmc --plot-dir analysis/research/plots/20260510_wmc \
-    --inject-md --md-path analysis/research/representation_uniformity.md --md-marker RESULTS_WMC \
-    --json
+# bash analysis/probe.sh probe_full logs/20260510_wmc
+# bash analysis/probe.sh log_parse wmc_ --logs-dir logs/20260510_wmc --plot-dir analysis/research/plots/20260510_wmc \
+#     --inject-md --md-path analysis/research/representation_uniformity.md --md-marker RESULTS_WMC \
+#     --json
 
 
 # python3 analysis/modality_gap.py \
