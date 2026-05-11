@@ -460,11 +460,16 @@ def main():
                     help="export per-epoch CSV for one logdir (skips global scan)")
     ap.add_argument("--out",       default=None, metavar="CSV",
                     help="output CSV path for --single (required with --single)")
+    ap.add_argument("--force",     action="store_true",
+                    help="overwrite existing output files (default: skip if present)")
     args = ap.parse_args()
 
     if args.single:
         logdir = Path(args.single)
         out    = Path(args.out) if args.out else logdir / "probe" / "plots" / "training_metrics.csv"
+        if out.exists() and not args.force:
+            logging.info(f'[log_parser] SKIP {logdir.name} (sentinel exists, pass --force to rerun)')
+            return
         out.parent.mkdir(parents=True, exist_ok=True)
         ok = export_single(logdir, out)
         if ok:

@@ -378,3 +378,25 @@ run "k005_sig1e3" "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 1e-3
 run "k005_sig1e2" "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 1e-2 --koleo-weight 0.05"
 
 echo "======== Round 4: SIGReg ablation done (12 runs × ~15min ≈ 3h) ========"
+
+# ════════════════════════════════════════════════════════════════════════════
+# ★ Antipodal SigLIP: cos=-1 对齐正样本，cos≠-1 推离负样本
+#
+# 核心思路：不再对抗模态鸿沟，而是「承认」它——
+#   正样本 (img_i, txt_i) 推向超球面完全相反方向 (cos=-1)
+#   负样本 (img_i, txt_j) 远离相反方向
+#
+# 实现：仅取反 SigLIP 余弦相似度（logits = -scale*cos + bias），
+#       标签不变，分布式逻辑不变
+#
+# 预期：
+#   - sim_pos 应从 ~0 趋向 -1（而非 +1）
+#   - 更均匀的特征分布（每个 text 推远 1 个正样本、容忍 N-1 个负样本）
+#   - 模态方向反转，但强度/结构可能不同
+# ════════════════════════════════════════════════════════════════════════════
+
+run "antipodal"           "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --antipodal"
+run "anti_koleo005"       "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --antipodal --koleo-weight 0.05"
+run "anti_uni05"          "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --antipodal --uniformity-weight 0.5"
+
+echo "======== Antipodal SigLIP done (3 runs × ~15min ≈ 45min) ========"

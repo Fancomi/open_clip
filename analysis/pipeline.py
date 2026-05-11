@@ -11,7 +11,6 @@ from .extractors import (load_from_cache,
                           extract_pe_core_img_raw,
                           extract_dinov3_img, extract_radio_img,
                           extract_eupe_img, extract_tips_img, extract_tips_txt,
-                          extract_wds_features,
                           make_dino_crops,
                           extract_dinov3_pil, extract_clip_pil,
                           extract_pe_core_pil_raw,
@@ -100,61 +99,36 @@ def _run_parallel_workers(args, out_dir, data_type):
         logging.warning(f'[parallel] some workers failed: {failed}')
 
 
+# ── Helpers: load npz from disk ──────────────────────────────────────────────
+
+def _load_npz(out_dir, fname):
+    """Load a single npz features array, or None if absent."""
+    p = os.path.join(out_dir, fname)
+    return np.load(p)['features'] if os.path.exists(p) else None
+
+
 # ── Mode: pretrained (COCO tsv or CC3M wds) ──────────────────────────────────
 
 def run_pretrained(args):
     out = os.path.join(args.out_dir, 'pretrained')
     os.makedirs(out, exist_ok=True)
 
-    # ── Try cache-first (skip all model loading if hit) ────────────────────
+    # Run parallel workers if cache not complete
     cached = load_from_cache(out, args.force)
+    if cached is None:
+        _run_parallel_workers(args, out, args.data_type)
 
-    if args.data_type == 'wds':
-        if cached is None:
-            _run_parallel_workers(args, out, 'wds')
-        # Load from disk (worker subprocesses already wrote npzs)
-        def _load(fname):
-            p = os.path.join(out, fname)
-            return np.load(p)['features'] if os.path.exists(p) else None
-        pe_img    = _load('pe_core_img.npz')
-        pe_txt    = _load('pe_core_txt.npz')
-        sig2_img  = _load('siglip2_img.npz')
-        sig2_txt  = _load('siglip2_txt.npz')
-        dino_img  = _load('dinov3_img.npz')
-        radio_img = _load('radio_img.npz')
-        eupe_img  = _load('eupe_img.npz')
-        tips_img  = _load('tips_img.npz')
-        tips_txt  = _load('tips_txt.npz')
-        pe_img_raw = None   # wds worker does not extract raw backbone CLS separately
-
-    else:   # tsv (COCO)
-        if cached is not None:
-            pe_img,   pe_txt   = cached['pe_img'],   cached['pe_txt']
-            sig2_img, sig2_txt = cached['sig2_img'], cached['sig2_txt']
-            dino_img  = cached['dino_img']
-            radio_img = cached.get('radio_img')
-            eupe_img  = cached.get('eupe_img')
-            tips_img, tips_txt = cached['tips_img'], cached['tips_txt']
-            # Raw backbone CLS cache (may not exist on first run after this change)
-            _raw_p = os.path.join(out, 'pe_core_img_raw.npz')
-            pe_img_raw = np.load(_raw_p)['features'] if os.path.exists(_raw_p) else None
-        else:
-            _run_parallel_workers(args, out, 'tsv')
-            # Load from disk (worker subprocesses already wrote npzs)
-            def _load(fname):
-                p = os.path.join(out, fname)
-                return np.load(p)['features'] if os.path.exists(p) else None
-            pe_img    = _load('pe_core_img.npz')
-            pe_txt    = _load('pe_core_txt.npz')
-            sig2_img  = _load('siglip2_img.npz')
-            sig2_txt  = _load('siglip2_txt.npz')
-            dino_img  = _load('dinov3_img.npz')
-            radio_img = _load('radio_img.npz')
-            eupe_img  = _load('eupe_img.npz')
-            tips_img  = _load('tips_img.npz')
-            tips_txt  = _load('tips_txt.npz')
-            _raw_p    = os.path.join(out, 'pe_core_img_raw.npz')
-            pe_img_raw = np.load(_raw_p)['features'] if os.path.exists(_raw_p) else None
+    # Unified load from disk
+    pe_img    = _load_npz(out, 'pe_core_img.npz')
+    pe_txt    = _load_npz(out, 'pe_core_txt.npz')
+    sig2_img  = _load_npz(out, 'siglip2_img.npz')
+    sig2_txt  = _load_npz(out, 'siglip2_txt.npz')
+    dino_img  = _load_npz(out, 'dinov3_img.npz')
+    radio_img = _load_npz(out, 'radio_img.npz')
+    eupe_img  = _load_npz(out, 'eupe_img.npz')
+    tips_img  = _load_npz(out, 'tips_img.npz')
+    tips_txt  = _load_npz(out, 'tips_txt.npz')
+    pe_img_raw = _load_npz(out, 'pe_core_img_raw.npz')
 
     # ── Modality gap plots (models with text towers) ────────────────────────
     _MOD_COLORS = ['#0055FF', '#FF2200']   # Image=blue, Text=red
@@ -321,6 +295,13 @@ def run_epochs(args):
     and render GIF evolution + static trajectory plot."""
     import re
     probe_dir = args.probe_dir
+    out = os.path.normpath(os.path.join(probe_dir, '..', '..', 'probe', 'plots'))
+
+    sentinel = os.path.join(out, 'aniso_evolution.png')
+    if os.path.exists(sentinel) and not args.force:
+        logging.info(f'[epochs] SKIP (sentinel exists, pass --force to rerun)  {probe_dir}')
+        return
+    os.makedirs(out, exist_ok=True)
 
     # Prefer step-based files; fall back to epoch-based
     step_files = sorted(glob.glob(os.path.join(probe_dir, 'step_*.npz')))
@@ -369,31 +350,21 @@ def run_epochs(args):
     if proj_feats is None:
         logging.info('[epochs] no proj_features in npz — step_evolution uses backbone CLS')
 
-    # Place plots at <log_root>/probe/plots  (sibling of checkpoints/)
-    out = os.path.join(probe_dir, '..', '..', 'probe', 'plots')
-    os.makedirs(out, exist_ok=True)
     # step_evolution GIF: prefer projected CLIP space (modality gap visible there)
     # fall back to backbone CLS when proj_features not present
     evo_feats = proj_feats if proj_feats is not None else feats
     plot_evolution(evo_feats, ids, out, n_traj=args.n_traj, id_label=id_label,
                    txt_feats=txt_feats)
 
-    # ── UMAP evolution + trajectory (projected CLIP space, same as plot_evolution) ─
-    # Uses evo_feats (proj_features when available, else backbone CLS) so that the
-    # modality gap is visible in the same coordinate system as step_evolution GIF.
-    # UMAP is slower to fit; guarded by a sentinel so rerun is opt-in.
-    _umap_sentinel = os.path.join(out, 'umap_trajectory.png')
-    if not os.path.exists(_umap_sentinel) or args.force:
-        try:
-            logging.info(f'[epochs] fitting UMAP on {len(evo_feats)} checkpoints...')
-            plot_umap_evolution(evo_feats, ids, out,
-                                n_traj=args.n_traj, id_label=id_label,
-                                txt_feats=txt_feats)
-        except ImportError:
-            logging.warning('[epochs] umap-learn not installed — skip UMAP plots'
-                            '  (pip install umap-learn)')
-    else:
-        logging.info('[epochs] UMAP sentinel found — skip (pass --force to rerun)')
+    # UMAP (GPU-accelerated via cuML)
+    try:
+        logging.info(f'[epochs] fitting UMAP on {len(evo_feats)} checkpoints...')
+        plot_umap_evolution(evo_feats, ids, out,
+                            n_traj=args.n_traj, id_label=id_label,
+                            txt_feats=txt_feats)
+    except ImportError:
+        logging.warning('[epochs] cuml not installed — skip UMAP plots'
+                        '  (pip install cuml-cu12 --extra-index-url=https://pypi.nvidia.com)')
 
     # ── Anisotropy evolution (backbone CLS — geometry of the VLM-usable features) ──
     logging.info(f'[epochs] computing anisotropy for {len(feats)} checkpoints...')

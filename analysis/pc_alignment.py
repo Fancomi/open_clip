@@ -83,8 +83,12 @@ def run_pc_alignment(args):
 
     probe_dir = args.probe_dir
     n_pcs     = getattr(args, 'n_pcs', 16)
-    # Place plots at <log_root>/probe/plots  (sibling of checkpoints/)
-    plots_dir = os.path.join(probe_dir, '..', '..', 'probe', 'plots')
+    plots_dir = os.path.normpath(os.path.join(probe_dir, '..', '..', 'probe', 'plots'))
+
+    sentinel = os.path.join(plots_dir, 'pc_alignment_grassmann.png')
+    if os.path.exists(sentinel) and not getattr(args, 'force', False):
+        logging.info(f'[pc_align] SKIP (sentinel exists, pass --force to rerun)  {probe_dir}')
+        return
     os.makedirs(plots_dir, exist_ok=True)
 
     # ── Collect and sort checkpoint files ────────────────────────────────────
@@ -114,7 +118,6 @@ def run_pc_alignment(args):
     has_txt = None
     for sid, fname in matched:
         data = np.load(os.path.join(probe_dir, fname))
-        # prefer proj_features (CLIP projection space, same dim as txt_features)
         img_key = 'proj_features' if 'proj_features' in data else \
                   ('features' if 'features' in data else list(data.keys())[0])
         all_feats.append(data[img_key].astype(np.float32))
@@ -125,6 +128,7 @@ def run_pc_alignment(args):
             has_txt = False
         logging.info(f'  {fname}: img={all_feats[-1].shape}'
                      + (f'  txt={all_txt_feats[-1].shape}' if has_txt else ''))
+
     txt_final = all_txt_feats[-1] if has_txt else None
 
     # ── Compute alignment: vs_first, vs_final, vs_prev ───────────────────────
