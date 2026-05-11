@@ -124,13 +124,22 @@ run "pe_clean2_lr2e4_sig_clip_1e5_100ep" 29811 \
     --lr 2e-4 --sigreg-target clip --sigreg-weight 1e-5 ${BASE100}
 
 # ============================================================
-# D. Muon + SigReg 最佳档组合（等 B/C 结果后判断）
-# 预设：用 B 最佳 muon_lr + C 最佳 sigreg_weight，200ep
-# 若 B/C 均无益，此组可跳过
+# D. Muon ratio sweep（adam=2e-4，muon×10~×50）
+# B 组只测了 ×0.5~×2.5，此组补全 ×10/×20/×30/×50
+# quick.sh from-scratch 比例：×30（muon_lr=0.01, adam_lr=3.4e-4）
 # ============================================================
-# （注释掉，等 B/C 结果出来手动决定是否加跑）
-# run "pe_clean2_muon_best_sig_best_200ep" 29812 \
-#     --opt muon --lr 2e-4 --muon-lr <best_mlr> \
-#     --sigreg-target cls --sigreg-weight <best_sig> ${BASE200}
+echo ""; echo "============ D. Muon ratio sweep (adam=2e-4) ============"
+
+run "pe_clean2_muon_a2e4_m2e3_100ep" 29830 \
+    --opt muon --lr 2e-4 --muon-lr 2e-3 ${BASE100}   # ×10
+
+run "pe_clean2_muon_a2e4_m4e3_100ep" 29831 \
+    --opt muon --lr 2e-4 --muon-lr 4e-3 ${BASE100}   # ×20
+
+run "pe_clean2_muon_a2e4_m6e3_100ep" 29832 \
+    --opt muon --lr 2e-4 --muon-lr 6e-3 ${BASE100}   # ×30，quick.sh 比例
+
+run "pe_clean2_muon_a2e4_m1e2_100ep" 29833 \
+    --opt muon --lr 2e-4 --muon-lr 1e-2 ${BASE100}   # ×50
 
 echo "======== finetune_pretrained_book_clean_v2 all done ========"

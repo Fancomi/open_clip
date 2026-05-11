@@ -286,29 +286,56 @@ echo "======== wm_coco representation space sweep done (15 runs × ~15min ≈ 4h
 # ════════════════════════════════════════════════════════════════════════════
 
 # ── G. KoLeo 细调：确认 w=0.05 是否为真实峰 ─────────────────────────────
-run "koleo002" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.02"
-run "koleo003" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03"
-run "koleo005b" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05"
-run "koleo007" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.07"
-run "koleo015" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.15"
+# run "koleo002" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.02"
+# run "koleo003" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03"
+# run "koleo005b" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05"
+# run "koleo007" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.07"
+# run "koleo015" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.15"
 
 # ── H. Uniformity 细调：确认 w=0.5 附近 ──────────────────────────────────
-run "uni03"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.3"
-run "uni05b" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.5"
-run "uni07"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.7"
+# run "uni03"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.3"
+# run "uni05b" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.5"
+# run "uni07"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.7"
 
 # ── I. 混合实验：top performers 组合 ─────────────────────────────────────
 # I1: KoLeo + Gap (两个 +15% 的组合)
-run "mix_koleo005_gap001" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --modality-gap-weight 0.001"
+# run "mix_koleo005_gap001" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --modality-gap-weight 0.001"
 # I2: KoLeo + Uniformity
-run "mix_koleo005_uni05"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --uniformity-weight 0.5"
+# run "mix_koleo005_uni05"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --uniformity-weight 0.5"
 # I3: Uniformity + Gap
-run "mix_uni05_gap001"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.5 --modality-gap-weight 0.001"
+# run "mix_uni05_gap001"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --uniformity-weight 0.5 --modality-gap-weight 0.001"
 # I4: 三合一
-run "mix_all3"            "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --uniformity-weight 0.5 --modality-gap-weight 0.001"
+# run "mix_all3"            "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --uniformity-weight 0.5 --modality-gap-weight 0.001"
 # I5: KoLeo + Uniformity (降低 uni 防止冲突)
-run "mix_koleo005_uni03"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --uniformity-weight 0.3"
+# run "mix_koleo005_uni03"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.05 --uniformity-weight 0.3"
 # I6: KoLeo higher + Uniformity
-run "mix_koleo1_uni05"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 1.0 --uniformity-weight 0.5"
+# run "mix_koleo1_uni05"    "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 1.0 --uniformity-weight 0.5"
 
 echo "======== Round 2: fine-tune + mix done (14 runs × ~15min ≈ 3.5h) ========"
+
+# ════════════════════════════════════════════════════════════════════════════
+# ★ Round 3: 小比例混合
+#
+# Round 2 混合用各自最优权重，总正则化压力翻倍导致过强。
+# 现在每个组分减半或更小，保持总正则化压力 ≈ 单一最优。
+#
+# 参照单一最优：
+#   koleo w=0.05   (+15.1% i2t, -6.4% t2i)
+#   uni   w=0.5    (+10.5% i2t, -2.9% t2i)
+#   gap   λ=0.001  (+15.1% i2t, -2.9% t2i)
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── J. KoLeo + Uniformity 减半 ──────────────────────────────────────────
+run "hmix_k025_u025"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --uniformity-weight 0.25"
+run "hmix_k003_u015"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03  --uniformity-weight 0.15"
+run "hmix_k001_u03"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.01  --uniformity-weight 0.3"
+
+# ── K. KoLeo + Gap 减半 ─────────────────────────────────────────────────
+run "hmix_k025_g0005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --modality-gap-weight 0.0005"
+run "hmix_k003_g0005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03  --modality-gap-weight 0.0005"
+
+# ── L. 三合一 减半/三分 ─────────────────────────────────────────────────
+run "hmix_all_half"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --uniformity-weight 0.25 --modality-gap-weight 0.0005"
+run "hmix_all_third"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.015 --uniformity-weight 0.15 --modality-gap-weight 0.0003"
+
+echo "======== Round 3: half-weight mix done (7 runs) ========"
