@@ -8,7 +8,7 @@
 
 ### 1.1 模态鸿沟问题
 
-前序研究（`modality_gap.md` → `modality_gap_wm.md` → `representation_uniformity.md`）发现：
+前序研究（`mgap_01_analysis.md` → `mgap_02_within_modal_repulsion.md` → `mgap_03_representation_uniformity.md`）发现：
 
 1. **模态鸿沟是 CLIP 范式的必然产物**：PC1 始终编码模态方向，线性分类器准确率接近 1.0
 2. **对抗鸿沟的方法均未奏效**：

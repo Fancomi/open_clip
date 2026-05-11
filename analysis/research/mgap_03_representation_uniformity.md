@@ -8,7 +8,7 @@
 
 ### 1.1 从 Modality Gap 到 Representation Quality
 
-前序研究（见 `modality_gap_wm.md`）发现：
+前序研究（见 `mgap_02_within_modal_repulsion.md`）发现：
 
 1. **Modality Gap 对 retrieval 性能影响有限**：Gap 贡献的模态轴在 ranking 时是常数偏移，不影响相对排序
 2. **Within-Modal Repulsion 的 +14% 收益来源不是"消除 gap"**：而是 txt repulsion 作为 uniformity regularizer 提升了文本分布均匀性，使 cos_pos 对更可区分

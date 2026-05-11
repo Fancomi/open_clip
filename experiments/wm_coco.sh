@@ -395,8 +395,29 @@ echo "======== Round 4: SIGReg ablation done (12 runs × ~15min ≈ 3h) ========
 #   - 模态方向反转，但强度/结构可能不同
 # ════════════════════════════════════════════════════════════════════════════
 
-run "antipodal"           "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --antipodal"
-run "anti_koleo005"       "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --antipodal --koleo-weight 0.05"
-run "anti_uni05"          "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --antipodal --uniformity-weight 0.5"
+run "antipodal"           "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --neg-mode antipodal"
+run "anti_koleo005"       "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --neg-mode antipodal --koleo-weight 0.05"
+run "anti_uni05"          "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --neg-mode antipodal --uniformity-weight 0.5"
 
 echo "======== Antipodal SigLIP done (3 runs × ~15min ≈ 45min) ========"
+
+# ════════════════════════════════════════════════════════════════════════════
+# ★ Orthogonal SigLIP: 正样本 cos→+1，负样本 cos→0 (正交)
+#
+# 核心思路：负样本与正样本无关，应正交而非对立
+#   正样本 (img_i, txt_i) 推向 cos=+1（标准对齐）
+#   负样本 (img_i, txt_j) 推向 cos=0（正交，而非 cos=-1）
+#
+# 实现：负样本 logits 使用 |cos| 代替 cos（偏离0即受罚）
+#
+# 预期：
+#   - 模态鸿沟消失（负样本无法利用反方向逃逸）
+#   - 有效秩提升（正交约束迫使利用更多维度）
+#   - 双向提升（i2t/t2i 无 trade-off）
+# ════════════════════════════════════════════════════════════════════════════
+
+run "orthogonal"          "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --neg-mode orthogonal"
+run "ortho_koleo005"      "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --neg-mode orthogonal --koleo-weight 0.05"
+run "ortho_uni05"         "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --neg-mode orthogonal --uniformity-weight 0.5"
+
+echo "======== Orthogonal SigLIP done (3 runs × ~15min ≈ 45min) ========"

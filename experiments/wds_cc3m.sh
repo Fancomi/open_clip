@@ -97,12 +97,25 @@ run_wds() {
 # ════════════════════════════════════════════════════════════════════════════
 # Antipodal SigLIP — CC3M 正式验证
 #
-# 对标 pe_dinov3_sigreg_siglip_muon，仅加 --antipodal
+# 对标 pe_dinov3_sigreg_siglip_muon，仅加 --neg-mode antipodal
 # CC3M 有模态 GAP（COCO 无），这才是 antipodal 的真正战场
 # ════════════════════════════════════════════════════════════════════════════
 
 run_wds "anti_sigreg_muon" "PE-Core-B-16-dinov3" 29560 \
-    "--siglip --antipodal --sigreg-target cls --sigreg-weight 1e-4 \
+    "--siglip --neg-mode antipodal --sigreg-target cls --sigreg-weight 1e-4 \
+     --epochs 10 --warmup 512 \
+     --lr ${LR} --opt muon --muon-lr ${MUON_LR} \
+     --probe-data ${PROBE_TSV}"
+
+# ════════════════════════════════════════════════════════════════════════════
+# Orthogonal SigLIP — CC3M 正式验证
+#
+# 对标 pe_dinov3_sigreg_siglip_muon，仅加 --neg-mode orthogonal
+# CC3M 有模态 GAP（COCO 无），orthogonal 的核心假设是消除 gap
+# ════════════════════════════════════════════════════════════════════════════
+
+run_wds "ortho_sigreg_muon" "PE-Core-B-16-dinov3" 29560 \
+    "--siglip --neg-mode orthogonal --sigreg-target cls --sigreg-weight 1e-4 \
      --epochs 10 --warmup 512 \
      --lr ${LR} --opt muon --muon-lr ${MUON_LR} \
      --probe-data ${PROBE_TSV}"

@@ -561,13 +561,16 @@ def parse_args(args):
         help='Use SigLip (sigmoid) loss.'
     )
     parser.add_argument(
-        "--antipodal",
-        default=False,
-        action="store_true",
+        "--neg-mode",
+        default='standard',
+        type=str,
+        choices=['standard', 'antipodal', 'orthogonal'],
         help=(
-            'Antipodal SigLIP: negate cosine similarity so that positive '
-            'pairs are pushed to cos=-1 (antipodal) and negatives away '
-            'from cos=-1. Requires --siglip.'
+            'Negative pair geometry in SigLIP loss. '
+            '"standard": cos→+1 for pos, cos→-1 for neg. '
+            '"antipodal": cos→-1 for pos, cos≠-1 for neg. '
+            '"orthogonal": cos→+1 for pos, |cos|→0 (cos→0) for neg. '
+            'Requires --siglip.'
         )
     )
     parser.add_argument(

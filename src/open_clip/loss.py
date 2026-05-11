@@ -345,13 +345,14 @@ class SigLipLoss(nn.Module):
             rank: int = 0,
             world_size: int = 1,
             dist_impl: Optional[str] = None,
-            antipodal: bool = False,
+            neg_mode: str = 'standard',
     ):
         super().__init__()
         self.cache_labels = cache_labels
         self.rank = rank
         self.world_size = world_size
-        self.antipodal = antipodal
+        assert neg_mode in ('standard', 'antipodal', 'orthogonal')
+        self.neg_mode = neg_mode
         self.dist_impl = dist_impl or 'bidir'  # default to bidir exchange for now, this will likely change
         assert self.dist_impl in ('bidir', 'shift', 'reduce', 'gather')
 
@@ -365,16 +366,22 @@ class SigLipLoss(nn.Module):
             labels = 2 * torch.eye(num_logits, device=device, dtype=dtype) + labels
         return labels
 
-    def get_logits(self, image_features, text_features, logit_scale, logit_bias=None):
+    def get_logits(self, image_features, text_features, logit_scale, logit_bias=None, negative_only=False):
         logits = logit_scale * image_features @ text_features.T
-        if self.antipodal:
+        if self.neg_mode == 'antipodal':
             logits = -logits
+        elif self.neg_mode == 'orthogonal':
+            if negative_only:
+                logits = logits.abs()
+            else:
+                eye = torch.eye(logits.shape[0], device=logits.device, dtype=torch.bool)
+                logits = torch.where(eye, logits, logits.abs())
         if logit_bias is not None:
             logits += logit_bias
         return logits
 
     def _loss(self, image_features, text_features, logit_scale, logit_bias=None, negative_only=False):
-        logits = self.get_logits(image_features, text_features, logit_scale, logit_bias)
+        logits = self.get_logits(image_features, text_features, logit_scale, logit_bias, negative_only=negative_only)
         labels = self.get_ground_truth(
             image_features.device,
             image_features.dtype,
@@ -1024,7 +1031,7 @@ class SIGRegContrastiveLoss(nn.Module):
             uniformity_weight: float = 0.0,
             uniformity_t: float = 2.0,
             koleo_weight: float = 0.0,
-            antipodal: bool = False,
+            neg_mode: str = 'standard',
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
@@ -1038,11 +1045,11 @@ class SIGRegContrastiveLoss(nn.Module):
         self.rank = rank
         self.world_size = world_size
         self.gather_with_grad = gather_with_grad
-        self.antipodal = antipodal
+        self.neg_mode = neg_mode
 
         if use_siglip:
             assert not use_horovod, "Horovod not supported for SigLip"
-            self.main_loss = SigLipLoss(rank=rank, world_size=world_size, dist_impl=dist_impl, antipodal=antipodal)
+            self.main_loss = SigLipLoss(rank=rank, world_size=world_size, dist_impl=dist_impl, neg_mode=neg_mode)
         else:
             self.main_loss = ClipLoss(
                 local_loss=local_loss, gather_with_grad=gather_with_grad,
@@ -1077,7 +1084,7 @@ class SIGRegContrastiveLoss(nn.Module):
         B = image_features.shape[0]
         # Diagonal similarities: element-wise dot product of matched pairs
         pos_logits = logit_scale * (image_features * text_features).sum(dim=-1)  # [B]
-        if self.antipodal:
+        if self.neg_mode == 'antipodal':
             pos_logits = -pos_logits
         if logit_bias is not None:
             pos_logits = pos_logits + logit_bias
@@ -1276,7 +1283,7 @@ class CLIPWithDINOLoss(nn.Module):
         world_size: int = 1,
         dist_impl: Optional[str] = None,
         n_global_crops: int = 2,
-        antipodal: bool = False,
+        neg_mode: str = 'standard',
     ):
         super().__init__()
         self.dino_loss_weight = dino_loss_weight
@@ -1287,7 +1294,7 @@ class CLIPWithDINOLoss(nn.Module):
 
         if use_siglip:
             self.contrastive_loss = SigLipLoss(
-                rank=rank, world_size=world_size, dist_impl=dist_impl, antipodal=antipodal
+                rank=rank, world_size=world_size, dist_impl=dist_impl, neg_mode=neg_mode
             )
         else:
             self.contrastive_loss = ClipLoss(

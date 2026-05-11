@@ -144,11 +144,16 @@ if [ "${GROUP}" = "ft" ] || [ "${GROUP}" = "all" ]; then
             --sigreg-target cls --sigreg-weight 1e-4
     fi
 
-    # A10-A11: Antipodal SigLIP（正样本推向 cos=-1）
-    run_smoke_syn "antipodal_siglip" "PE-Core-B-16" 29709 --siglip --antipodal
+    # A10-A13: neg_mode variants (antipodal / orthogonal)
+    run_smoke_syn "antipodal_siglip" "PE-Core-B-16" 29709 --siglip --neg-mode antipodal
 
     run_smoke_syn "antipodal_sigreg" "PE-Core-B-16" 29710 \
-        --siglip --antipodal --sigreg-target cls --sigreg-weight 1e-4
+        --siglip --neg-mode antipodal --sigreg-target cls --sigreg-weight 1e-4
+
+    run_smoke_syn "orthogonal_siglip" "PE-Core-B-16" 29711 --siglip --neg-mode orthogonal
+
+    run_smoke_syn "orthogonal_sigreg" "PE-Core-B-16" 29712 \
+        --siglip --neg-mode orthogonal --sigreg-target cls --sigreg-weight 1e-4
 fi
 
 # ======================================================================

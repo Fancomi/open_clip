@@ -17,7 +17,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
 
 LOGS_DIR    = Path("logs")   # default; overridden by --logs-dir at runtime
-MD_PATH     = Path("analysis/research/modality_gap_wm.md")
+MD_PATH     = Path("analysis/research/mgap_02_within_modal_repulsion.md")
 TABLE_START = "<!-- RESULTS_TABLE_START -->"
 TABLE_END   = "<!-- RESULTS_TABLE_END -->"
 

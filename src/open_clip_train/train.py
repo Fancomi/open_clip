@@ -490,7 +490,7 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
                     all_image_features.append(image_features.cpu())
                     all_text_features.append(text_features.cpu())
                     logit_scale = logit_scale.mean()
-                    sim_sign = -1.0 if getattr(args, 'antipodal', False) else 1.0
+                    sim_sign = -1.0 if getattr(args, 'neg_mode', 'standard') == 'antipodal' else 1.0
                     logits_per_image = sim_sign * logit_scale * image_features @ text_features.t()
                     logits_per_text = logits_per_image.t()
 
@@ -549,7 +549,7 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
                 text_features=all_txt,
                 logit_scale=logit_scale.cpu(),
                 num_captions_per_image=n_caps,
-                antipodal=getattr(args, 'antipodal', False),
+                neg_mode=getattr(args, 'neg_mode', 'standard'),
             )
             logging.info(f"Eval:   Step 3/3 - Metrics computed.")
             loss = cumulative_loss / num_samples
@@ -599,7 +599,7 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
 
 def get_clip_metrics(image_features, text_features, logit_scale,
                      num_captions_per_image: int = 1,
-                     antipodal: bool = False):
+                     neg_mode: str = 'standard'):
     """计算检索指标，支持 1:1 和 1:N（论文标准 COCO 5cap）两种协议。
 
     num_captions_per_image=1  : 标准 1:1，ground_truth[i] = i
@@ -612,7 +612,7 @@ def get_clip_metrics(image_features, text_features, logit_scale,
     n_img  = len(image_features)          # 图数 = total_pairs / n_caps
     n_txt  = len(text_features)           # 文本数 = n_img * n_caps
 
-    sim_sign = -1.0 if antipodal else 1.0
+    sim_sign = -1.0 if neg_mode == 'antipodal' else 1.0
     logging.info(f"Eval:   Step 1/3 - Computing similarity matrix "
                  f"[{n_img} imgs, {n_txt} texts, {n_caps} caps/img]...")
     # image_features: [n_img, d]  text_features: [n_txt, d]
