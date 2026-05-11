@@ -1,4 +1,5 @@
 """Visualization utilities for feature-space analysis."""
+import logging
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
@@ -357,6 +358,142 @@ def plot_anisotropy(metrics_dict: dict, save_path: str):
     print(f'[viz] {save_path}')
 
 
+# ── Evolution & trajectory shared helpers ────────────────────────────────────
+
+def _compute_lims(projs, txt_projs=None, pad=0.05):
+    """Compute shared xlim/ylim from all projection arrays."""
+    all_p = np.concatenate(projs + (txt_projs if txt_projs else []))
+    x0, x1 = all_p[:, 0].min(), all_p[:, 0].max()
+    y0, y1 = all_p[:, 1].min(), all_p[:, 1].max()
+    xp, yp = (x1 - x0) * pad, (y1 - y0) * pad
+    return (x0 - xp, x1 + xp), (y0 - yp, y1 + yp)
+
+
+def _make_evolution_gif(projs, txt_projs, step_ids, xlim, ylim,
+                        save_path, id_label, method, fps=4):
+    """Scatter GIF: one frame per checkpoint, shared coordinate system."""
+    from matplotlib.animation import FuncAnimation, PillowWriter
+    _C_IMG, _C_TXT = '#0055FF', '#FF2200'
+    n = len(step_ids)
+
+    fig, ax = plt.subplots(figsize=(5, 5))
+    scat_img = ax.scatter([], [], s=3, alpha=0.35, color=_C_IMG,
+                          label='Image', rasterized=True)
+    scat_txt = (ax.scatter([], [], s=3, alpha=0.35, color=_C_TXT,
+                           label='Text', rasterized=True)
+                if txt_projs is not None else None)
+    ax.set_xlim(xlim); ax.set_ylim(ylim); ax.axis('off')
+    if scat_txt is not None:
+        ax.legend(markerscale=3, fontsize=7, loc='lower right')
+    title_obj = ax.set_title('', fontsize=10)
+    artists = [scat_img] + ([scat_txt] if scat_txt else []) + [title_obj]
+
+    def _init():
+        scat_img.set_offsets(np.empty((0, 2)))
+        if scat_txt is not None:
+            scat_txt.set_offsets(np.empty((0, 2)))
+        return artists
+
+    def _update(frame):
+        scat_img.set_offsets(projs[frame][:, :2])
+        if scat_txt is not None:
+            scat_txt.set_offsets(txt_projs[frame][:, :2])
+        sfx = '+Text' if txt_projs is not None else ''
+        title_obj.set_text(
+            f'{id_label} {step_ids[frame]}  ({(frame+1)/n*100:.0f}%)  [{method}{sfx}]')
+        return artists
+
+    anim = FuncAnimation(fig, _update, init_func=_init,
+                         frames=n, interval=1000 // fps, blit=True)
+    anim.save(save_path, writer=PillowWriter(fps=fps))
+    plt.close(fig)
+    print(f'[viz] {save_path}')
+
+
+def _make_trajectory_gif(sample_pts, traj_colors, step_ids, xlim, ylim,
+                         save_path, id_label, fps=4, trail=10):
+    """Sliding-window trajectory animation."""
+    from matplotlib.animation import FuncAnimation, PillowWriter
+    n = len(step_ids)
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+    ax.set_xlim(xlim); ax.set_ylim(ylim)
+    ax.set_xlabel(f'PC1 (final {id_label.lower()})')
+    ax.set_ylabel(f'PC2 (final {id_label.lower()})')
+    title_obj = ax.set_title('', fontsize=9)
+
+    seg_artists, cur_scats = [], []
+    for pts, c in zip(sample_pts, traj_colors):
+        segs = [ax.plot([], [], '-', color=c, lw=1.2)[0] for _ in range(trail - 1)]
+        sc = ax.scatter([], [], color=c, s=50, marker='*',
+                        zorder=5, edgecolors='black', linewidths=0.4)
+        seg_artists.append(segs)
+        cur_scats.append(sc)
+
+    all_lines = [seg for segs in seg_artists for seg in segs]
+
+    def _init():
+        for segs in seg_artists:
+            for seg in segs:
+                seg.set_data([], []); seg.set_alpha(0.0)
+        for sc in cur_scats:
+            sc.set_offsets(np.empty((0, 2)))
+        title_obj.set_text('')
+        return all_lines + cur_scats + [title_obj]
+
+    def _update(frame):
+        win_start = max(0, frame - trail + 1)
+        w = frame - win_start + 1
+        alphas = np.linspace(0.08, 0.85, w) if w > 1 else [0.85]
+        for pts, segs in zip(sample_pts, seg_artists):
+            for slot in range(trail - 1):
+                seg = segs[slot]
+                seg_idx = win_start + slot
+                if slot < w - 1 and seg_idx + 1 <= frame:
+                    seg.set_data(pts[seg_idx:seg_idx+2, 0], pts[seg_idx:seg_idx+2, 1])
+                    seg.set_alpha(float(alphas[slot]))
+                else:
+                    seg.set_data([], []); seg.set_alpha(0.0)
+        for pts, sc in zip(sample_pts, cur_scats):
+            sc.set_offsets(pts[frame:frame+1, :2])
+        title_obj.set_text(
+            f'{id_label} {step_ids[frame]}  ({(frame+1)/n*100:.0f}%)  '
+            f'N={len(sample_pts)}  trail={trail}  *=current')
+        return all_lines + cur_scats + [title_obj]
+
+    anim = FuncAnimation(fig, _update, init_func=_init,
+                         frames=n, interval=1000 // fps, blit=True)
+    anim.save(save_path, writer=PillowWriter(fps=fps))
+    plt.close(fig)
+    print(f'[viz] {save_path}')
+
+
+def _draw_static_trajectory(sample_pts, traj_colors, step_ids, xlim, ylim,
+                            save_path, id_label, axis_prefix='PC'):
+    """Static trajectory: full paths overlaid, light→dark = early→late."""
+    n = len(step_ids)
+    alphas = np.linspace(0.10, 1.00, n)
+    lws    = np.linspace(0.3,  1.8,  n)
+    fig, ax = plt.subplots(figsize=(8, 7))
+    for pts, color in zip(sample_pts, traj_colors):
+        for t in range(len(pts) - 1):
+            ax.plot(pts[t:t+2, 0], pts[t:t+2, 1], '-', color=color,
+                    alpha=float(alphas[t+1]), lw=float(lws[t+1]))
+        ax.scatter(pts[0, 0],  pts[0, 1],  color=color, s=12, marker='o',
+                   alpha=float(alphas[0]), zorder=3)
+        ax.scatter(pts[-1, 0], pts[-1, 1], color=color, s=40, marker='*',
+                   alpha=1.0, zorder=4)
+    ax.set_xlim(xlim); ax.set_ylim(ylim)
+    ax.set_title(f'Sample Trajectories  N={len(sample_pts)}\n'
+                 f'o=start  *=end  light→dark = early→late {id_label.lower()}', fontsize=9)
+    ax.set_xlabel(f'{axis_prefix}1'); ax.set_ylabel(f'{axis_prefix}2')
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150); plt.close()
+    print(f'[viz] {save_path}')
+
+
+# ── Main evolution plots ─────────────────────────────────────────────────────
+
 def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
                    id_label='Step', fps=4, txt_feats=None):
     """PCA scatter GIF + trajectory GIF + static trajectory plot.
@@ -372,180 +509,35 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
     trajectory.png             : static full-path overlay
     """
     import os
-    from matplotlib.animation import FuncAnimation, PillowWriter
 
-    # PCA fitted on final checkpoint.
-    # When text features are available, fit on the JOINT image+text pool so the
-    # modality-gap direction can emerge as a principal component (matching how
-    # plot_scatter / _fit_pca works for pretrained-model gap plots).
-    # Image-only fit would bury the modality axis inside within-image variance.
+    # PCA fitted on final checkpoint (joint img+txt when text available)
     fit_data = (np.concatenate([step_feats[-1], txt_feats[-1]])
                 if txt_feats is not None else step_feats[-1])
     pca   = PCA(n_components=4).fit(fit_data)
-    projs = [pca.transform(f) for f in step_feats]          # image projections
+    projs = [pca.transform(f) for f in step_feats]
     txt_projs = ([pca.transform(f) for f in txt_feats]
-                 if txt_feats is not None else None)          # text  projections
+                 if txt_feats is not None else None)
 
-    n     = len(step_ids)
-    all_p = np.concatenate(projs + (txt_projs if txt_projs else []))
-    pad   = 0.05
-    x0, x1 = all_p[:, 0].min(), all_p[:, 0].max()
-    y0, y1 = all_p[:, 1].min(), all_p[:, 1].max()
-    xp = (x1 - x0) * pad; yp = (y1 - y0) * pad
-    xlim = (x0 - xp, x1 + xp); ylim = (y0 - yp, y1 + yp)
+    xlim, ylim = _compute_lims(projs, txt_projs)
 
-    colors_n = cm.viridis(np.linspace(0, 1, n))
-
-    # ── GIF 1: PCA scatter snapshot per checkpoint ────────────────────────────
-    # All frames projected into the SAME PCA space (fitted on final checkpoint),
-    # so the coordinate system is stable across the entire animation.
-    _C_IMG = '#0055FF'   # image cloud color
-    _C_TXT = '#FF2200'   # text  cloud color
-
-    fig_gif, ax_gif = plt.subplots(figsize=(5, 5))
-    scat_img = ax_gif.scatter([], [], s=3, alpha=0.35, color=_C_IMG,
-                              label='Image', rasterized=True)
-    scat_txt = (ax_gif.scatter([], [], s=3, alpha=0.35, color=_C_TXT,
-                               label='Text', rasterized=True)
-                if txt_projs is not None else None)
-    ax_gif.set_xlim(xlim); ax_gif.set_ylim(ylim); ax_gif.axis('off')
-    if scat_txt is not None:
-        ax_gif.legend(markerscale=3, fontsize=7, loc='lower right')
-    title_obj = ax_gif.set_title('', fontsize=10)
-
-    _scat_artists = [scat_img] + ([scat_txt] if scat_txt else []) + [title_obj]
-
-    def _init_scat():
-        scat_img.set_offsets(np.empty((0, 2)))
-        if scat_txt is not None:
-            scat_txt.set_offsets(np.empty((0, 2)))
-        return _scat_artists
-
-    def _update_scat(frame):
-        scat_img.set_offsets(projs[frame][:, :2])
-        if scat_txt is not None and txt_projs is not None:
-            scat_txt.set_offsets(txt_projs[frame][:, :2])
-        pct = (frame + 1) / n * 100
-        suffix = '+Text' if txt_projs is not None else ''
-        title_obj.set_text(f'{id_label} {step_ids[frame]}  ({pct:.0f}%)'
-                           f'  [PCA{suffix}]')
-        return _scat_artists
-
-    anim = FuncAnimation(fig_gif, _update_scat, init_func=_init_scat,
-                         frames=n, interval=1000 // fps, blit=True)
+    # GIF: PCA scatter snapshot per checkpoint
     gif_path = os.path.join(save_dir, f'{id_label.lower()}_evolution.gif')
-    anim.save(gif_path, writer=PillowWriter(fps=fps))
-    plt.close(fig_gif)
-    print(f'[viz] {gif_path}')
+    _make_evolution_gif(projs, txt_projs, step_ids, xlim, ylim,
+                        gif_path, id_label, 'PCA', fps)
 
-    # ── Sample selection (shared across both trajectory outputs) ───────────
-    rng    = np.random.default_rng(seed)
-    idx    = rng.choice(len(step_feats[0]), min(n_traj, len(step_feats[0])), replace=False)
+    # Trajectory GIF + static plot
+    rng = np.random.default_rng(seed)
+    idx = rng.choice(len(step_feats[0]), min(n_traj, len(step_feats[0])), replace=False)
     traj_colors = cm.tab20(np.linspace(0, 1, len(idx)))
-    # pre-collect per-sample point arrays
     sample_pts = [np.array([pr[si] for pr in projs]) for si in idx]
 
-    # ── GIF 2: sliding-window trajectory (last `trail` steps) ────────────────
-    # frame t shows trails from max(0, t-trail+1) → t  (rolling window)
-    # + step label and % of training completed
-    trail = 10
-    fig_traj, ax_traj = plt.subplots(figsize=(7, 7))
-    ax_traj.set_xlim(xlim); ax_traj.set_ylim(ylim)
-    ax_traj.set_xlabel(f'PC1 (final {id_label.lower()})')
-    ax_traj.set_ylabel(f'PC2 (final {id_label.lower()})')
-    traj_title = ax_traj.set_title('', fontsize=9)
-
-    # Each sample needs `trail-1` line segments; pre-create them
-    # seg_artists[i] = list of Line2D, one per segment slot in the window
-    seg_artists = []
-    cur_scats   = []
-    for pts, c in zip(sample_pts, traj_colors):
-        segs = [ax_traj.plot([], [], '-', color=c, lw=1.2)[0]
-                for _ in range(trail - 1)]
-        sc_cur = ax_traj.scatter([], [], color=c, s=50, marker='*',
-                                 zorder=5, edgecolors='black', linewidths=0.4)
-        seg_artists.append(segs)
-        cur_scats.append(sc_cur)
-
-    all_line_artists = [seg for segs in seg_artists for seg in segs]
-
-    def _init_traj():
-        for segs in seg_artists:
-            for seg in segs:
-                seg.set_data([], [])
-                seg.set_alpha(0.0)
-        for sc in cur_scats:
-            sc.set_offsets(np.empty((0, 2)))
-        traj_title.set_text('')
-        return all_line_artists + cur_scats + [traj_title]
-
-    def _update_traj(frame):
-        win_start = max(0, frame - trail + 1)
-        win_pts   = list(range(win_start, frame + 1))   # indices in window
-        w         = len(win_pts)
-        # alpha ramp: oldest segment is faintest
-        alphas = np.linspace(0.08, 0.85, w) if w > 1 else [0.85]
-
-        for pts, segs in zip(sample_pts, seg_artists):
-            # fill segments that are active in the window
-            for slot in range(trail - 1):
-                seg = segs[slot]
-                seg_idx = win_start + slot          # index of segment start
-                if slot < w - 1 and seg_idx + 1 <= frame:
-                    seg.set_data(pts[seg_idx:seg_idx + 2, 0],
-                                 pts[seg_idx:seg_idx + 2, 1])
-                    seg.set_alpha(float(alphas[slot]))
-                else:
-                    seg.set_data([], [])
-                    seg.set_alpha(0.0)
-        for pts, sc in zip(sample_pts, cur_scats):
-            sc.set_offsets(pts[frame:frame + 1, :2])
-
-        pct = (frame + 1) / n * 100
-        traj_title.set_text(
-            f'{id_label} {step_ids[frame]}  ({pct:.0f}% of training)  '
-            f'N={len(idx)}  trail={trail}  *=current')
-        return all_line_artists + cur_scats + [traj_title]
-
-    anim_traj = FuncAnimation(fig_traj, _update_traj, init_func=_init_traj,
-                              frames=n, interval=1000 // fps, blit=True)
-    traj_gif = os.path.join(save_dir, 'trajectory.gif')
-    anim_traj.save(traj_gif, writer=PillowWriter(fps=fps))
-    plt.close(fig_traj)
-    print(f'[viz] {traj_gif}')
-
-    # ── Static trajectory: full paths overlaid ────────────────────────────
-    alphas = np.linspace(0.10, 1.00, n); lws = np.linspace(0.3, 1.8, n)
-    fig, ax = plt.subplots(figsize=(8, 7))
-    for pts, color in zip(sample_pts, traj_colors):
-        for t in range(len(pts) - 1):
-            ax.plot(pts[t:t+2, 0], pts[t:t+2, 1], '-', color=color,
-                    alpha=float(alphas[t + 1]), lw=float(lws[t + 1]))
-        ax.scatter(pts[0, 0],  pts[0, 1],  color=color, s=12, marker='o',
-                   alpha=float(alphas[0]), zorder=3)
-        ax.scatter(pts[-1, 0], pts[-1, 1], color=color, s=40, marker='*',
-                   alpha=1.0, zorder=4)
-    ax.set_xlim(xlim); ax.set_ylim(ylim)
-    ax.set_title(f'Sample Trajectories  N={len(idx)}\n'
-                 f'o=start  *=end  light→dark = early→late {id_label.lower()}', fontsize=9)
-    ax.set_xlabel(f'PC1 (final {id_label.lower()})'); ax.set_ylabel(f'PC2 (final {id_label.lower()})')
-    plt.tight_layout()
-    traj_path = os.path.join(save_dir, 'trajectory.png')
-    plt.savefig(traj_path, dpi=150); plt.close(); print(f'[viz] {traj_path}')
+    _make_trajectory_gif(sample_pts, traj_colors, step_ids, xlim, ylim,
+                         os.path.join(save_dir, 'trajectory.gif'), id_label, fps)
+    _draw_static_trajectory(sample_pts, traj_colors, step_ids, xlim, ylim,
+                            os.path.join(save_dir, 'trajectory.png'), id_label)
 
 
 # ── UMAP evolution & trajectory ───────────────────────────────────────────────
-
-def _fit_umap(all_feats, n_neighbors=15, min_dist=0.1, seed=42):
-    """Fit UMAP on concatenated features; return reducer and 2-D embedding."""
-    try:
-        import umap
-    except ImportError:
-        raise ImportError("umap-learn is required: pip install umap-learn")
-    reducer = umap.UMAP(n_components=2, n_neighbors=n_neighbors,
-                        min_dist=min_dist, random_state=seed, verbose=False)
-    embedding = reducer.fit_transform(all_feats)
-    return reducer, embedding
 
 
 def plot_umap_evolution(step_feats, step_ids, save_dir,
@@ -553,126 +545,63 @@ def plot_umap_evolution(step_feats, step_ids, save_dir,
                         fps=4, txt_feats=None,
                         n_neighbors=15, min_dist=0.1,
                         subsample=2000):
-    """UMAP-based epoch/step evolution outputs.
-
-    Fits a single UMAP on a subsample drawn from ALL checkpoints (and text when
-    available) so the coordinate system is stable across frames.
+    """UMAP evolution GIF + static trajectory plot (GPU-accelerated via cuML).
 
     Outputs
     -------
     umap_evolution.gif    : cloud snapshot per checkpoint
-    umap_trajectory.png   : static full-path overlay for N random samples
+    umap_trajectory.png   : static full-path overlay for n_traj fixed samples
     """
     import os
-    from matplotlib.animation import FuncAnimation, PillowWriter
+    from cuml.manifold import UMAP as cuUMAP
 
-    n_ckpt = len(step_ids)
-    N      = len(step_feats[0])
+    n_ckpt  = len(step_ids)
+    N       = len(step_feats[0])
+    rng     = np.random.default_rng(seed)
+    has_txt = txt_feats is not None
 
-    # ── Build the joint pool for UMAP fit ────────────────────────────────────
-    rng = np.random.default_rng(seed)
+    # Fixed trajectory indices
+    traj_n   = min(n_traj, N)
+    traj_idx = rng.choice(N, traj_n, replace=False)
 
-    def _sub(arr):
-        """Subsample rows for faster UMAP fit."""
-        if subsample and len(arr) > subsample:
-            idx = rng.choice(len(arr), subsample, replace=False)
-            return arr[idx]
-        return arr
+    # Fit on final checkpoint
+    fit_img = step_feats[-1].astype(np.float32)
+    fit_data = (np.concatenate([fit_img, txt_feats[-1].astype(np.float32)])
+                if has_txt else fit_img)
+    logging.info(f'[umap-gpu] fit on final ckpt  {len(fit_data)} pts  '
+                 f'n_neighbors={n_neighbors}')
 
-    pool_parts = [_sub(f) for f in step_feats]
-    if txt_feats is not None:
-        pool_parts += [_sub(f) for f in txt_feats]
-    pool = np.concatenate(pool_parts).astype(np.float32)
+    reducer = cuUMAP(n_components=2, n_neighbors=n_neighbors,
+                     min_dist=min_dist, random_state=seed, verbose=False)
+    reducer.fit(fit_data)
+    logging.info('[umap-gpu] fit done')
 
-    # ── Fit UMAP on the joint pool ────────────────────────────────────────────
-    try:
-        import umap as umap_lib
-    except ImportError:
-        raise ImportError("umap-learn is required: pip install umap-learn")
-    reducer = umap_lib.UMAP(n_components=2, n_neighbors=n_neighbors,
-                             min_dist=min_dist, random_state=seed, verbose=False)
-    reducer.fit(pool)
+    # Transform every checkpoint
+    projs, txt_projs = [], []
+    for i, feats in enumerate(step_feats):
+        logging.info(f'[umap-gpu] transform ckpt {i+1}/{n_ckpt}  img  {feats.shape}')
+        projs.append(np.asarray(reducer.transform(feats.astype(np.float32))))
+        if has_txt:
+            logging.info(f'[umap-gpu] transform ckpt {i+1}/{n_ckpt}  txt  {txt_feats[i].shape}')
+            txt_projs.append(np.asarray(reducer.transform(txt_feats[i].astype(np.float32))))
+    txt_projs = txt_projs if has_txt else None
 
-    # ── Transform all checkpoints ─────────────────────────────────────────────
-    projs     = [reducer.transform(f.astype(np.float32)) for f in step_feats]
-    txt_projs = ([reducer.transform(f.astype(np.float32)) for f in txt_feats]
-                 if txt_feats is not None else None)
+    xlim, ylim = _compute_lims(projs, txt_projs)
 
-    all_pts = np.concatenate(projs + (txt_projs if txt_projs else []))
-    pad = 0.05
-    x0, x1 = all_pts[:, 0].min(), all_pts[:, 0].max()
-    y0, y1 = all_pts[:, 1].min(), all_pts[:, 1].max()
-    xp = (x1 - x0) * pad; yp = (y1 - y0) * pad
-    xlim = (x0 - xp, x1 + xp); ylim = (y0 - yp, y1 + yp)
-
-    colors_n = cm.viridis(np.linspace(0, 1, n_ckpt))
-    _C_IMG = '#0055FF'
-    _C_TXT = '#FF2200'
-
-    # ── GIF: UMAP cloud snapshot per checkpoint ───────────────────────────────
-    fig_gif, ax_gif = plt.subplots(figsize=(5, 5))
-    scat_img = ax_gif.scatter([], [], s=3, alpha=0.35, color=_C_IMG,
-                              label='Image', rasterized=True)
-    scat_txt = (ax_gif.scatter([], [], s=3, alpha=0.35, color=_C_TXT,
-                               label='Text', rasterized=True)
-                if txt_projs is not None else None)
-    ax_gif.set_xlim(xlim); ax_gif.set_ylim(ylim); ax_gif.axis('off')
-    if scat_txt is not None:
-        ax_gif.legend(markerscale=3, fontsize=7, loc='lower right')
-    title_obj = ax_gif.set_title('', fontsize=10)
-    _artists = [scat_img] + ([scat_txt] if scat_txt else []) + [title_obj]
-
-    def _init():
-        scat_img.set_offsets(np.empty((0, 2)))
-        if scat_txt is not None:
-            scat_txt.set_offsets(np.empty((0, 2)))
-        return _artists
-
-    def _update(frame):
-        scat_img.set_offsets(projs[frame])
-        if scat_txt is not None and txt_projs is not None:
-            scat_txt.set_offsets(txt_projs[frame])
-        pct = (frame + 1) / n_ckpt * 100
-        sfx = '+Text' if txt_projs is not None else ''
-        title_obj.set_text(f'{id_label} {step_ids[frame]}  ({pct:.0f}%)'
-                           f'  [UMAP{sfx}]')
-        return _artists
-
-    anim = FuncAnimation(fig_gif, _update, init_func=_init,
-                         frames=n_ckpt, interval=1000 // fps, blit=True)
+    # GIF: scatter snapshot per checkpoint
     gif_path = os.path.join(save_dir, 'umap_evolution.gif')
-    anim.save(gif_path, writer=PillowWriter(fps=fps))
-    plt.close(fig_gif)
-    print(f'[viz] {gif_path}')
+    _make_evolution_gif(projs, txt_projs, step_ids, xlim, ylim,
+                        gif_path, id_label, 'UMAP', fps)
 
-    # ── Static UMAP trajectory ────────────────────────────────────────────────
-    traj_idx    = rng.choice(N, min(n_traj, N), replace=False)
-    traj_colors = cm.tab20(np.linspace(0, 1, len(traj_idx)))
-    sample_pts  = [np.array([pr[si] for pr in projs]) for si in traj_idx]
-
-    alphas = np.linspace(0.10, 1.00, n_ckpt)
-    lws    = np.linspace(0.3, 1.8, n_ckpt)
-    fig, ax = plt.subplots(figsize=(8, 7))
-    for pts, color in zip(sample_pts, traj_colors):
-        for t in range(len(pts) - 1):
-            ax.plot(pts[t:t+2, 0], pts[t:t+2, 1], '-', color=color,
-                    alpha=float(alphas[t + 1]), lw=float(lws[t + 1]))
-        ax.scatter(pts[0, 0],  pts[0, 1],  color=color, s=12, marker='o',
-                   alpha=float(alphas[0]), zorder=3)
-        ax.scatter(pts[-1, 0], pts[-1, 1], color=color, s=40, marker='*',
-                   alpha=1.0, zorder=4)
-    ax.set_xlim(xlim); ax.set_ylim(ylim)
-    ax.set_title(f'UMAP Sample Trajectories  N={len(traj_idx)}\n'
-                 f'o=start  *=end  light→dark = early→late {id_label.lower()}',
-                 fontsize=9)
-    ax.set_xlabel('UMAP-1'); ax.set_ylabel('UMAP-2')
-    plt.tight_layout()
-    traj_path = os.path.join(save_dir, 'umap_trajectory.png')
-    plt.savefig(traj_path, dpi=150); plt.close()
-    print(f'[viz] {traj_path}')
+    # Static trajectory
+    traj_colors = cm.tab20(np.linspace(0, 1, traj_n))
+    sample_pts  = [np.array([projs[t][traj_idx[i]] for t in range(n_ckpt)])
+                   for i in range(traj_n)]
+    _draw_static_trajectory(sample_pts, traj_colors, step_ids, xlim, ylim,
+                            os.path.join(save_dir, 'umap_trajectory.png'),
+                            id_label, axis_prefix='UMAP')
 
 
-# ── Crop probe: original vs global crop vs local crop across all models ────────
 
 def plot_crop_probe(img_feats, crops_feats, fps_idx, out_path):
     """Show where DINOv3-style global/local crops land vs the full-image features.

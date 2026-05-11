@@ -29,7 +29,8 @@ def run(model, classifier, dataloader, args):
                 # predict
                 output = model(image=images)
                 image_features = output['image_features'] if isinstance(output, dict) else output[0]
-                logits = 100. * image_features @ classifier
+                sim_sign = -1.0 if getattr(args, 'antipodal', False) else 1.0
+                logits = sim_sign * 100. * image_features @ classifier
 
             # measure accuracy
             acc1, acc5 = accuracy(logits, target, topk=(1, 5))

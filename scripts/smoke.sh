@@ -143,6 +143,12 @@ if [ "${GROUP}" = "ft" ] || [ "${GROUP}" = "all" ]; then
             --pretrained "${SIG2_CKPT}" --siglip \
             --sigreg-target cls --sigreg-weight 1e-4
     fi
+
+    # A10-A11: Antipodal SigLIP（正样本推向 cos=-1）
+    run_smoke_syn "antipodal_siglip" "PE-Core-B-16" 29709 --siglip --antipodal
+
+    run_smoke_syn "antipodal_sigreg" "PE-Core-B-16" 29710 \
+        --siglip --antipodal --sigreg-target cls --sigreg-weight 1e-4
 fi
 
 # ======================================================================

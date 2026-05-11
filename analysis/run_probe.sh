@@ -15,14 +15,14 @@
 # bash analysis/probe.sh layers eupe
 
 
-# bash analysis/probe.sh probe_full logs  # --rerun  (旧 wmc_ 系列)
-# bash analysis/probe.sh log_parse ft_
+bash analysis/probe.sh probe_full logs --rerun
+# bash analysis/probe.sh log_parse wds_
 
 # bash analysis/probe.sh probe_full logs/20260510_0_ft_book #--rerun
 # bash analysis/probe.sh log_parse ft_ --logs-dir logs/20260510_0_ft_book --plot-dir analysis/research/plots/20260510_0_ft_book
 
-bash analysis/probe.sh probe_full logs/20260510_wmc
-bash analysis/probe.sh log_parse wmc_ --logs-dir logs/20260510_wmc --plot-dir analysis/research/plots/20260510_wmc
+# bash analysis/probe.sh probe_full logs/20260510_wmc
+# bash analysis/probe.sh log_parse wmc_ --logs-dir logs/20260510_wmc --plot-dir analysis/research/plots/20260510_wmc
 
 
 # python3 analysis/modality_gap.py \

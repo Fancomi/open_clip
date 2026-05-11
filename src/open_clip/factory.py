@@ -789,6 +789,10 @@ def _set_model_device_and_precision(
 
 
 def create_loss(args):
+    antipodal = getattr(args, 'antipodal', False)
+    if antipodal:
+        assert getattr(args, 'siglip', False), "--antipodal requires --siglip"
+
     if args.distill:
         return DistillClipLoss(
             local_loss=args.local_loss,
@@ -827,6 +831,7 @@ def create_loss(args):
             uniformity_weight=getattr(args, 'uniformity_weight', 0.0),
             uniformity_t=getattr(args, 'uniformity_t', 2.0),
             koleo_weight=getattr(args, 'koleo_weight', 0.0),
+            antipodal=antipodal,
         )
     elif getattr(args, 'dinov3', False):
         # CLIPWithDINOLoss：需要从 model 中读取 embed_dim，由 main.py 传入
@@ -847,6 +852,7 @@ def create_loss(args):
             world_size=args.world_size,
             dist_impl=getattr(args, 'loss_dist_impl', None),
             n_global_crops=getattr(args, 'dino_n_global_crops', 2),
+            antipodal=antipodal,
         )
     elif getattr(args, 'multi_teacher', False):
         weights = None
@@ -871,6 +877,7 @@ def create_loss(args):
             rank=args.rank,
             world_size=args.world_size,
             dist_impl=args.loss_dist_impl,
+            antipodal=antipodal,
         )
 
     return ClipLoss(

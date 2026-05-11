@@ -345,11 +345,13 @@ class SigLipLoss(nn.Module):
             rank: int = 0,
             world_size: int = 1,
             dist_impl: Optional[str] = None,
+            antipodal: bool = False,
     ):
         super().__init__()
         self.cache_labels = cache_labels
         self.rank = rank
         self.world_size = world_size
+        self.antipodal = antipodal
         self.dist_impl = dist_impl or 'bidir'  # default to bidir exchange for now, this will likely change
         assert self.dist_impl in ('bidir', 'shift', 'reduce', 'gather')
 
@@ -365,6 +367,8 @@ class SigLipLoss(nn.Module):
 
     def get_logits(self, image_features, text_features, logit_scale, logit_bias=None):
         logits = logit_scale * image_features @ text_features.T
+        if self.antipodal:
+            logits = -logits
         if logit_bias is not None:
             logits += logit_bias
         return logits
@@ -1020,6 +1024,7 @@ class SIGRegContrastiveLoss(nn.Module):
             uniformity_weight: float = 0.0,
             uniformity_t: float = 2.0,
             koleo_weight: float = 0.0,
+            antipodal: bool = False,
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
@@ -1033,10 +1038,11 @@ class SIGRegContrastiveLoss(nn.Module):
         self.rank = rank
         self.world_size = world_size
         self.gather_with_grad = gather_with_grad
+        self.antipodal = antipodal
 
         if use_siglip:
             assert not use_horovod, "Horovod not supported for SigLip"
-            self.main_loss = SigLipLoss(rank=rank, world_size=world_size, dist_impl=dist_impl)
+            self.main_loss = SigLipLoss(rank=rank, world_size=world_size, dist_impl=dist_impl, antipodal=antipodal)
         else:
             self.main_loss = ClipLoss(
                 local_loss=local_loss, gather_with_grad=gather_with_grad,
@@ -1071,6 +1077,8 @@ class SIGRegContrastiveLoss(nn.Module):
         B = image_features.shape[0]
         # Diagonal similarities: element-wise dot product of matched pairs
         pos_logits = logit_scale * (image_features * text_features).sum(dim=-1)  # [B]
+        if self.antipodal:
+            pos_logits = -pos_logits
         if logit_bias is not None:
             pos_logits = pos_logits + logit_bias
         return -F.logsigmoid(pos_logits).sum() / B
@@ -1268,6 +1276,7 @@ class CLIPWithDINOLoss(nn.Module):
         world_size: int = 1,
         dist_impl: Optional[str] = None,
         n_global_crops: int = 2,
+        antipodal: bool = False,
     ):
         super().__init__()
         self.dino_loss_weight = dino_loss_weight
@@ -1278,7 +1287,7 @@ class CLIPWithDINOLoss(nn.Module):
 
         if use_siglip:
             self.contrastive_loss = SigLipLoss(
-                rank=rank, world_size=world_size, dist_impl=dist_impl
+                rank=rank, world_size=world_size, dist_impl=dist_impl, antipodal=antipodal
             )
         else:
             self.contrastive_loss = ClipLoss(

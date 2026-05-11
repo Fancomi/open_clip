@@ -326,16 +326,38 @@ echo "======== Round 2: fine-tune + mix done (14 runs × ~15min ≈ 3.5h) ======
 # ════════════════════════════════════════════════════════════════════════════
 
 # ── J. KoLeo + Uniformity 减半 ──────────────────────────────────────────
-run "hmix_k025_u025"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --uniformity-weight 0.25"
-run "hmix_k003_u015"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03  --uniformity-weight 0.15"
-run "hmix_k001_u03"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.01  --uniformity-weight 0.3"
+# run "hmix_k025_u025"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --uniformity-weight 0.25"
+# run "hmix_k003_u015"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03  --uniformity-weight 0.15"
+# run "hmix_k001_u03"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.01  --uniformity-weight 0.3"
 
 # ── K. KoLeo + Gap 减半 ─────────────────────────────────────────────────
-run "hmix_k025_g0005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --modality-gap-weight 0.0005"
-run "hmix_k003_g0005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03  --modality-gap-weight 0.0005"
+# run "hmix_k025_g0005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --modality-gap-weight 0.0005"
+# run "hmix_k003_g0005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03  --modality-gap-weight 0.0005"
 
 # ── L. 三合一 减半/三分 ─────────────────────────────────────────────────
-run "hmix_all_half"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --uniformity-weight 0.25 --modality-gap-weight 0.0005"
-run "hmix_all_third"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.015 --uniformity-weight 0.15 --modality-gap-weight 0.0003"
+# run "hmix_all_half"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --uniformity-weight 0.25 --modality-gap-weight 0.0005"
+# run "hmix_all_third"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.015 --uniformity-weight 0.15 --modality-gap-weight 0.0003"
 
 echo "======== Round 3: half-weight mix done (7 runs) ========"
+
+# ════════════════════════════════════════════════════════════════════════════
+# ★ Antipodal SigLIP: cos=-1 对齐正样本，cos≠-1 推离负样本
+#
+# 核心思路：不再对抗模态鸿沟，而是「承认」它——
+#   正样本 (img_i, txt_i) 推向超球面完全相反方向 (cos=-1)
+#   负样本 (img_i, txt_j) 远离相反方向
+#
+# 实现：仅取反 SigLIP 余弦相似度（logits = -scale*cos + bias），
+#       标签不变，分布式逻辑不变
+#
+# 预期：
+#   - sim_pos 应从 ~0 趋向 -1（而非 +1）
+#   - 更均匀的特征分布（每个 text 推远 1 个正样本、容忍 N-1 个负样本）
+#   - 模态方向反转，但强度/结构可能不同
+# ════════════════════════════════════════════════════════════════════════════
+
+run "antipodal"           "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --antipodal"
+run "anti_koleo005"       "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --antipodal --koleo-weight 0.05"
+run "anti_uni05"          "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --antipodal --uniformity-weight 0.5"
+
+echo "======== Antipodal SigLIP done (3 runs × ~15min ≈ 45min) ========"
