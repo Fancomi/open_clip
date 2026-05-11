@@ -326,16 +326,55 @@ echo "======== Round 2: fine-tune + mix done (14 runs × ~15min ≈ 3.5h) ======
 # ════════════════════════════════════════════════════════════════════════════
 
 # ── J. KoLeo + Uniformity 减半 ──────────────────────────────────────────
-run "hmix_k025_u025"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --uniformity-weight 0.25"
-run "hmix_k003_u015"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03  --uniformity-weight 0.15"
-run "hmix_k001_u03"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.01  --uniformity-weight 0.3"
+# run "hmix_k025_u025"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --uniformity-weight 0.25"
+# run "hmix_k003_u015"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03  --uniformity-weight 0.15"
+# run "hmix_k001_u03"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.01  --uniformity-weight 0.3"
 
 # ── K. KoLeo + Gap 减半 ─────────────────────────────────────────────────
-run "hmix_k025_g0005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --modality-gap-weight 0.0005"
-run "hmix_k003_g0005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03  --modality-gap-weight 0.0005"
+# run "hmix_k025_g0005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --modality-gap-weight 0.0005"
+# run "hmix_k003_g0005" "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.03  --modality-gap-weight 0.0005"
 
 # ── L. 三合一 减半/三分 ─────────────────────────────────────────────────
-run "hmix_all_half"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --uniformity-weight 0.25 --modality-gap-weight 0.0005"
-run "hmix_all_third"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.015 --uniformity-weight 0.15 --modality-gap-weight 0.0003"
+# run "hmix_all_half"   "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.025 --uniformity-weight 0.25 --modality-gap-weight 0.0005"
+# run "hmix_all_third"  "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --koleo-weight 0.015 --uniformity-weight 0.15 --modality-gap-weight 0.0003"
 
 echo "======== Round 3: half-weight mix done (7 runs) ========"
+
+# ════════════════════════════════════════════════════════════════════════════
+# ★ Round 4: SIGReg 关联实验 — 四者关系全面消融
+#
+# 核心问题：SIGReg (pre-norm) 与 KoLeo/Uni/Gap (post-norm) 是否冗余？
+#
+# 已有参照：
+#   baseline (sig=1e-4):           i2t=0.0172  t2i=0.0140
+#   koleo005 (sig=1e-4, k=0.05):  i2t=0.0198  t2i=0.0131
+#
+# 实验矩阵：
+#   A. SIGReg weight sweep (无 post-norm reg)     5 runs
+#   B. post-norm reg 替代 SIGReg (sigreg=0)       4 runs
+#   C. KoLeo × SIGReg 交互                        3 runs
+#   共 12 runs，~3h
+# ════════════════════════════════════════════════════════════════════════════
+
+# sigreg-target=cls 保留（控制模型结构），weight=0 仅禁用 loss
+MUON_BASE="--siglip --sigreg-target cls --opt muon --muon-lr ${MUON_LR} --probe-data ${PROBE_TSV}"
+
+# ── A. SIGReg weight sweep（无 post-norm 正则）────────────────────────────
+run "no_reg"    "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 0"
+run "sig_1e5"   "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 1e-5"
+run "sig_1e4"   "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 1e-4"
+run "sig_1e3"   "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 1e-3"
+run "sig_1e2"   "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 1e-2"
+
+# ── B. 无 SIGReg + 单一 post-norm 正则 ──────────────────────────────────
+run "k005_nosig"     "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 0 --koleo-weight 0.05"
+run "u05_nosig"      "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 0 --uniformity-weight 0.5"
+run "g001_nosig"     "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 0 --modality-gap-weight 0.001"
+run "k003_u03_nosig" "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 0 --koleo-weight 0.03 --uniformity-weight 0.3"
+
+# ── C. KoLeo × SIGReg weight 交互 ───────────────────────────────────────
+run "k005_sig1e5" "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 1e-5 --koleo-weight 0.05"
+run "k005_sig1e3" "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 1e-3 --koleo-weight 0.05"
+run "k005_sig1e2" "PE-Core-B-16-dinov3" 29537 "${MUON_BASE} --sigreg-weight 1e-2 --koleo-weight 0.05"
+
+echo "======== Round 4: SIGReg ablation done (12 runs × ~15min ≈ 3h) ========"

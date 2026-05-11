@@ -21,15 +21,24 @@ MD_PATH     = Path("analysis/research/modality_gap_wm.md")
 TABLE_START = "<!-- RESULTS_TABLE_START -->"
 TABLE_END   = "<!-- RESULTS_TABLE_END -->"
 
+_DEFAULT_MD_MARKER = "RESULTS_TABLE"  # marker name (without <!-- ... -->)
+
 
 # ── tag parsing ───────────────────────────────────────────────────────────────
 
-# modifier → (modal_sides, lambda_scale)
+# modifier → (method_label, lambda_scale)
+# scale=None means use float-decode (e.g. wm's special encoding)
 _MOD = {
-    'img':  ('img',  0.01),
-    'txt':  ('txt',  0.01),
-    'both': ('both', 0.01),
-    'wm':   ('both', None),   # wm uses special lambda decoding
+    'img':   ('img',     0.01),
+    'txt':   ('txt',     0.01),
+    'both':  ('both',    0.01),
+    'wm':    ('both',    None),    # wm uses special lambda decoding
+    'koleo': ('koleo',   0.001),   # koleo005 → λ=0.005
+    'uni':   ('uni',     0.001),   # uni05  → λ=0.05
+    'gap':   ('gap',     0.001),   # gap001 → λ=0.001
+    'hmix':  ('hmix',    None),    # hmix: no single λ, use tag as-is
+    'mix':   ('mix',     None),    # mix_*: composite
+    'ada':   ('ada',     0.001),
 }
 
 def _decode_wm_lam(s: str) -> float:
@@ -38,29 +47,44 @@ def _decode_wm_lam(s: str) -> float:
     return int(s) / 10.0                              # 15→1.5
 
 def parse_tag(dirname: str):
-    """dirname {anything}[_{MMDD}_{HHMM}] → (tag, sides, lambda)
+    """dirname {anything}[_{MMDD}_{HHMM}] → (tag, method, lambda)
 
-    Supports any prefix (wmc_, ft_, eval_, etc.) and any naming convention.
-    The trailing _{4digits}_{4digits} timestamp is stripped if present; the
-    rest becomes the tag. Without a timestamp the full dirname is used as tag.
+    Strips optional trailing timestamp _DDDD_DDDD and any leading experiment
+    batch prefix (e.g. wmc_, ft_) to produce a clean short tag.
+
+    Supports generic modifier naming: koleo, uni, gap, wm, img, txt, both, hmix, mix, ada.
     """
     # Strip optional trailing timestamp  _DDDD_DDDD  (e.g. _0506_2307)
     m = re.match(r"^(.+?)_(\d{4}_\d{4})/?$", dirname)
-    tag = m.group(1) if m else dirname.rstrip("/")
+    core = m.group(1) if m else dirname.rstrip("/")
 
-    if re.match(r"^baseline\d*$", tag):
-        return tag, "—", 0.0
+    # baseline: any name that starts with "baseline" (after stripping batch prefix)
+    core_stripped = re.sub(r'^(wmc|ft|eval|ada)_', '', core)
+    core_nodate   = re.sub(r'_\d{4}(_\d{4})?$', '', core_stripped)  # strip _MMDD or _MMDD_HHMM
+    if re.match(r'^baseline', core_nodate):
+        return core_nodate, "—", 0.0
+
+    # Strip well-known batch prefix (wmc_, ft_, eval_, etc.) for display tag
+    tag_display = re.sub(r'^(wmc|ft|eval|ada)_', '', core)
+
+    # For regex matching, also strip round-suffix _r\d+ and date suffix _MMDD
+    # e.g. koleo002_0510_r2 → koleo002, hmix_k001_u03_0510_r3 → hmix_k001_u03
+    match_core = re.sub(r'_r\d+$', '', tag_display)   # strip _rN
+    match_core = re.sub(r'_\d{4}$', '', match_core)    # strip trailing _MMDD
 
     # Generic: optional_prefix _ modifier number
-    mo = re.match(r"^(?:(.+)_)?(img|txt|both|wm)(\d+)$", tag)
+    mo = re.match(r"^(?:(.+)_)?(img|txt|both|wm|koleo|uni|gap|ada)(\d+)$", match_core)
     if mo:
         prefix, mod, num = mo.group(1), mo.group(2), mo.group(3)
-        modal, scale = _MOD[mod]
-        sides = f"{prefix}_{modal}" if prefix else modal
-        lam   = _decode_wm_lam(num) if scale is None else int(num) * scale
-        return tag, sides, lam
+        method_lbl, scale = _MOD[mod]
+        sides  = f"{prefix}_{method_lbl}" if prefix else method_lbl
+        if scale is None:
+            lam = _decode_wm_lam(num)
+        else:
+            lam = int(num) * scale
+        return tag_display, sides, lam
 
-    return tag, "?", 0.0
+    return tag_display, "?", 0.0
 
 
 # ── log parsing ───────────────────────────────────────────────────────────────
@@ -120,22 +144,20 @@ def parse_log(log_path: Path) -> dict | None:
 
     last_ep = max(complete)
     best_ep = max(complete, key=lambda ep: complete[ep].get('i2t_r1', 0))
+    best    = complete[best_ep]
     return {
-        'epoch':       last_ep,
-        'i2t_r1':      complete[last_ep].get('i2t_r1'),
-        'i2t_r5':      complete[last_ep].get('i2t_r5'),
-        'i2t_r10':     complete[last_ep].get('i2t_r10'),
-        't2i_r1':      complete[last_ep].get('t2i_r1'),
-        't2i_r5':      complete[last_ep].get('t2i_r5'),
-        't2i_r10':     complete[last_ep].get('t2i_r10'),
-        'val_loss':    complete[last_ep].get('val_loss'),
-        'scale':       last_scale,
-        'bias':        last_bias,
-        # best epoch (by i2t R@1)
-        'best_epoch':  best_ep,
-        'best_i2t_r1': complete[best_ep].get('i2t_r1'),
-        'best_t2i_r1': complete[best_ep].get('t2i_r1'),
-        'history':     {ep: v for ep, v in sorted(complete.items())},
+        'epoch':      last_ep,       # last completed epoch (training completeness)
+        'best_epoch': best_ep,       # epoch with best i2t R@1 (primary)
+        'i2t_r1':    best.get('i2t_r1'),
+        'i2t_r5':    best.get('i2t_r5'),
+        'i2t_r10':   best.get('i2t_r10'),
+        't2i_r1':    best.get('t2i_r1'),
+        't2i_r5':    best.get('t2i_r5'),
+        't2i_r10':   best.get('t2i_r10'),
+        'val_loss':  best.get('val_loss'),
+        'scale':     last_scale,
+        'bias':      last_bias,
+        'history':   {ep: v for ep, v in sorted(complete.items())},
     }
 
 
@@ -144,57 +166,47 @@ def parse_log(log_path: Path) -> dict | None:
 def _f(v, d=4):
     return "—" if v is None else f"{v:.{d}f}"
 
-def _lam_str(sides, lam):
-    if sides == "—": return "0"
-    return f"{lam:.2f}".rstrip("0").rstrip(".")
-
 def build_table(entries: list) -> str:
-    hdr = ("| 实验 | sides | λ | i2t R@1 | t2i R@1 | "
-           "i2t R@5 | t2i R@5 | val_loss | Scale | Epoch |\n")
-    sep = ("|------|-------|---|---------|---------|"
-           "---------|---------|----------|-------|-------|\n")
+    hdr = "| 实验 | i2t R@1 | t2i R@1 | i2t R@5 | t2i R@5 | val_loss | Scale | Epoch |\n"
+    sep = "|------|---------|---------|---------|---------|----------|-------|-------|\n"
     rows = []
-    for tag, sides, lam, r in entries:
+    for tag, _, _, r in entries:
         note = " ★" if r["epoch"] is not None and r["epoch"] < 18 else ""
         rows.append(
-            f"| {tag} | {sides} | {_lam_str(sides, lam)} "
-            f"| {_f(r['i2t_r1'])} | {_f(r['t2i_r1'])} "
+            f"| {tag} | {_f(r['i2t_r1'])} | {_f(r['t2i_r1'])} "
             f"| {_f(r['i2t_r5'])} | {_f(r['t2i_r5'])} "
             f"| {_f(r.get('val_loss'), 4)} "
-            f"| {_f(r['scale'])} | {r['epoch']}{note} |\n"
+            f"| {_f(r['scale'])} | {r['best_epoch']}{note} |\n"
         )
     return hdr + sep + "".join(rows)
 
 
 # ── MD injection ──────────────────────────────────────────────────────────────
 
-def inject_md(table: str):
-    if not MD_PATH.exists():
-        logging.warning(f"[log_parser] MD not found: {MD_PATH}")
+def inject_md(table: str, md_path: Path = None, marker: str = None):
+    path = md_path or MD_PATH
+    start_tag = f"<!-- {marker or _DEFAULT_MD_MARKER}_START -->"
+    end_tag   = f"<!-- {marker or _DEFAULT_MD_MARKER}_END -->"
+    if not path.exists():
+        logging.warning(f"[log_parser] MD not found: {path}")
         return
-    md = MD_PATH.read_text()
-    if TABLE_START not in md or TABLE_END not in md:
-        logging.warning(f"[log_parser] table markers missing in {MD_PATH}")
+    md = path.read_text()
+    if start_tag not in md or end_tag not in md:
+        logging.warning(f"[log_parser] table markers '{start_tag}' / '{end_tag}' missing in {path}")
         return
     new_md = re.sub(
-        re.escape(TABLE_START) + r".*?" + re.escape(TABLE_END),
-        TABLE_START + "\n" + table + TABLE_END,
+        re.escape(start_tag) + r".*?" + re.escape(end_tag),
+        start_tag + "\n" + table + end_tag,
         md, flags=re.DOTALL,
     )
     if new_md != md:
-        MD_PATH.write_text(new_md)
-        logging.info(f"[log_parser] MD updated: {MD_PATH}")
+        path.write_text(new_md)
+        logging.info(f"[log_parser] MD updated: {path}")
 
 
 # ── plots ─────────────────────────────────────────────────────────────────────
 
-_MOD_ORDER = {"—": 0, "img": 1, "txt": 2, "both": 3}
-
-def _sides_sort_key(sides: str) -> tuple:
-    """Sort by modifier family first, then series prefix alphabetically."""
-    mod = sides.split('_')[-1]
-    prefix = sides[: -(len(mod) + 1)] if '_' in sides else ''
-    return (_MOD_ORDER.get(mod, 99), prefix)
+_METHOD_ORDER = {'—': 0, 'gap': 1, 'koleo': 2, 'uni': 3, 'ada': 4}
 
 def _plot_results(entries: list, out_dir: Path):
     """Bar chart: best i2t/t2i R@1 per experiment; training curves."""
@@ -203,8 +215,8 @@ def _plot_results(entries: list, out_dir: Path):
     # bar: sorted by tag name
     bar_entries = sorted(entries, key=lambda e: e[0])
     tags   = [e[0] for e in bar_entries]
-    i2t_r1 = [e[3].get('best_i2t_r1') or 0 for e in bar_entries]
-    t2i_r1 = [e[3].get('best_t2i_r1') or 0 for e in bar_entries]
+    i2t_r1 = [e[3].get('i2t_r1') or 0 for e in bar_entries]
+    t2i_r1 = [e[3].get('t2i_r1') or 0 for e in bar_entries]
 
     # ── bar chart ─────────────────────────────────────────────────────────
     fig, ax = plt.subplots(figsize=(max(8, len(tags) * 0.6), 4))
@@ -249,6 +261,75 @@ def _plot_results(entries: list, out_dir: Path):
     logging.info(f'[log_parser] {p}')
 
 
+# ── JSON + MD fragment export ─────────────────────────────────────────────────
+
+def export_results(entries: list, out_dir: Path):
+    """Write results.json and results_md.md alongside the plots.
+
+    results.json  — structured data: list of {tag, sides, lambda, metrics}
+    results_md.md — ready-to-paste MD fragment: table + brief per-group summary
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── JSON ──────────────────────────────────────────────────────────────────
+    records = []
+    for tag, method, lam, r in entries:
+        records.append({
+            "tag":        tag,
+            "method":     method,
+            "lambda":     lam,
+            "best_epoch": r.get("best_epoch"),
+            "last_epoch": r.get("epoch"),
+            "i2t_r1":    r.get("i2t_r1"),
+            "i2t_r5":    r.get("i2t_r5"),
+            "i2t_r10":   r.get("i2t_r10"),
+            "t2i_r1":    r.get("t2i_r1"),
+            "t2i_r5":    r.get("t2i_r5"),
+            "t2i_r10":   r.get("t2i_r10"),
+            "val_loss":  r.get("val_loss"),
+            "scale":     r.get("scale"),
+            "bias":      r.get("bias"),
+        })
+    json_path = out_dir / "results.json"
+    with open(json_path, "w") as fh:
+        json.dump(records, fh, indent=2, ensure_ascii=False)
+    logging.info(f"[log_parser] JSON → {json_path}")
+
+    # ── MD fragment (table + compact summary) ─────────────────────────────────
+    table = build_table(entries)
+
+    # Top-5 by i2t_r1 (best epoch)
+    baseline = next((r for tag, _, _, r in entries if tag == 'baseline'), None)
+    base_i2t = baseline["i2t_r1"] if baseline else None
+    base_t2i = baseline["t2i_r1"] if baseline else None
+
+    def _delta(v, base):
+        if v is None or base is None or base == 0: return "—"
+        return f"{(v - base) / base * 100:+.1f}%"
+
+    ranked = sorted(entries, key=lambda e: e[3].get("i2t_r1") or 0, reverse=True)
+    top5_lines = [
+        f"| {tag} | {_f(r['i2t_r1'])} ({_delta(r['i2t_r1'], base_i2t)}) "
+        f"| {_f(r['t2i_r1'])} ({_delta(r['t2i_r1'], base_t2i)}) |"
+        for tag, _, _, r in ranked[:5]
+    ]
+    top5_block = (
+        "### Top-5 by best i2t R@1\n\n"
+        "| 实验 | i2t R@1 (best) | t2i R@1 (best) |\n"
+        "|------|---------------|----------------|\n"
+        + "\n".join(top5_lines) + "\n"
+    )
+
+    md_fragment = (
+        f"<!-- auto-generated by log_parser on {__import__('datetime').date.today()} -->\n\n"
+        + table + "\n"
+        + top5_block
+    )
+    md_path = out_dir / "results_md.md"
+    md_path.write_text(md_fragment)
+    logging.info(f"[log_parser] MD fragment → {md_path}")
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def collect_entries(prefix: str = "", logs_dir: Path = None) -> list:
@@ -267,7 +348,7 @@ def collect_entries(prefix: str = "", logs_dir: Path = None) -> list:
             logging.info(f"[log_parser] SKIP {d.name} (no eval)")
             continue
         entries.append((tag, sides, lam, res))
-    entries.sort(key=lambda x: (_sides_sort_key(x[1]), x[2]))
+    entries.sort(key=lambda x: (_METHOD_ORDER.get(x[1], 99), x[2], x[0]))
     return entries
 
 
@@ -363,8 +444,17 @@ def main():
                     help="output dir for plots; auto-derived from --logs-dir / "
                          "--prefix when omitted")
     ap.add_argument("--inject-md", action="store_true",
-                    help="inject results table into analysis/research/modality_gap_wm.md "
+                    help="inject results table into a markdown file "
                          "(default: off)")
+    ap.add_argument("--md-path",   default=None, metavar="MD",
+                    help="path to the target .md file for --inject-md "
+                         f"(default: {MD_PATH})")
+    ap.add_argument("--md-marker", default=None, metavar="MARKER",
+                    help="marker name without angle-brackets, e.g. RESULTS_WMC → "
+                         "<!-- RESULTS_WMC_START/END -->  "
+                         f"(default: {_DEFAULT_MD_MARKER})")
+    ap.add_argument("--json",      action="store_true",
+                    help="also write results.json + results_md.md into the plot dir")
     # single-experiment export
     ap.add_argument("--single",    default=None, metavar="LOGDIR",
                     help="export per-epoch CSV for one logdir (skips global scan)")
@@ -412,8 +502,12 @@ def main():
     if not args.no_plot:
         _plot_results(entries, plot_dir)
 
+    if args.json:
+        export_results(entries, plot_dir)
+
     if args.inject_md:
-        inject_md(table)
+        md_path = Path(args.md_path) if args.md_path else None
+        inject_md(table, md_path=md_path, marker=args.md_marker)
 
     logging.info(f"[log_parser] {len(entries)} experiments  plots→{plot_dir}")
 
