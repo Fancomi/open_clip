@@ -32,7 +32,7 @@ except ImportError:
 
 from open_clip import create_model_and_transforms, trace_model, get_tokenizer, create_loss
 from open_clip.factory import attach_modality_modules
-from open_clip.model import CLIPLeJEPA, CLIPWithDINO, DualTeacherCLIP
+from open_clip.model import CLIPLeJEPA, CLIPWithDINO, DualTeacherCLIP, MultiTeacherCLIP
 from open_clip_train.data import get_data
 from open_clip_train.distributed import is_master, init_distributed_device, broadcast_object
 from open_clip_train.logger import setup_logging
@@ -364,6 +364,67 @@ def main(args):
         logging.info(f"   DualTeacherCLIP assembled: dual_cls={dual_cls}, backbone_dim={pe_backbone_dim}, "
                      f"pe_dim={pe_dim}, sig_dim={sig_dim}")
 
+    # ── Multi-teacher mode ───────────────────────────────────────────────────
+    tokenizer_list = None
+    if getattr(args, 'multi_teacher', False):
+        logging.info("=> Setting up multi-teacher mode")
+        assert args.teachers, "--teachers is required for --multi-teacher"
+        teacher_specs = [s.strip().split('::') for s in args.teachers.split(',')]
+
+        teacher_configs = []
+        tokenizer_list = []
+        image_backbone = model.visual
+        backbone_dim = image_backbone.trunk.num_features  # 768
+
+        for spec in teacher_specs:
+            t_model_name = spec[0]
+            t_ckpt = spec[1] if len(spec) > 1 else None
+
+            if t_model_name.startswith('local-dir:'):
+                t_model, _, _ = create_model_and_transforms(
+                    t_model_name, pretrained='',
+                    device=device, precision=args.precision, output_dict=True,
+                )
+            else:
+                t_model, _, _ = create_model_and_transforms(
+                    t_model_name, pretrained=t_ckpt or '',
+                    device=device, precision=args.precision, output_dict=True,
+                )
+
+            t_model.requires_grad_(False)
+            t_model.eval()
+            if hasattr(t_model, 'visual'):
+                del t_model.visual
+
+            tok_i = get_tokenizer(
+                t_model_name, cache_dir=args.cache_dir,
+                context_length=args.force_context_length,
+            )
+            tokenizer_list.append(tok_i)
+
+            with torch.no_grad():
+                dummy_tokens = tok_i("a photo").to(device)
+                t_embed_dim = t_model.encode_text(dummy_tokens, normalize=True).shape[-1]
+
+            is_siglip = 'siglip' in t_model_name.lower()
+            teacher_configs.append({
+                'name': t_model_name,
+                'model': t_model,
+                'embed_dim': t_embed_dim,
+                'siglip_style': is_siglip,
+            })
+            logging.info(f"   Teacher '{t_model_name}': embed_dim={t_embed_dim}, siglip={is_siglip}")
+
+        model = MultiTeacherCLIP(
+            image_backbone=image_backbone,
+            teacher_configs=teacher_configs,
+            backbone_dim=backbone_dim,
+            output_dict=True,
+        ).to(device)
+
+        args._n_teachers = len(teacher_configs)
+        logging.info(f"   MultiTeacherCLIP assembled: {len(teacher_configs)} teachers, backbone_dim={backbone_dim}")
+
     if args.distill:
         # FIXME: currently assumes the model you're distilling from has the same tokenizer & transforms.
         dist_model, _, _ = create_model_and_transforms(
@@ -454,6 +515,8 @@ def main(args):
             ddp_args['static_graph'] = True
             ddp_args.pop('find_unused_parameters', None)
         if getattr(args, 'dual_teacher', False):
+            ddp_args['static_graph'] = True
+        if getattr(args, 'multi_teacher', False):
             ddp_args['static_graph'] = True
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[device], **ddp_args)
     
@@ -596,6 +659,7 @@ def main(args):
         epoch=start_epoch,
         tokenizer=tokenizer,
         tokenizer_secondary=tokenizer_secondary,
+        tokenizer_list=tokenizer_list,
     )
     assert len(data), 'At least one train or eval dataset must be specified.'
 

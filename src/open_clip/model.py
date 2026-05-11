@@ -980,6 +980,104 @@ class DualTeacherCLIP(nn.Module):
         return out
 
 
+class MultiTeacherCLIP(nn.Module):
+    """One trainable image encoder aligned with N frozen text teachers.
+
+    Each teacher provides supervision via SigLIP loss. Teachers can be any
+    open_clip model — uses encode_text(text, normalize=True) as unified interface.
+    """
+    output_dict: torch.jit.Final[bool]
+
+    def __init__(
+            self,
+            image_backbone: TimmModel,
+            teacher_configs: list,
+            backbone_dim: int = 768,
+            init_logit_scale: float = np.log(1 / 0.07),
+            output_dict: bool = True,
+    ):
+        super().__init__()
+        self.output_dict = output_dict
+        self.n_teachers = len(teacher_configs)
+        self.backbone_dim = backbone_dim
+        self.teacher_names = [tc['name'] for tc in teacher_configs]
+        self.siglip_flags = [tc.get('siglip_style', False) for tc in teacher_configs]
+
+        self.visual = image_backbone
+
+        self.teachers = nn.ModuleList([tc['model'] for tc in teacher_configs])
+        for t in self.teachers:
+            t.requires_grad_(False)
+
+        self.heads = nn.ModuleList([
+            nn.Linear(backbone_dim, tc['embed_dim']) for tc in teacher_configs
+        ])
+
+        self.logit_scales = nn.ParameterList([
+            nn.Parameter(torch.ones([]) * init_logit_scale) for _ in teacher_configs
+        ])
+
+        self.logit_biases = nn.ParameterDict()
+        for i, tc in enumerate(teacher_configs):
+            if tc.get('siglip_style', False):
+                self.logit_biases[str(i)] = nn.Parameter(torch.ones([]) * (-10.0))
+
+    def train(self, mode=True):
+        super().train(mode)
+        for t in self.teachers:
+            t.eval()
+        return self
+
+    @torch.jit.ignore
+    def set_grad_checkpointing(self, enable=True):
+        if hasattr(self.visual, 'trunk') and hasattr(self.visual.trunk, 'set_grad_checkpointing'):
+            self.visual.trunk.set_grad_checkpointing(enable)
+        elif hasattr(self.visual, 'set_grad_checkpointing'):
+            self.visual.set_grad_checkpointing(enable)
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        nwd = set()
+        if hasattr(self.visual, 'trunk') and hasattr(self.visual.trunk, 'no_weight_decay'):
+            nwd |= {f'visual.trunk.{p}' for p in self.visual.trunk.no_weight_decay()}
+        return nwd
+
+    def _pool(self, tokens: torch.Tensor) -> torch.Tensor:
+        trunk = self.visual.trunk
+        pooled = trunk.pool(tokens)
+        pooled = trunk.fc_norm(pooled)
+        return pooled
+
+    def forward(self, images: torch.Tensor, texts_or_list):
+        tokens = self.visual.trunk.forward_features(images)
+        pooled = self._pool(tokens)
+
+        if isinstance(texts_or_list, torch.Tensor):
+            img_feat = F.normalize(self.heads[0](pooled), dim=-1)
+            with torch.no_grad():
+                txt_feat = self.teachers[0].encode_text(texts_or_list, normalize=True)
+            return {
+                "image_features": img_feat,
+                "text_features": txt_feat,
+                "logit_scale": self.logit_scales[0].exp(),
+            }
+
+        out = {"n_teachers": self.n_teachers}
+        with torch.no_grad():
+            text_features = [t.encode_text(texts_or_list[i], normalize=True)
+                            for i, t in enumerate(self.teachers)]
+
+        for i in range(self.n_teachers):
+            img_feat_i = F.normalize(self.heads[i](pooled), dim=-1)
+            out[f"image_features_{i}"] = img_feat_i
+            out[f"text_features_{i}"] = text_features[i]
+            out[f"logit_scale_{i}"] = self.logit_scales[i].exp()
+            bias = self.logit_biases.get(str(i), None)
+            out[f"logit_bias_{i}"] = bias
+
+        return out
+
+
 def convert_weights_to_lp(model: nn.Module, dtype=torch.float16):
     """Convert applicable model parameters to low-precision (bf16 or fp16)"""
 

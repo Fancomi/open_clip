@@ -119,8 +119,12 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             freeze_epochs = getattr(args, 'freeze_last_layer_epochs', 1)
             freeze_last = (epoch < freeze_epochs)
         else:
+            is_multi_teacher = getattr(args, 'multi_teacher', False)
             is_dual_teacher = getattr(args, 'dual_teacher', False)
-            if is_dual_teacher:
+            if is_multi_teacher:
+                images = batch[0].to(device=device, dtype=input_dtype, non_blocking=True)
+                texts_list = [t.to(device=device, non_blocking=True) for t in batch[1:]]
+            elif is_dual_teacher:
                 images, texts, texts2 = batch
                 images = images.to(device=device, dtype=input_dtype, non_blocking=True)
                 texts = texts.to(device=device, non_blocking=True)
@@ -147,11 +151,13 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                     )
                     model_out["teacher_temp"] = teacher_temp
                 else:
-                    if is_dual_teacher:
+                    if is_multi_teacher:
+                        model_out = model(images, texts_list)
+                    elif is_dual_teacher:
                         model_out = model(images, texts, texts2)
                     else:
                         model_out = model(images, texts)
-                logit_scale = model_out.get("logit_scale", model_out.get("logit_scale_pe", None))
+                logit_scale = model_out.get("logit_scale", model_out.get("logit_scale_pe", model_out.get("logit_scale_0", None)))
                 logit_bias = model_out.get("logit_bias", None)
                 if args.distill:
                     with torch.no_grad():
@@ -159,7 +165,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                     model_out.update({f'dist_{k}': v for k, v in dist_model_out.items()})
                 losses = loss(**model_out, output_dict=True)
 
-                total_loss = sum(losses.values())
+                if is_multi_teacher:
+                    total_loss = losses['multi_teacher_loss']
+                else:
+                    total_loss = sum(losses.values())
                 losses["loss"] = total_loss
 
             backward(total_loss, scaler)
@@ -194,13 +203,18 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             # First, cache the features without any gradient tracking.
             with torch.no_grad():
                 with autocast():
-                    if is_dual_teacher:
+                    if is_multi_teacher:
+                        model_out = model(images, texts_list)
+                    elif is_dual_teacher:
                         model_out = model(images, texts, texts2)
                     else:
                         model_out = model(images, texts)
 
-                    for f in ("logit_scale", "logit_bias", "logit_scale_pe", "logit_scale_sig", "logit_bias_sig"):
+                    for f in ("logit_scale", "logit_bias", "logit_scale_pe", "logit_scale_sig", "logit_bias_sig", "n_teachers"):
                         model_out.pop(f, None)
+                    for key in list(model_out.keys()):
+                        if key.startswith("logit_scale_") or key.startswith("logit_bias_"):
+                            model_out.pop(key, None)
 
                     for key, val in model_out.items():
                         if key in accum_features:
@@ -209,8 +223,12 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                             accum_features[key] = [val]
 
                 accum_images.append(images)
-                accum_texts.append(texts)
-                if is_dual_teacher:
+                accum_texts.append(texts if not is_multi_teacher else None)
+                if is_multi_teacher:
+                    accum_texts_list = getattr(args, '_accum_texts_list', [])
+                    accum_texts_list.append(texts_list)
+                    args._accum_texts_list = accum_texts_list
+                elif is_dual_teacher:
                     accum_texts2 = getattr(args, '_accum_texts2', [])
                     accum_texts2.append(texts2)
                     args._accum_texts2 = accum_texts2
@@ -228,7 +246,9 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 images = accum_images[j]
                 texts = accum_texts[j]
                 with autocast():
-                    if is_dual_teacher:
+                    if is_multi_teacher:
+                        model_out = model(images, args._accum_texts_list[j])
+                    elif is_dual_teacher:
                         texts2 = args._accum_texts2[j]
                         model_out = model(images, texts, texts2)
                     else:
@@ -237,12 +257,19 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                     inputs_no_accum = {}
                     if "logit_scale" in model_out:
                         inputs_no_accum["logit_scale"] = logit_scale = model_out.pop("logit_scale")
+                    elif "logit_scale_0" in model_out:
+                        logit_scale = model_out["logit_scale_0"]
                     if "logit_bias" in model_out:
                         logit_bias = model_out["logit_bias"]
                         inputs_no_accum["logit_bias"] = model_out.pop("logit_bias")
                     for f in ("logit_scale_pe", "logit_scale_sig", "logit_bias_sig"):
                         if f in model_out:
                             inputs_no_accum[f] = model_out.pop(f)
+                    if "n_teachers" in model_out:
+                        inputs_no_accum["n_teachers"] = model_out.pop("n_teachers")
+                    for key in list(model_out.keys()):
+                        if key.startswith("logit_scale_") or key.startswith("logit_bias_"):
+                            inputs_no_accum[key] = model_out.pop(key)
 
                     inputs = {}
                     for key, val in accum_features.items():
@@ -252,7 +279,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                     losses = loss(**inputs, **inputs_no_accum, output_dict=True)
                     del inputs
                     del inputs_no_accum
-                    total_loss = sum(losses.values())
+                    if is_multi_teacher:
+                        total_loss = losses['multi_teacher_loss']
+                    else:
+                        total_loss = sum(losses.values())
                     losses["loss"] = total_loss
 
                 backward(total_loss, scaler)
@@ -308,6 +338,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
         # reset gradient accum, if enabled
         if args.accum_freq > 1 and not is_dinov3:
             accum_images, accum_texts, accum_features = [], [], {}
+            if is_multi_teacher:
+                args._accum_texts_list = []
+            elif is_dual_teacher:
+                args._accum_texts2 = []
 
         # DINOv3: EMA update of teacher after optimizer step
         if is_dinov3 and ema_momentum is not None:
@@ -318,6 +352,9 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             m_ = unwrap_model(model)
             if hasattr(m_, 'logit_scale'):
                 m_.logit_scale.clamp_(0, math.log(100))
+            elif hasattr(m_, 'logit_scales'):
+                for ls in m_.logit_scales:
+                    ls.clamp_(0, math.log(100))
             else:
                 if hasattr(m_, 'logit_scale_pe'):
                     m_.logit_scale_pe.clamp_(0, math.log(100))

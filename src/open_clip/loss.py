@@ -485,6 +485,36 @@ class DualSigLipLoss(nn.Module):
         return loss
 
 
+class MultiTeacherLoss(nn.Module):
+    """Sum of N SigLipLoss instances for multi-teacher training."""
+
+    def __init__(self, n_teachers, weights=None, cache_labels=False, rank=0, world_size=1, dist_impl=None):
+        super().__init__()
+        self.n_teachers = n_teachers
+        self.weights = weights or [1.0] * n_teachers
+        self.losses = nn.ModuleList([
+            SigLipLoss(cache_labels, rank, world_size, dist_impl)
+            for _ in range(n_teachers)
+        ])
+
+    def forward(self, n_teachers=0, output_dict=False, **kwargs):
+        n = n_teachers or self.n_teachers
+        total = 0.0
+        result = {}
+        for i in range(n):
+            img = kwargs[f'image_features_{i}']
+            txt = kwargs[f'text_features_{i}']
+            scale = kwargs[f'logit_scale_{i}']
+            bias = kwargs.get(f'logit_bias_{i}', None)
+            li = self.losses[i](img, txt, scale, bias, output_dict=True)['siglip_loss']
+            total = total + self.weights[i] * li
+            result[f'loss_{i}'] = li
+        result['multi_teacher_loss'] = total
+        if output_dict:
+            return result
+        return total
+
+
 def _dist_all_reduce_avg(x):
     """跨 GPU 平均归约，未初始化时直接返回。"""
     if has_distributed and dist.is_available() and dist.is_initialized():

@@ -14,7 +14,7 @@ from .convert import convert_state_dict
 from .model import CLIP, CustomTextCLIP, CLIPLeJEPA, CLIPWithDINO, convert_weights_to_lp, convert_to_custom_text_state_dict,\
     resize_pos_embed, get_cast_dtype, resize_text_pos_embed, set_model_preprocess_cfg
 from .coca_model import CoCa
-from .loss import ClipLoss, DistillClipLoss, CoCaLoss, SigLipLoss, SIGRegContrastiveLoss, CLIPWithDINOLoss, ModalityGapLoss, DualSigLipLoss
+from .loss import ClipLoss, DistillClipLoss, CoCaLoss, SigLipLoss, SIGRegContrastiveLoss, CLIPWithDINOLoss, ModalityGapLoss, DualSigLipLoss, MultiTeacherLoss
 from .pretrained import is_pretrained_cfg, get_pretrained_cfg, download_pretrained,\
     list_pretrained_tags_by_model, download_pretrained_from_hf
 from .transform import image_transform_v2, AugmentationCfg, PreprocessCfg, merge_preprocess_dict, merge_preprocess_kwargs
@@ -847,6 +847,17 @@ def create_loss(args):
             world_size=args.world_size,
             dist_impl=getattr(args, 'loss_dist_impl', None),
             n_global_crops=getattr(args, 'dino_n_global_crops', 2),
+        )
+    elif getattr(args, 'multi_teacher', False):
+        weights = None
+        if getattr(args, 'teacher_weights', None):
+            weights = [float(w) for w in args.teacher_weights.split(',')]
+        return MultiTeacherLoss(
+            n_teachers=args._n_teachers,
+            weights=weights,
+            rank=args.rank,
+            world_size=args.world_size,
+            dist_impl=getattr(args, 'loss_dist_impl', None),
         )
     elif getattr(args, 'dual_teacher', False):
         return DualSigLipLoss(

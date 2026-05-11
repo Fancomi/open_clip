@@ -447,7 +447,25 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
             wds.tarfile_to_samples(handler=log_and_continue),
         ])
     tokenizer_secondary = kwargs.get('tokenizer_secondary', None)
-    if tokenizer_secondary is not None:
+    tokenizer_list = kwargs.get('tokenizer_list', None)
+    if tokenizer_list is not None:
+        def _multi_tokenize(sample):
+            raw_text = sample['text']
+            for i, tok in enumerate(tokenizer_list):
+                sample[f'text_{i}'] = tok(raw_text)[0]
+            return sample
+        text_fields = tuple(f'text_{i}' for i in range(len(tokenizer_list)))
+        pipeline.extend([
+            wds.select(filter_no_caption_or_no_image),
+            wds.decode("pilrgb", handler=log_and_continue),
+            wds.rename(image="jpg;png;jpeg;webp", text="txt"),
+            wds.map_dict(image=preprocess_img),
+            wds.map(_multi_tokenize),
+            wds.to_tuple("image", *text_fields),
+            wds.batched(args.batch_size, partial=not is_train,
+                        collation_fn=_collate_dino if use_dinov3 else wds.filters.default_collation_fn)
+        ])
+    elif tokenizer_secondary is not None:
         def _dual_tokenize(sample):
             sample['text2'] = tokenizer_secondary(sample['text'])[0]
             sample['text'] = tokenizer(sample['text'])[0]
@@ -561,6 +579,7 @@ class SyntheticDataset(Dataset):
             dataset_size=100,
             tokenizer=None,
             tokenizer_secondary=None,
+            tokenizer_list=None,
     ):
         self.transform = transform
         self.image_size = image_size
@@ -570,6 +589,7 @@ class SyntheticDataset(Dataset):
 
         self.preprocess_txt = lambda text: tokenizer(text)[0]
         self.preprocess_txt2 = (lambda text: tokenizer_secondary(text)[0]) if tokenizer_secondary else None
+        self.tokenizer_list = tokenizer_list
 
     def __len__(self):
         return self.dataset_size
@@ -577,6 +597,9 @@ class SyntheticDataset(Dataset):
     def __getitem__(self, idx):
         if self.transform is not None:
             image = self.transform(self.image)
+        if self.tokenizer_list is not None:
+            texts = tuple(tok(self.caption)[0] for tok in self.tokenizer_list)
+            return (image, *texts)
         if self.preprocess_txt2 is not None:
             return image, self.preprocess_txt(self.caption), self.preprocess_txt2(self.caption)
         return image, self.preprocess_txt(self.caption)
@@ -585,9 +608,11 @@ class SyntheticDataset(Dataset):
 def get_synthetic_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None, **kwargs):
     image_size = preprocess_fn.transforms[0].size
     tokenizer_secondary = kwargs.get('tokenizer_secondary', None)
+    tokenizer_list = kwargs.get('tokenizer_list', None)
     dataset = SyntheticDataset(
         transform=preprocess_fn, image_size=image_size, dataset_size=args.train_num_samples,
-        tokenizer=tokenizer, tokenizer_secondary=tokenizer_secondary)
+        tokenizer=tokenizer, tokenizer_secondary=tokenizer_secondary,
+        tokenizer_list=tokenizer_list)
     num_samples = len(dataset)
     sampler = DistributedSampler(dataset) if args.distributed and is_train else None
     shuffle = is_train and sampler is None
@@ -627,14 +652,14 @@ def get_dataset_fn(data_path, dataset_type):
         raise ValueError(f"Unsupported dataset type: {dataset_type}")
     
 
-def get_data(args, preprocess_fns, epoch=0, tokenizer=None, tokenizer_secondary=None):
+def get_data(args, preprocess_fns, epoch=0, tokenizer=None, tokenizer_secondary=None, tokenizer_list=None):
     preprocess_train, preprocess_val = preprocess_fns
     data = {}
 
     if args.train_data or args.dataset_type == "synthetic":
         data["train"] = get_dataset_fn(args.train_data, args.dataset_type)(
             args, preprocess_train, is_train=True, epoch=epoch, tokenizer=tokenizer,
-            tokenizer_secondary=tokenizer_secondary)
+            tokenizer_secondary=tokenizer_secondary, tokenizer_list=tokenizer_list)
 
     if args.val_data:
         # val data may differ from train format (e.g. train=webdataset, val=tsv),

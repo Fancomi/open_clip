@@ -288,6 +288,26 @@ def parse_args(args):
         help="Path to checkpoint for image backbone initialization in dual-teacher mode.",
     )
 
+    # ── Multi-teacher mode ──────────────────────────────────────────────────
+    parser.add_argument(
+        "--multi-teacher",
+        default=False,
+        action='store_true',
+        help="Enable multi-teacher mode: one image encoder aligns with N frozen text encoders.",
+    )
+    parser.add_argument(
+        "--teachers",
+        default=None,
+        type=str,
+        help="Comma-separated 'model_name::ckpt_path' pairs for multi-teacher mode.",
+    )
+    parser.add_argument(
+        "--teacher-weights",
+        default=None,
+        type=str,
+        help="Comma-separated loss weights per teacher. Default: equal weights (1.0 each).",
+    )
+
     parser.add_argument(
         "--lock-image",
         default=False,
