@@ -49,7 +49,7 @@ def bytes_to_unicode():
     for b in range(2 ** 8):
         if b not in bs:
             bs.append(b)
-            cs.append(2**8+n)
+            cs.append(2 ** 8 + n)
             n += 1
     cs = [chr(n) for n in cs]
     return dict(zip(bs, cs))
@@ -198,7 +198,7 @@ class SimpleTokenizer(object):
                     new_word.extend(word[i:])
                     break
 
-                if word[i] == first and i < len(word) - 1 and word[i+1] == second:
+                if word[i] == first and i < len(word) - 1 and word[i + 1] == second:
                     new_word.append(first + second)
                     i += 2
                 else:
