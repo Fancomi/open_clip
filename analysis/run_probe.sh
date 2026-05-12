@@ -16,7 +16,7 @@
 
 
 bash analysis/probe.sh probe_full logs --rerun
-# bash analysis/probe.sh log_parse wds_
+bash analysis/probe.sh log_parse wds_
 
 # bash analysis/probe.sh probe_full logs/20260510_0_ft_book #--rerun
 # bash analysis/probe.sh log_parse ft_ --logs-dir logs/20260510_0_ft_book --plot-dir analysis/research/plots/20260510_0_ft_book

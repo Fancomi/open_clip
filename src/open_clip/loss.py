@@ -351,7 +351,7 @@ class SigLipLoss(nn.Module):
         self.cache_labels = cache_labels
         self.rank = rank
         self.world_size = world_size
-        assert neg_mode in ('standard', 'antipodal', 'orthogonal')
+        assert neg_mode in ('standard', 'antipodal', 'orthogonal', 'projective')
         self.neg_mode = neg_mode
         self.dist_impl = dist_impl or 'bidir'  # default to bidir exchange for now, this will likely change
         assert self.dist_impl in ('bidir', 'shift', 'reduce', 'gather')
@@ -376,6 +376,8 @@ class SigLipLoss(nn.Module):
             else:
                 eye = torch.eye(logits.shape[0], device=logits.device, dtype=torch.bool)
                 logits = torch.where(eye, logits, logits.abs())
+        elif self.neg_mode == 'projective':
+            logits = logits.abs()
         if logit_bias is not None:
             logits += logit_bias
         return logits

@@ -144,7 +144,7 @@ if [ "${GROUP}" = "ft" ] || [ "${GROUP}" = "all" ]; then
             --sigreg-target cls --sigreg-weight 1e-4
     fi
 
-    # A10-A13: neg_mode variants (antipodal / orthogonal)
+    # A10-A15: neg_mode variants (antipodal / orthogonal / projective)
     run_smoke_syn "antipodal_siglip" "PE-Core-B-16" 29709 --siglip --neg-mode antipodal
 
     run_smoke_syn "antipodal_sigreg" "PE-Core-B-16" 29710 \
@@ -154,6 +154,11 @@ if [ "${GROUP}" = "ft" ] || [ "${GROUP}" = "all" ]; then
 
     run_smoke_syn "orthogonal_sigreg" "PE-Core-B-16" 29712 \
         --siglip --neg-mode orthogonal --sigreg-target cls --sigreg-weight 1e-4
+
+    run_smoke_syn "projective_siglip" "PE-Core-B-16" 29713 --siglip --neg-mode projective
+
+    run_smoke_syn "projective_sigreg" "PE-Core-B-16" 29714 \
+        --siglip --neg-mode projective --sigreg-target cls --sigreg-weight 1e-4
 fi
 
 # ======================================================================

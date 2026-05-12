@@ -421,3 +421,24 @@ run "ortho_koleo005"      "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --neg-mode
 run "ortho_uni05"         "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --neg-mode orthogonal --uniformity-weight 0.5"
 
 echo "======== Orthogonal SigLIP done (3 runs × ~15min ≈ 45min) ========"
+
+# ════════════════════════════════════════════════════════════════════════════
+# ★ Projective SigLIP: 共线=相关 (|cos|→1), 正交=无关 (|cos|→0)
+#
+# 核心思路：射影空间 RP^n —— x 和 -x 视为同一语义
+#   正样本 (img_i, txt_i) 推向共线 |cos|=1（±方向皆可）
+#   负样本 (img_i, txt_j) 推向正交 |cos|=0
+#
+# 实现：ALL logits 使用 |cos|（正负样本统一）
+#
+# 预期：
+#   - 双倍容量：同一维度可编码两个方向的语义
+#   - 模态鸿沟消失（同 orthogonal 原理）
+#   - 信息论优势：D 维空间有效容量翻倍
+# ════════════════════════════════════════════════════════════════════════════
+
+run "projective"          "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --neg-mode projective"
+run "proj_koleo005"       "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --neg-mode projective --koleo-weight 0.05"
+run "proj_uni05"          "PE-Core-B-16-dinov3" 29537 "${SIGREG_BASE} --neg-mode projective --uniformity-weight 0.5"
+
+echo "======== Projective SigLIP done (3 runs × ~15min ≈ 45min) ========"

@@ -45,8 +45,14 @@ def run(model, classifier, dataloader, args):
                 # predict
                 output = model(image=images)
                 image_features = output['image_features'] if isinstance(output, dict) else output[0]
-                sim_sign = -1.0 if getattr(args, 'neg_mode', 'standard') == 'antipodal' else 1.0
-                logits = sim_sign * 100. * image_features @ classifier
+                neg_mode = getattr(args, 'neg_mode', 'standard')
+                raw = image_features @ classifier
+                if neg_mode == 'projective':
+                    logits = 100. * raw.abs()
+                elif neg_mode == 'antipodal':
+                    logits = -100. * raw
+                else:
+                    logits = 100. * raw
 
             # measure accuracy
             acc1, acc5 = accuracy(logits, target, topk=(1, 5))

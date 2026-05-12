@@ -97,6 +97,8 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             scheduler(step)
 
         # ---- Batch unpacking: DINOv3 vs standard ----
+        is_multi_teacher = getattr(args, 'multi_teacher', False)
+        is_dual_teacher = getattr(args, 'dual_teacher', False)
         if is_dinov3:
             # batch = (batch_dict, texts)
             # batch_dict: {global_crops, local_crops, collated_masks, masks_weight, mask_indices}
@@ -119,8 +121,6 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             freeze_epochs = getattr(args, 'freeze_last_layer_epochs', 1)
             freeze_last = (epoch < freeze_epochs)
         else:
-            is_multi_teacher = getattr(args, 'multi_teacher', False)
-            is_dual_teacher = getattr(args, 'dual_teacher', False)
             if is_multi_teacher:
                 images = batch[0].to(device=device, dtype=input_dtype, non_blocking=True)
                 texts_list = [t.to(device=device, non_blocking=True) for t in batch[1:]]
@@ -496,8 +496,13 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
                     all_image_features.append(image_features.cpu())
                     all_text_features.append(text_features.cpu())
                     logit_scale = logit_scale.mean()
-                    sim_sign = -1.0 if getattr(args, 'neg_mode', 'standard') == 'antipodal' else 1.0
-                    logits_per_image = sim_sign * logit_scale * image_features @ text_features.t()
+                    neg_mode = getattr(args, 'neg_mode', 'standard')
+                    if neg_mode == 'projective':
+                        logits_per_image = logit_scale * (image_features @ text_features.t()).abs()
+                    elif neg_mode == 'antipodal':
+                        logits_per_image = -logit_scale * image_features @ text_features.t()
+                    else:
+                        logits_per_image = logit_scale * image_features @ text_features.t()
                     logits_per_text = logits_per_image.t()
 
                     batch_size = images.shape[0]
@@ -505,7 +510,7 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
 
                     # Use the same loss function as training
                     if args.siglip:
-                        logits_per_image = sim_sign * logit_scale * image_features @ text_features.t()
+                        # reuse logits_per_image computed above
                         logits_per_text = logits_per_image.t()
                         # 5cap 协议：同一张图的 n_caps 条 caption 互为正样本，
                         # label matrix 为块对角；1cap 时退化为 eye
@@ -625,7 +630,11 @@ def get_clip_metrics(image_features, text_features, logit_scale,
     logging.info(f"Eval:   Step 1/3 - Computing similarity matrix "
                  f"[{n_img} imgs, {n_txt} texts, {n_caps} caps/img]...")
     # image_features: [n_img, d]  text_features: [n_txt, d]
-    logits_per_image = (sim_sign * logit_scale * image_features @ text_features.t()).detach().cpu()
+    raw_sim = image_features @ text_features.t()
+    if neg_mode == 'projective':
+        logits_per_image = (logit_scale * raw_sim.abs()).detach().cpu()
+    else:
+        logits_per_image = (sim_sign * logit_scale * raw_sim).detach().cpu()
     # [n_img, n_txt]
     logits_per_text  = logits_per_image.t().detach().cpu()
     # [n_txt, n_img]

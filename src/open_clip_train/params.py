@@ -566,12 +566,13 @@ def parse_args(args):
         "--neg-mode",
         default='standard',
         type=str,
-        choices=['standard', 'antipodal', 'orthogonal'],
+        choices=['standard', 'antipodal', 'orthogonal', 'projective'],
         help=(
             'Negative pair geometry in SigLIP loss. '
             '"standard": cos→+1 for pos, cos→-1 for neg. '
             '"antipodal": cos→-1 for pos, cos≠-1 for neg. '
             '"orthogonal": cos→+1 for pos, |cos|→0 (cos→0) for neg. '
+            '"projective": |cos|→1 for pos (collinear), |cos|→0 for neg (orthogonal). '
             'Requires --siglip.'
         )
     )
