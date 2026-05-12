@@ -18,6 +18,11 @@ import torch
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _to_float32(x: torch.Tensor) -> torch.Tensor:
+    """ To Float32.
+
+        Args:
+            x: x parameter.
+        """
     return x.detach().float().cpu()
 
 
@@ -88,9 +93,9 @@ def feature_norm_stats(features: torch.Tensor) -> dict:
     norms = features.float().norm(dim=-1)
     return {
         "norm_mean": norms.mean().item(),
-        "norm_std":  norms.std().item(),
-        "norm_min":  norms.min().item(),
-        "norm_max":  norms.max().item(),
+        "norm_std": norms.std().item(),
+        "norm_min": norms.min().item(),
+        "norm_max": norms.max().item(),
     }
 
 
@@ -99,11 +104,24 @@ def feature_norm_stats(features: torch.Tensor) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def accuracy(logits: torch.Tensor, labels: torch.Tensor) -> float:
+    """Accuracy.
+
+        Args:
+            logits: logits parameter.
+            labels: labels parameter.
+        """
     pred = logits.argmax(dim=-1)
     return (pred == labels).float().mean().item()
 
 
 def top_k_accuracy(logits: torch.Tensor, labels: torch.Tensor, k: int = 5) -> float:
+    """Top K Accuracy.
+
+        Args:
+            logits: logits parameter.
+            labels: labels parameter.
+            k: k parameter.
+        """
     _, top_k_preds = logits.topk(min(k, logits.shape[-1]), dim=-1)
     correct = top_k_preds.eq(labels.unsqueeze(1)).any(dim=1)
     return correct.float().mean().item()
@@ -177,14 +195,14 @@ def compute_feature_metrics(
     Returns dict suitable for JSON serialization.
     """
     m: dict = {}
-    m["effective_rank"]         = effective_rank(features)
-    m["stable_rank"]            = stable_rank(features)
-    m["explained_var_ratio"]    = explained_variance_ratio(features, k=evr_k)
+    m["effective_rank"] = effective_rank(features)
+    m["stable_rank"] = stable_rank(features)
+    m["explained_var_ratio"] = explained_variance_ratio(features, k=evr_k)
     m[f"explained_var_ratio_k{evr_k}"] = m["explained_var_ratio"]
-    m["eigenvalue_spectrum"]    = eigenvalue_spectrum(features, top_k=spectrum_top_k)
+    m["eigenvalue_spectrum"] = eigenvalue_spectrum(features, top_k=spectrum_top_k)
     m.update(feature_norm_stats(features))
 
     if spurious_dim is not None:
-        m["spurious_alignment"]  = spurious_alignment(features, spurious_dim=spurious_dim)
+        m["spurious_alignment"] = spurious_alignment(features, spurious_dim=spurious_dim)
 
     return m

@@ -12,7 +12,7 @@ post-processing variants:
 For each variant, computes:
   1. PCA-1 modality separation  (linear classifier accuracy + mean projection)
   2. Modality classifier accuracy (sklearn LogisticRegression)
-  3. i2t / t2i Recall@1,5,10 on the provided probe pairs
+  3. i2t / t2i Recall@1, 5, 10 on the provided probe pairs
 
 Usage
 -----
@@ -41,6 +41,11 @@ from sklearn.preprocessing import StandardScaler
 # ─────────────────────────── helpers ────────────────────────────────────────
 
 def to_torch(arr):
+    """To Torch.
+
+        Args:
+            arr: arr parameter.
+        """
     return torch.from_numpy(arr.astype(np.float32))
 
 
@@ -94,11 +99,11 @@ def pc1_modality_stats(img_np, txt_np):
     if img_proj.mean() < txt_proj.mean():
         img_proj, txt_proj = -img_proj, -txt_proj
     return {
-        "img_pc1_mean":  float(img_proj.mean()),
-        "img_pc1_std":   float(img_proj.std()),
-        "txt_pc1_mean":  float(txt_proj.mean()),
-        "txt_pc1_std":   float(txt_proj.std()),
-        "pc1_gap":       float(img_proj.mean() - txt_proj.mean()),
+        "img_pc1_mean": float(img_proj.mean()),
+        "img_pc1_std": float(img_proj.std()),
+        "txt_pc1_mean": float(txt_proj.mean()),
+        "txt_pc1_std": float(txt_proj.std()),
+        "pc1_gap": float(img_proj.mean() - txt_proj.mean()),
         "pc1_var_ratio": float(pca.explained_variance_ratio_[0]),
     }
 
@@ -151,16 +156,23 @@ def variant_whitened(img, txt):
 
 
 VARIANTS = {
-    "raw":        variant_raw,
-    "centered":   variant_centered,
+    "raw": variant_raw,
+    "centered": variant_centered,
     "gap_remove": variant_gap_remove,
-    "whitened":   variant_whitened,
+    "whitened": variant_whitened,
 }
 
 
 # ─────────────────────────── main ────────────────────────────────────────────
 
 def run(probe_path, split="proj_features", out_path=None):
+    """Run.
+
+        Args:
+            probe_path: probe_path parameter.
+            split: split parameter.
+            out_path: out_path parameter.
+        """
     data = np.load(probe_path, allow_pickle=True)
 
     # ── load image features ──────────────────────────────────────────────────
@@ -236,12 +248,13 @@ def run(probe_path, split="proj_features", out_path=None):
 
 
 def main():
+    """Main."""
     parser = argparse.ArgumentParser(description="Modality Gap post-processing analysis")
-    parser.add_argument("--probe",  required=True, help="Path to probe .npz file")
-    parser.add_argument("--split",  default="proj_features",
+    parser.add_argument("--probe", required=True, help="Path to probe .npz file")
+    parser.add_argument("--split", default="proj_features",
                         choices=["features", "proj_features"],
                         help="Which image feature key to use (default: proj_features)")
-    parser.add_argument("--out",    default=None, help="Output JSON path")
+    parser.add_argument("--out", default=None, help="Output JSON path")
     args = parser.parse_args()
     run(args.probe, split=args.split, out_path=args.out)
 

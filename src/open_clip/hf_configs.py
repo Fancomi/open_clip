@@ -1,3 +1,4 @@
+"""Hf Configs module."""
 # HF architecture dict:
 arch_dict = {
     # https://huggingface.co/docs/transformers/model_doc/roberta#roberta

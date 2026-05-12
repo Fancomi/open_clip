@@ -27,7 +27,7 @@ def fps_sample(feats: np.ndarray, k: int = 5, seed: int = 0) -> np.ndarray:
     rng = np.random.default_rng(seed)
     n = len(feats)
     chosen = [int(rng.integers(n))]
-    dists  = np.full(n, np.inf)
+    dists = np.full(n, np.inf)
     for _ in range(k - 1):
         d = ((feats - feats[chosen[-1]]) ** 2).sum(1)
         dists = np.minimum(dists, d)
@@ -45,18 +45,18 @@ def compute_anisotropy(feats: np.ndarray, max_components: int = 256) -> dict:
     """
     from sklearn.utils.extmath import randomized_svd
 
-    D  = feats.shape[1]
-    f  = feats - feats.mean(0, keepdims=True)
-    k  = min(D, f.shape[0] - 1, max_components)
+    D = feats.shape[1]
+    f = feats - feats.mean(0, keepdims=True)
+    k = min(D, f.shape[0] - 1, max_components)
     _, s, _ = randomized_svd(f, n_components=k, random_state=0)
 
     lam = s ** 2
     lam = lam / lam.sum()                            # normalized eigenvalues
 
-    eff_rank     = float(np.exp(-(lam * np.log(lam + 1e-12)).sum()))
-    pr           = float(1.0 / (k * (lam ** 2).sum()))
-    stable_rank  = float(1.0 / lam[0])
-    num_rank     = int((s >= s[0] * 0.01).sum())
+    eff_rank = float(np.exp(-(lam * np.log(lam + 1e-12)).sum()))
+    pr = float(1.0 / (k * (lam ** 2).sum()))
+    stable_rank = float(1.0 / lam[0])
+    num_rank = int((s >= s[0] * 0.01).sum())
 
     # Pairwise cosine on 2k-subsample
     rng = np.random.default_rng(42)

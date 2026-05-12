@@ -1,3 +1,4 @@
+"""Test Download Pretrained module."""
 import requests
 import torch
 from PIL import Image
@@ -18,6 +19,13 @@ from open_clip.pretrained import download_pretrained_from_url
 class DownloadPretrainedTests(unittest.TestCase):
 
     def create_response(self, data, status_code=200, content_type='application/octet-stream'):
+        """Create Response.
+
+        Args:
+            data: data parameter.
+            status_code: status_code parameter.
+            content_type: content_type parameter.
+        """
         fp = BytesIO(data)
         headers = HTTPHeaderDict({
             'Content-Type': content_type,
@@ -28,6 +36,11 @@ class DownloadPretrainedTests(unittest.TestCase):
 
     @patch('open_clip.pretrained.urllib')
     def test_download_pretrained_from_url_from_openaipublic(self, urllib):
+        """Test Download Pretrained From Url From Openaipublic.
+
+        Args:
+            urllib: urllib parameter.
+        """
         file_contents = b'pretrained model weights'
         expected_hash = hashlib.sha256(file_contents).hexdigest()
         urllib.request.urlopen.return_value = self.create_response(file_contents)
@@ -38,6 +51,11 @@ class DownloadPretrainedTests(unittest.TestCase):
 
     @patch('open_clip.pretrained.urllib')
     def test_download_pretrained_from_url_from_openaipublic_corrupted(self, urllib):
+        """Test Download Pretrained From Url From Openaipublic Corrupted.
+
+        Args:
+            urllib: urllib parameter.
+        """
         file_contents = b'pretrained model weights'
         expected_hash = hashlib.sha256(file_contents).hexdigest()
         urllib.request.urlopen.return_value = self.create_response(b'corrupted pretrained model')
@@ -49,6 +67,11 @@ class DownloadPretrainedTests(unittest.TestCase):
 
     @patch('open_clip.pretrained.urllib')
     def test_download_pretrained_from_url_from_openaipublic_valid_cache(self, urllib):
+        """Test Download Pretrained From Url From Openaipublic Valid Cache.
+
+        Args:
+            urllib: urllib parameter.
+        """
         file_contents = b'pretrained model weights'
         expected_hash = hashlib.sha256(file_contents).hexdigest()
         urllib.request.urlopen.return_value = self.create_response(file_contents)
@@ -61,6 +84,11 @@ class DownloadPretrainedTests(unittest.TestCase):
 
     @patch('open_clip.pretrained.urllib')
     def test_download_pretrained_from_url_from_openaipublic_corrupted_cache(self, urllib):
+        """Test Download Pretrained From Url From Openaipublic Corrupted Cache.
+
+        Args:
+            urllib: urllib parameter.
+        """
         file_contents = b'pretrained model weights'
         expected_hash = hashlib.sha256(file_contents).hexdigest()
         urllib.request.urlopen.return_value = self.create_response(file_contents)
@@ -73,6 +101,11 @@ class DownloadPretrainedTests(unittest.TestCase):
 
     @patch('open_clip.pretrained.urllib')
     def test_download_pretrained_from_url_from_mlfoundations(self, urllib):
+        """Test Download Pretrained From Url From Mlfoundations.
+
+        Args:
+            urllib: urllib parameter.
+        """
         file_contents = b'pretrained model weights'
         expected_hash = hashlib.sha256(file_contents).hexdigest()[:8]
         urllib.request.urlopen.return_value = self.create_response(file_contents)
@@ -83,6 +116,11 @@ class DownloadPretrainedTests(unittest.TestCase):
 
     @patch('open_clip.pretrained.urllib')
     def test_download_pretrained_from_url_from_mlfoundations_corrupted(self, urllib):
+        """Test Download Pretrained From Url From Mlfoundations Corrupted.
+
+        Args:
+            urllib: urllib parameter.
+        """
         file_contents = b'pretrained model weights'
         expected_hash = hashlib.sha256(file_contents).hexdigest()[:8]
         urllib.request.urlopen.return_value = self.create_response(b'corrupted pretrained model')
@@ -94,6 +132,11 @@ class DownloadPretrainedTests(unittest.TestCase):
 
     @patch('open_clip.pretrained.urllib')
     def test_download_pretrained_from_hfh(self, urllib):
+        """Test Download Pretrained From Hfh.
+
+        Args:
+            urllib: urllib parameter.
+        """
         model, _, preprocess = open_clip.create_model_and_transforms('hf-hub:hf-internal-testing/tiny-open-clip-model')
         tokenizer = open_clip.get_tokenizer('hf-hub:hf-internal-testing/tiny-open-clip-model')
         img_url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/coco_sample.png"

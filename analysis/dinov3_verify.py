@@ -18,10 +18,10 @@ from safetensors import safe_open
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModel
 
-DINOV3_REPO   = "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/dinov3"
-PTH_PATH      = "/root/paddlejob/workspace/env_run/penghaotian/models/dino/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
+DINOV3_REPO = "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/dinov3"
+PTH_PATH = "/root/paddlejob/workspace/env_run/penghaotian/models/dino/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth"
 HF_MODEL_PATH = "/root/paddlejob/workspace/env_run/penghaotian/models/dino/dinov3-vitb16-pretrain-lvd1689m"
-TEST_IMAGE    = "/root/paddlejob/workspace/env_run/penghaotian/datas/coco/images/val2014/COCO_val2014_000000000042.jpg"
+TEST_IMAGE = "/root/paddlejob/workspace/env_run/penghaotian/datas/coco/images/val2014/COCO_val2014_000000000042.jpg"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 PATCH_SIZE = 16
@@ -31,6 +31,11 @@ IMAGE_SIZE = 448
 # ─── Reference: 官方 .pth 直接 load 进 hub 代码 ───────────────────────────────
 
 def load_hub_reference(pth_path: str) -> torch.nn.Module:
+    """Load Hub Reference.
+
+        Args:
+            pth_path: pth_path parameter.
+        """
     sys.path.insert(0, DINOV3_REPO)
     model = torch.hub.load(DINOV3_REPO, "dinov3_vitb16", source="local", pretrained=False)
     ckpt = torch.load(pth_path, map_location="cpu")
@@ -42,7 +47,12 @@ def load_hub_reference(pth_path: str) -> torch.nn.Module:
 # ─── 待验证: transformers AutoModel ───────────────────────────────────────────
 
 def load_hf_model(model_path: str):
-    proc  = AutoImageProcessor.from_pretrained(model_path, trust_remote_code=True, do_resize=False)
+    """Load Hf Model.
+
+        Args:
+            model_path: model_path parameter.
+        """
+    proc = AutoImageProcessor.from_pretrained(model_path, trust_remote_code=True, do_resize=False)
     model = AutoModel.from_pretrained(model_path, trust_remote_code=True).eval().to(DEVICE)
     return proc, model
 
@@ -50,6 +60,11 @@ def load_hf_model(model_path: str):
 # ─── Step 5: 准备图像 ─────────────────────────────────────────────────────────
 
 def prepare_tensors(image_path: str):
+    """Prepare Tensors.
+
+        Args:
+            image_path: image_path parameter.
+        """
     img = Image.open(image_path).convert("RGB")
     w, h = img.size
     scale = IMAGE_SIZE / min(w, h)
@@ -65,6 +80,14 @@ def prepare_tensors(image_path: str):
 # ─── Step 6: 前向对比 ─────────────────────────────────────────────────────────
 
 def compare(hub_model, hf_proc, hf_model, img_pil):
+    """Compare.
+
+        Args:
+            hub_model: hub_model parameter.
+            hf_proc: hf_proc parameter.
+            hf_model: hf_model parameter.
+            img_pil: img_pil parameter.
+        """
     # 两个模型共用同一个 pixel_values tensor
     inputs = hf_proc(images=img_pil, return_tensors="pt")
     pv = inputs["pixel_values"].to(DEVICE)
@@ -90,13 +113,13 @@ def compare(hub_model, hf_proc, hf_model, img_pil):
         f"Shape mismatch! hub={hub_patch.shape} hf={hf_patch.shape}"
 
     diff = (hub_patch - hf_patch).abs()
-    cos  = torch.nn.functional.cosine_similarity(hub_patch, hf_patch, dim=-1)
+    cos = torch.nn.functional.cosine_similarity(hub_patch, hf_patch, dim=-1)
 
     print(f"\n  Absolute diff  max={diff.max():.6f}  mean={diff.mean():.6f}")
     print(f"  Cosine sim     min={cos.min():.6f}  mean={cos.mean():.6f}")
 
     # 阈值：cos > 0.9999 且 mean_abs_diff < 1e-3（允许 rope 实现差异带来的小误差）
-    ok_cos  = cos.mean().item() > 0.9999
+    ok_cos = cos.mean().item() > 0.9999
     ok_diff = diff.mean().item() < 1e-3
 
     print(f"\n{'='*60}")

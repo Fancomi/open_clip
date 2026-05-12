@@ -19,6 +19,13 @@ def load_big_vision_weights(model: CustomTextCLIP, checkpoint_path: str):
     from timm.layers import resample_patch_embed, resample_abs_pos_embed
 
     def _n2p(w, t=True, idx=None):
+        """ N2P.
+
+        Args:
+            w: w parameter.
+            t: t parameter.
+            idx: idx parameter.
+        """
         if idx is not None:
             w = w[idx]
         if w.ndim == 4 and w.shape[0] == w.shape[1] == w.shape[2] == 1:
@@ -37,6 +44,12 @@ def load_big_vision_weights(model: CustomTextCLIP, checkpoint_path: str):
     antialias = False
 
     def _convert_timm_img(module, prefix):
+        """ Convert Timm Img.
+
+        Args:
+            module: module parameter.
+            prefix: prefix parameter.
+        """
         embed_conv_w = _n2p(w[f'{prefix}embedding/kernel'])
         if embed_conv_w.shape[-2:] != module.patch_embed.proj.weight.shape[-2:]:
             embed_conv_w = resample_patch_embed(
@@ -55,7 +68,9 @@ def load_big_vision_weights(model: CustomTextCLIP, checkpoint_path: str):
         pos_embed_w = _n2p(w[f'{prefix}pos_embedding'], t=False)
         if pos_embed_w.shape != module.pos_embed.shape:
             assert False, f'{pos_embed_w.shape}, {module.pos_embed.shape}'
-            num_prefix_tokens = 0 if getattr(module, 'no_embed_class', False) else getattr(module, 'num_prefix_tokens', 1)
+            num_prefix_tokens = 0 if getattr(
+                module, 'no_embed_class', False) else getattr(
+                module, 'num_prefix_tokens', 1)
             pos_embed_w = resample_abs_pos_embed(  # resize pos embedding when different size from pretrained weights
                 pos_embed_w,
                 new_size=module.patch_embed.grid_size,
@@ -109,10 +124,18 @@ def load_big_vision_weights(model: CustomTextCLIP, checkpoint_path: str):
             module.attn_pool.norm.weight.copy_(_n2p(w[f'{block_prefix}LayerNorm_0/scale']))
             module.attn_pool.norm.bias.copy_(_n2p(w[f'{block_prefix}LayerNorm_0/bias']))
             for r in range(2):
-                getattr(module.attn_pool.mlp, f'fc{r + 1}').weight.copy_(_n2p(w[f'{block_prefix}MlpBlock_0/Dense_{r}/kernel']))
-                getattr(module.attn_pool.mlp, f'fc{r + 1}').bias.copy_(_n2p(w[f'{block_prefix}MlpBlock_0/Dense_{r}/bias']))
+                getattr(module.attn_pool.mlp,
+                        f'fc{r + 1}').weight.copy_(_n2p(w[f'{block_prefix}MlpBlock_0/Dense_{r}/kernel']))
+                getattr(module.attn_pool.mlp,
+                        f'fc{r + 1}').bias.copy_(_n2p(w[f'{block_prefix}MlpBlock_0/Dense_{r}/bias']))
 
     def _convert_openclip_transformer(module: Transformer, prefix):
+        """ Convert Openclip Transformer.
+
+        Args:
+            module: module parameter.
+            prefix: prefix parameter.
+        """
         for i, block in enumerate(module.resblocks.children()):
             if f'{prefix}encoderblock/LayerNorm_0/scale' in w:
                 block_prefix = f'{prefix}encoderblock/'
@@ -137,6 +160,12 @@ def load_big_vision_weights(model: CustomTextCLIP, checkpoint_path: str):
             block.mlp.c_proj.bias.copy_(_n2p(w[f'{block_prefix}MlpBlock_0/Dense_1/bias'], idx=idx))
 
     def _convert_openclip_txt(module: TextTransformer, prefix):
+        """ Convert Openclip Txt.
+
+        Args:
+            module: module parameter.
+            prefix: prefix parameter.
+        """
         module.token_embedding.weight.copy_(_n2p(w[f'{prefix}Embed_0/embedding'], t=False))
         pos_embed_w = _n2p(w[f'{prefix}pos_embedding'], t=False).squeeze(0)
         module.positional_embedding.copy_(pos_embed_w)
@@ -155,9 +184,21 @@ def load_big_vision_weights(model: CustomTextCLIP, checkpoint_path: str):
 
 
 @torch.no_grad()
-def convert_mobile_clip_state_dict(model: CustomTextCLIP, state_dict, fastvit = True):
+def convert_mobile_clip_state_dict(model: CustomTextCLIP, state_dict, fastvit=True):
+    """Convert Mobile Clip State Dict.
+
+        Args:
+            model: model parameter.
+            state_dict: state_dict parameter.
+            fastvit: fastvit parameter.
+        """
 
     def _convert_timm_img(state_dict):
+        """ Convert Timm Img.
+
+        Args:
+            state_dict: state_dict parameter.
+        """
         if fastvit:
             from timm.models.fastvit import checkpoint_filter_fn
         else:
@@ -167,6 +208,12 @@ def convert_mobile_clip_state_dict(model: CustomTextCLIP, state_dict, fastvit = 
         return timm_state_dict
 
     def _convert_openclip_txt(state_dict, prefix='text_encoder.'):
+        """ Convert Openclip Txt.
+
+        Args:
+            state_dict: state_dict parameter.
+            prefix: prefix parameter.
+        """
         text_dict = {}
         for k, v in state_dict.items():
             if not k.startswith(prefix):
@@ -197,6 +244,12 @@ def convert_mobile_clip_state_dict(model: CustomTextCLIP, state_dict, fastvit = 
 
 
 def convert_state_dict(model: Union[CustomTextCLIP, CLIP], state_dict):
+    """Convert State Dict.
+
+        Args:
+            model: model parameter.
+            state_dict: state_dict parameter.
+        """
     if 'image_encoder.model.patch_embed.0.rbr_conv.0.conv.weight' in state_dict:
         # Apple MobileCLIP s1 & s2 state_dicts (s0 and b not currently supported)
         state_dict = convert_mobile_clip_state_dict(model, state_dict)

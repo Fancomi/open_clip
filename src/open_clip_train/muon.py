@@ -1,3 +1,4 @@
+"""Muon optimizer implementation."""
 import torch
 import torch.distributed as dist
 
@@ -12,8 +13,8 @@ def zeropower_via_newtonschulz5(G, steps: int):
     where S' is diagonal with S_{ii}' ~ Uniform(0.5, 1.5), which turns out not to hurt model
     performance at all relative to UV^T, where USV^T = G is the SVD.
     """
-    assert G.ndim >= 2 # batched Muon implementation by @scottjmaddox, and put into practice in the record by @YouJiacheng
-    a, b, c = (3.4445, -4.7750,  2.0315)
+    assert G.ndim >= 2  # batched Muon implementation
+    a, b, c = (3.4445, -4.7750, 2.0315)
     X = G.bfloat16()
     if G.size(-2) > G.size(-1):
         X = X.mT
@@ -23,18 +24,27 @@ def zeropower_via_newtonschulz5(G, steps: int):
     # Perform the NS iterations
     for _ in range(steps):
         A = X @ X.mT
-        B = b * A + c * A @ A # quintic computation strategy adapted from suggestion by @jxbz, @leloykun, and @YouJiacheng
+        B = b * A + c * A @ A  # quintic computation strategy
         X = a * X + B @ X
-    
+
     if G.size(-2) > G.size(-1):
         X = X.mT
     return X
 
 
 def muon_update(grad, momentum, beta=0.95, ns_steps=5, nesterov=True):
+    """Muon Update.
+
+        Args:
+            grad: grad parameter.
+            momentum: momentum parameter.
+            beta: beta parameter.
+            ns_steps: ns_steps parameter.
+            nesterov: nesterov parameter.
+        """
     momentum.lerp_(grad, 1 - beta)
     update = grad.lerp_(momentum, beta) if nesterov else momentum
-    if update.ndim == 4: # for the case of conv filters
+    if update.ndim == 4:  # for the case of conv filters
         update = update.view(len(update), -1)
     update = zeropower_via_newtonschulz5(update, steps=ns_steps)
     update *= max(1, update.size(-2) / update.size(-1))**0.5
@@ -62,7 +72,16 @@ class Muon(torch.optim.Optimizer):
         weight_decay: The AdamW-style weight decay.
         momentum: The momentum. A value of 0.95 here is usually fine.
     """
+
     def __init__(self, params, lr=0.02, weight_decay=0, momentum=0.95):
+        """  Init  .
+
+        Args:
+            params: params parameter.
+            lr: lr parameter.
+            weight_decay: weight_decay parameter.
+            momentum: momentum parameter.
+        """
         defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum)
         assert isinstance(params, list) and len(params) >= 1 and isinstance(params[0], torch.nn.Parameter)
         params = sorted(params, key=lambda x: x.size(), reverse=True)
@@ -70,6 +89,11 @@ class Muon(torch.optim.Optimizer):
 
     @torch.no_grad()
     def step(self, closure=None):
+        """Step.
+
+        Args:
+            closure: closure parameter.
+        """
 
         loss = None
         if closure is not None:
@@ -78,7 +102,8 @@ class Muon(torch.optim.Optimizer):
 
         for group in self.param_groups:
             params = group["params"]
-            params_pad = params + [torch.empty_like(params[-1])] * (dist.get_world_size() - len(params) % dist.get_world_size())
+            params_pad = params + [torch.empty_like(params[-1])] * \
+                (dist.get_world_size() - len(params) % dist.get_world_size())
             for base_i in range(len(params))[::dist.get_world_size()]:
                 if base_i + dist.get_rank() < len(params):
                     p = params[base_i + dist.get_rank()]
@@ -100,12 +125,26 @@ class SingleDeviceMuon(torch.optim.Optimizer):
     """
     Muon variant for usage in non-distributed settings.
     """
+
     def __init__(self, params, lr=0.02, weight_decay=0, momentum=0.95):
+        """  Init  .
+
+        Args:
+            params: params parameter.
+            lr: lr parameter.
+            weight_decay: weight_decay parameter.
+            momentum: momentum parameter.
+        """
         defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum)
         super().__init__(params, defaults)
 
     @torch.no_grad()
     def step(self, closure=None):
+        """Step.
+
+        Args:
+            closure: closure parameter.
+        """
 
         loss = None
         if closure is not None:
@@ -128,6 +167,16 @@ class SingleDeviceMuon(torch.optim.Optimizer):
 
 
 def adam_update(grad, buf1, buf2, step, betas, eps):
+    """Adam Update.
+
+        Args:
+            grad: grad parameter.
+            buf1: buf1 parameter.
+            buf2: buf2 parameter.
+            step: step parameter.
+            betas: betas parameter.
+            eps: eps parameter.
+        """
     buf1.lerp_(grad, 1 - betas[0])
     buf2.lerp_(grad.square(), 1 - betas[1])
     buf1c = buf1 / (1 - betas[0]**step)
@@ -155,14 +204,22 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
     head_params = [model.lm_head.weight]
 
     from muon import MuonWithAuxAdam
-    adam_groups = [dict(params=head_params, lr=0.22), dict(params=embed_params, lr=0.6), dict(params=scalar_params, lr=0.04)]
+    adam_groups = [dict(params=head_params, lr=0.22),
+                   dict(params=embed_params, lr=0.6),
+                   dict(params=scalar_params, lr=0.04)]
     adam_groups = [dict(**g, betas=(0.8, 0.95), eps=1e-10, use_muon=False) for g in adam_groups]
     muon_group = dict(params=hidden_matrix_params, lr=0.05, momentum=0.95, use_muon=True)
     param_groups = [*adam_groups, muon_group]
     optimizer = MuonWithAuxAdam(param_groups)
     ```
     """
+
     def __init__(self, param_groups):
+        """  Init  .
+
+        Args:
+            param_groups: param_groups parameter.
+        """
         for group in param_groups:
             assert "use_muon" in group
             if group["use_muon"]:
@@ -183,6 +240,11 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
 
     @torch.no_grad()
     def step(self, closure=None):
+        """Step.
+
+        Args:
+            closure: closure parameter.
+        """
 
         loss = None
         if closure is not None:
@@ -192,7 +254,8 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
         for group in self.param_groups:
             if group["use_muon"]:
                 params = group["params"]
-                params_pad = params + [torch.empty_like(params[-1])] * (dist.get_world_size() - len(params) % dist.get_world_size())
+                params_pad = params + [torch.empty_like(params[-1])] * \
+                    (dist.get_world_size() - len(params) % dist.get_world_size())
                 for base_i in range(len(params))[::dist.get_world_size()]:
                     if base_i + dist.get_rank() < len(params):
                         p = params[base_i + dist.get_rank()]
@@ -205,7 +268,8 @@ class MuonWithAuxAdam(torch.optim.Optimizer):
                         update = muon_update(p.grad, state["momentum_buffer"], beta=group["momentum"])
                         p.mul_(1 - group["lr"] * group["weight_decay"])
                         p.add_(update.reshape(p.shape), alpha=-group["lr"])
-                    dist.all_gather(params_pad[base_i:base_i + dist.get_world_size()], params_pad[base_i + dist.get_rank()])
+                    dist.all_gather(params_pad[base_i:base_i + dist.get_world_size()],
+                                    params_pad[base_i + dist.get_rank()])
             else:
                 for p in group["params"]:
                     if p.grad is None:
@@ -229,7 +293,13 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
     """
     Non-distributed variant of MuonWithAuxAdam.
     """
+
     def __init__(self, param_groups):
+        """  Init  .
+
+        Args:
+            param_groups: param_groups parameter.
+        """
         for group in param_groups:
             assert "use_muon" in group
             if group["use_muon"]:
@@ -249,6 +319,11 @@ class SingleDeviceMuonWithAuxAdam(torch.optim.Optimizer):
 
     @torch.no_grad()
     def step(self, closure=None):
+        """Step.
+
+        Args:
+            closure: closure parameter.
+        """
 
         loss = None
         if closure is not None:

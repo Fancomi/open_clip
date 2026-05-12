@@ -1,3 +1,4 @@
+"""Zero Shot Metadata module."""
 
 OPENAI_IMAGENET_TEMPLATES = (
     lambda c: f'a bad photo of a {c}.',
@@ -263,4 +264,3 @@ IMAGENET_CLASSNAMES = (
     "rose hip", "horse chestnut seed", "coral fungus", "agaric", "gyromitra", "stinkhorn mushroom",
     "earth star fungus", "hen of the woods mushroom", "bolete", "corn cob", "toilet paper"
 )
-

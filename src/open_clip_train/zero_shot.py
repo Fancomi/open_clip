@@ -1,3 +1,4 @@
+"""Zero Shot module."""
 import logging
 
 import torch
@@ -8,13 +9,28 @@ from open_clip import get_input_dtype, get_tokenizer, build_zero_shot_classifier
 from open_clip_train.precision import get_autocast
 
 
-def accuracy(output, target, topk=(1,)):
+def accuracy(output, target, topk=(1, )):
+    """Accuracy.
+
+        Args:
+            output: output parameter.
+            target: target parameter.
+            topk: topk parameter.
+        """
     pred = output.topk(max(topk), 1, True, True)[1].t()
     correct = pred.eq(target.view(1, -1).expand_as(pred))
     return [float(correct[:k].reshape(-1).float().sum(0, keepdim=True).cpu().numpy()) for k in topk]
 
 
 def run(model, classifier, dataloader, args):
+    """Run.
+
+        Args:
+            model: model parameter.
+            classifier: classifier parameter.
+            dataloader: dataloader parameter.
+            args: args parameter.
+        """
     device = torch.device(args.device)
     autocast = get_autocast(args.precision, device_type=device.type)
     input_dtype = get_input_dtype(args.precision)
@@ -44,6 +60,15 @@ def run(model, classifier, dataloader, args):
 
 
 def zero_shot_eval(model, data, epoch, args, tokenizer=None):
+    """Zero Shot Eval.
+
+        Args:
+            model: model parameter.
+            data: data parameter.
+            epoch: epoch parameter.
+            args: args parameter.
+            tokenizer: tokenizer parameter.
+        """
     if 'imagenet-val' not in data and 'imagenet-v2' not in data:
         return {}
     if args.zeroshot_frequency == 0:

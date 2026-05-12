@@ -1,3 +1,4 @@
+"""Test Training Simple module."""
 
 import os
 import sys
@@ -13,91 +14,98 @@ if hasattr(torch._C, '_jit_set_profiling_executor'):
     torch._C._jit_set_profiling_executor(True)
     torch._C._jit_set_profiling_mode(False)
 
+
 @pytest.mark.skipif(sys.platform.startswith('darwin'), reason="macos pickle bug with locals")
 def test_training():
+    """Test Training."""
     main([
-    '--save-frequency', '1',
-    '--zeroshot-frequency', '1',
-    '--dataset-type', "synthetic",
-    '--train-num-samples', '16',
-    '--warmup', '1',
-    '--batch-size', '4',
-    '--lr', '1e-3',
-    '--wd', '0.1',
-    '--epochs', '1',
-    '--workers', '2',
-    '--model', 'RN50'
+        '--save-frequency', '1',
+        '--zeroshot-frequency', '1',
+        '--dataset-type', "synthetic",
+        '--train-num-samples', '16',
+        '--warmup', '1',
+        '--batch-size', '4',
+        '--lr', '1e-3',
+        '--wd', '0.1',
+        '--epochs', '1',
+        '--workers', '2',
+        '--model', 'RN50'
     ])
+
 
 @pytest.mark.skipif(sys.platform.startswith('darwin'), reason="macos pickle bug with locals")
 def test_training_coca():
+    """Test Training Coca."""
     main([
-    '--save-frequency', '1',
-    '--zeroshot-frequency', '1',
-    '--dataset-type', "synthetic",
-    '--train-num-samples', '16',
-    '--warmup', '1',
-    '--batch-size', '4',
-    '--lr', '1e-3',
-    '--wd', '0.1',
-    '--epochs', '1',
-    '--workers', '2',
-    '--model', 'coca_ViT-B-32'
+        '--save-frequency', '1',
+        '--zeroshot-frequency', '1',
+        '--dataset-type', "synthetic",
+        '--train-num-samples', '16',
+        '--warmup', '1',
+        '--batch-size', '4',
+        '--lr', '1e-3',
+        '--wd', '0.1',
+        '--epochs', '1',
+        '--workers', '2',
+        '--model', 'coca_ViT-B-32'
     ])
+
 
 @pytest.mark.skipif(sys.platform.startswith('darwin'), reason="macos pickle bug with locals")
 def test_training_mt5():
+    """Test Training Mt5."""
     main([
-    '--save-frequency', '1',
-    '--zeroshot-frequency', '1',
-    '--dataset-type', "synthetic",
-    '--train-num-samples', '16',
-    '--warmup', '1',
-    '--batch-size', '4',
-    '--lr', '1e-3',
-    '--wd', '0.1',
-    '--epochs', '1',
-    '--workers', '2',
-    '--model', 'mt5-base-ViT-B-32',
-    '--lock-text',
-    '--lock-text-unlocked-layers', '2'
+        '--save-frequency', '1',
+        '--zeroshot-frequency', '1',
+        '--dataset-type', "synthetic",
+        '--train-num-samples', '16',
+        '--warmup', '1',
+        '--batch-size', '4',
+        '--lr', '1e-3',
+        '--wd', '0.1',
+        '--epochs', '1',
+        '--workers', '2',
+        '--model', 'mt5-base-ViT-B-32',
+        '--lock-text',
+        '--lock-text-unlocked-layers', '2'
     ])
-
 
 
 @pytest.mark.skipif(sys.platform.startswith('darwin'), reason="macos pickle bug with locals")
 def test_training_unfreezing_vit():
+    """Test Training Unfreezing Vit."""
     main([
-    '--save-frequency', '1',
-    '--zeroshot-frequency', '1',
-    '--dataset-type', "synthetic",
-    '--train-num-samples', '16',
-    '--warmup', '1',
-    '--batch-size', '4',
-    '--lr', '1e-3',
-    '--wd', '0.1',
-    '--epochs', '1',
-    '--workers', '2',
-    '--model', 'ViT-B-32',
-    '--lock-image',
-    '--lock-image-unlocked-groups', '5',
-    '--accum-freq', '2'
+        '--save-frequency', '1',
+        '--zeroshot-frequency', '1',
+        '--dataset-type', "synthetic",
+        '--train-num-samples', '16',
+        '--warmup', '1',
+        '--batch-size', '4',
+        '--lr', '1e-3',
+        '--wd', '0.1',
+        '--epochs', '1',
+        '--workers', '2',
+        '--model', 'ViT-B-32',
+        '--lock-image',
+        '--lock-image-unlocked-groups', '5',
+        '--accum-freq', '2'
     ])
 
 
 @pytest.mark.skipif(sys.platform.startswith('darwin'), reason="macos pickle bug with locals")
 def test_training_clip_with_jit():
+    """Test Training Clip With Jit."""
     main([
-    '--save-frequency', '1',
-    '--zeroshot-frequency', '1',
-    '--dataset-type', "synthetic",
-    '--train-num-samples', '16',
-    '--warmup', '1',
-    '--batch-size', '4',
-    '--lr', '1e-3',
-    '--wd', '0.1',
-    '--epochs', '1',
-    '--workers', '2',
-    '--model', 'ViT-B-32',
-    '--torchscript'
+        '--save-frequency', '1',
+        '--zeroshot-frequency', '1',
+        '--dataset-type', "synthetic",
+        '--train-num-samples', '16',
+        '--warmup', '1',
+        '--batch-size', '4',
+        '--lr', '1e-3',
+        '--wd', '0.1',
+        '--epochs', '1',
+        '--workers', '2',
+        '--model', 'ViT-B-32',
+        '--torchscript'
     ])

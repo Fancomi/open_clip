@@ -24,20 +24,30 @@ from torch.utils.data import TensorDataset, DataLoader
 # ---------------------------------------------------------------------------
 
 def _split(X: np.ndarray, y: np.ndarray, val_frac=0.15, test_frac=0.15, seed=42):
+    """ Split.
+
+        Args:
+            X: X parameter.
+            y: y parameter.
+            val_frac: val_frac parameter.
+            test_frac: test_frac parameter.
+            seed: seed parameter.
+        """
     rng = np.random.default_rng(seed)
     n = len(X)
     idx = rng.permutation(n)
     n_test = int(n * test_frac)
-    n_val  = int(n * val_frac)
+    n_val = int(n * val_frac)
     i_test = idx[:n_test]
-    i_val  = idx[n_test:n_test + n_val]
+    i_val = idx[n_test:n_test + n_val]
     i_train = idx[n_test + n_val:]
     return (X[i_train], y[i_train],
-            X[i_val],   y[i_val],
-            X[i_test],  y[i_test])
+            X[i_val], y[i_val],
+            X[i_test], y[i_test])
 
 
 def _to_tensors(*arrays):
+    """ To Tensors."""
     result = []
     for a in arrays:
         if a.dtype in (np.float32, np.float64):
@@ -49,33 +59,60 @@ def _to_tensors(*arrays):
 
 @dataclass
 class DatasetBundle:
+    """Dataset bundle containing train/val/test data.
+
+    Args:
+        name: Dataset name.
+        description: Dataset description.
+        X_train: Training features.
+        y_train: Training labels.
+        X_val: Validation features.
+        y_val: Validation labels.
+        X_test: Test features.
+        y_test: Test labels.
+        meta: Metadata dictionary.
+    """
     name: str
     description: str
     X_train: torch.Tensor
     y_train: torch.Tensor
-    X_val:   torch.Tensor
-    y_val:   torch.Tensor
-    X_test:  torch.Tensor
-    y_test:  torch.Tensor
+    X_val: torch.Tensor
+    y_val: torch.Tensor
+    X_test: torch.Tensor
+    y_test: torch.Tensor
     meta: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def dim(self):
+        """Dim.
+
+        Args:
+        """
         return self.X_train.shape[1]
 
     @property
     def n_classes(self):
+        """N Classes.
+
+        Args:
+        """
         return int(self.y_train.max().item()) + 1
 
     def loaders(self, batch_size=256, num_workers=0):
+        """Loaders.
+
+        Args:
+            batch_size: batch_size parameter.
+            num_workers: num_workers parameter.
+        """
         train_ds = TensorDataset(self.X_train, self.y_train)
-        val_ds   = TensorDataset(self.X_val,   self.y_val)
-        test_ds  = TensorDataset(self.X_test,  self.y_test)
+        val_ds = TensorDataset(self.X_val, self.y_val)
+        test_ds = TensorDataset(self.X_test, self.y_test)
         kw = dict(batch_size=batch_size, num_workers=num_workers, pin_memory=False)
         return (
-            DataLoader(train_ds, shuffle=True,  **kw),
-            DataLoader(val_ds,   shuffle=False, **kw),
-            DataLoader(test_ds,  shuffle=False, **kw),
+            DataLoader(train_ds, shuffle=True, **kw),
+            DataLoader(val_ds, shuffle=False, **kw),
+            DataLoader(test_ds, shuffle=False, **kw),
         )
 
 
@@ -114,8 +151,8 @@ def make_dataset_a(
         description="Top PCs = label signal. Suppressing top PCs should HURT.",
         *map(lambda a: torch.tensor(a) if not isinstance(a, np.ndarray) else a, []),
         X_train=torch.tensor(Xtr), y_train=torch.tensor(ytr),
-        X_val=torch.tensor(Xv),   y_val=torch.tensor(yv),
-        X_test=torch.tensor(Xt),  y_test=torch.tensor(yt),
+        X_val=torch.tensor(Xv), y_val=torch.tensor(yv),
+        X_test=torch.tensor(Xt), y_test=torch.tensor(yt),
         meta=dict(signal_dims=signal_dims, signal_scale=signal_scale,
                   noise_scale=noise_scale, n_classes=n_classes),
     )
@@ -158,8 +195,8 @@ def make_dataset_b(
         name="dataset_b_nuisance_in_top_pcs",
         description="Top PCs = nuisance. Label in low-var dims. Suppressing top PCs should HELP.",
         X_train=torch.tensor(Xtr), y_train=torch.tensor(ytr),
-        X_val=torch.tensor(Xv),   y_val=torch.tensor(yv),
-        X_test=torch.tensor(Xt),  y_test=torch.tensor(yt),
+        X_val=torch.tensor(Xv), y_val=torch.tensor(yv),
+        X_test=torch.tensor(Xt), y_test=torch.tensor(yt),
         meta=dict(nuisance_scale=nuisance_scale, signal_scale=signal_scale,
                   signal_dims_start=signal_dims_start, n_classes=n_classes),
     )
@@ -188,6 +225,12 @@ def make_dataset_c(
     rng = np.random.default_rng(seed)
 
     def _make_split(n, corr):
+        """ Make Split.
+
+        Args:
+            n: n parameter.
+            corr: corr parameter.
+        """
         y = rng.integers(0, n_classes, size=n)
         X = np.zeros((n, dim), dtype=np.float32)
         # True signal: dim 1 onwards (low variance)
@@ -205,7 +248,7 @@ def make_dataset_c(
         return X.astype(np.float32), y
 
     X_train_full, y_train = _make_split(n_train, spurious_corr)
-    X_test,  y_test  = _make_split(n_test,  0.5)  # spurious random in test
+    X_test, y_test = _make_split(n_test, 0.5)  # spurious random in test
 
     # Use last 15% of train as val
     n_val = int(n_train * 0.15)
@@ -219,8 +262,8 @@ def make_dataset_c(
             "PCA suppression may reduce shortcut dependency."
         ),
         X_train=torch.tensor(X_train), y_train=torch.tensor(y_train),
-        X_val=torch.tensor(X_val),     y_val=torch.tensor(y_val),
-        X_test=torch.tensor(X_test),   y_test=torch.tensor(y_test),
+        X_val=torch.tensor(X_val), y_val=torch.tensor(y_val),
+        X_test=torch.tensor(X_test), y_test=torch.tensor(y_test),
         meta=dict(spurious_scale=spurious_scale, signal_scale=signal_scale,
                   spurious_corr=spurious_corr, n_classes=n_classes),
     )
@@ -255,8 +298,8 @@ def make_dataset_d(
         name="dataset_d_iid_control",
         description="Isotropic Gaussian clusters. Control: no spurious structure.",
         X_train=torch.tensor(Xtr), y_train=torch.tensor(ytr),
-        X_val=torch.tensor(Xv),   y_val=torch.tensor(yv),
-        X_test=torch.tensor(Xt),  y_test=torch.tensor(yt),
+        X_val=torch.tensor(Xv), y_val=torch.tensor(yv),
+        X_test=torch.tensor(Xt), y_test=torch.tensor(yt),
         meta=dict(signal_scale=signal_scale, noise_scale=noise_scale,
                   n_classes=n_classes),
     )
@@ -293,6 +336,12 @@ def make_dataset_b2(
     centres = rng.standard_normal((n_classes, n_signal)) * signal_scale
 
     def _make(n: int, nuisance_scale: float):
+        """ Make.
+
+        Args:
+            n: n parameter.
+            nuisance_scale: nuisance_scale parameter.
+        """
         y = rng.integers(0, n_classes, size=n)
         X = np.zeros((n, dim), dtype=np.float32)
         X[:, :signal_dims_start] = rng.standard_normal(
@@ -308,7 +357,7 @@ def make_dataset_b2(
 
     n_val = int(n_train * 0.15)
     X_val, y_val = X_full[-n_val:], y_full[-n_val:]
-    X_tr,  y_tr  = X_full[:-n_val], y_full[:-n_val]
+    X_tr, y_tr = X_full[:-n_val], y_full[:-n_val]
 
     return DatasetBundle(
         name="dataset_b2_nuisance_domain_shift",
@@ -317,9 +366,9 @@ def make_dataset_b2(
             f"Test nuisance scale={nuisance_scale_test} (OOD shift). "
             "PCA suppression should HELP generalization."
         ),
-        X_train=torch.tensor(X_tr),   y_train=torch.tensor(y_tr),
-        X_val=torch.tensor(X_val),    y_val=torch.tensor(y_val),
-        X_test=torch.tensor(X_test),  y_test=torch.tensor(y_test),
+        X_train=torch.tensor(X_tr), y_train=torch.tensor(y_tr),
+        X_val=torch.tensor(X_val), y_val=torch.tensor(y_val),
+        X_test=torch.tensor(X_test), y_test=torch.tensor(y_test),
         meta=dict(nuisance_scale_train=nuisance_scale_train,
                   nuisance_scale_test=nuisance_scale_test,
                   signal_scale=signal_scale, signal_dims_start=signal_dims_start,
@@ -358,12 +407,19 @@ def make_dataset_e(
     """
     rng = np.random.default_rng(seed)
     s_start = signal_dims
-    s_end   = signal_dims + spurious_dims
+    s_end = signal_dims + spurious_dims
 
-    signal_centres   = rng.standard_normal((n_classes, signal_dims)) * signal_scale
+    signal_centres = rng.standard_normal((n_classes, signal_dims)) * signal_scale
     spurious_centres = rng.standard_normal((n_classes, spurious_dims)) * spurious_scale_train
 
     def _make(n: int, s_scale: float, s_corr: float):
+        """ Make.
+
+        Args:
+            n: n parameter.
+            s_scale: s_scale parameter.
+            s_corr: s_corr parameter.
+        """
         y = rng.integers(0, n_classes, size=n)
         X = np.zeros((n, dim), dtype=np.float32)
         # True signal
@@ -375,12 +431,12 @@ def make_dataset_e(
         for c in range(n_classes):
             mask = np.where(y == c)[0]
             n_c = len(mask)
-            aligned_idx   = mask[rng.random(n_c) < s_corr]
+            aligned_idx = mask[rng.random(n_c) < s_corr]
             unaligned_idx = mask[rng.random(n_c) >= s_corr]
             if len(aligned_idx) > 0:
                 X[aligned_idx, s_start:s_end] = (
-                    spurious_centres[c] * (s_scale / spurious_scale_train)
-                    + rng.standard_normal((len(aligned_idx), spurious_dims)) * noise_scale
+                    spurious_centres[c] * (s_scale / spurious_scale_train) +
+                    rng.standard_normal((len(aligned_idx), spurious_dims)) * noise_scale
                 )
             if len(unaligned_idx) > 0:
                 X[unaligned_idx, s_start:s_end] = (
@@ -391,11 +447,11 @@ def make_dataset_e(
         return X, y
 
     X_full, y_full = _make(n_train, spurious_scale_train, spurious_corr)
-    X_test, y_test = _make(n_test,  spurious_scale_test,  0.5)  # near-random in test
+    X_test, y_test = _make(n_test, spurious_scale_test, 0.5)  # near-random in test
 
     n_val = int(n_train * 0.15)
     X_val, y_val = X_full[-n_val:], y_full[-n_val:]
-    X_tr,  y_tr  = X_full[:-n_val], y_full[:-n_val]
+    X_tr, y_tr = X_full[:-n_val], y_full[:-n_val]
 
     return DatasetBundle(
         name="dataset_e_multiclass_spurious",
@@ -403,9 +459,9 @@ def make_dataset_e(
             f"Multi-class spurious corr={spurious_corr} train, random test. "
             "Spurious dims scale shrinks in test. PCA suppression should HELP."
         ),
-        X_train=torch.tensor(X_tr),   y_train=torch.tensor(y_tr),
-        X_val=torch.tensor(X_val),    y_val=torch.tensor(y_val),
-        X_test=torch.tensor(X_test),  y_test=torch.tensor(y_test),
+        X_train=torch.tensor(X_tr), y_train=torch.tensor(y_tr),
+        X_val=torch.tensor(X_val), y_val=torch.tensor(y_val),
+        X_test=torch.tensor(X_test), y_test=torch.tensor(y_test),
         meta=dict(spurious_corr=spurious_corr, signal_dims=signal_dims,
                   spurious_dims=spurious_dims, ood_type="spurious_scale_shift",
                   n_classes=n_classes),
@@ -417,16 +473,21 @@ def make_dataset_e(
 # ---------------------------------------------------------------------------
 
 DATASET_REGISTRY = {
-    "a":  make_dataset_a,
-    "b":  make_dataset_b,
+    "a": make_dataset_a,
+    "b": make_dataset_b,
     "b2": make_dataset_b2,
-    "c":  make_dataset_c,
-    "d":  make_dataset_d,
-    "e":  make_dataset_e,
+    "c": make_dataset_c,
+    "d": make_dataset_d,
+    "e": make_dataset_e,
 }
 
 
 def get_dataset(name: str, **kwargs) -> DatasetBundle:
+    """Get Dataset.
+
+        Args:
+            name: name parameter.
+        """
     key = name.lower().replace("dataset_", "").strip()
     if key not in DATASET_REGISTRY:
         raise ValueError(f"Unknown dataset '{name}'. Choose from {list(DATASET_REGISTRY)}")

@@ -1,7 +1,14 @@
+"""Scheduler module."""
 import math
 
 
 def assign_learning_rate(optimizer, new_lr):
+    """Assign Learning Rate.
+
+        Args:
+            optimizer: optimizer parameter.
+            new_lr: new_lr parameter.
+        """
     for param_group in optimizer.param_groups:
         # If the group has an initial_lr recorded, scale proportionally.
         # This preserves the per-group lr ratio (e.g. Muon vs Adam groups).
@@ -21,13 +28,33 @@ def _record_initial_lr(optimizer, base_lr):
 
 
 def _warmup_lr(base_lr, warmup_length, step):
+    """ Warmup Lr.
+
+        Args:
+            base_lr: base_lr parameter.
+            warmup_length: warmup_length parameter.
+            step: step parameter.
+        """
     return base_lr * (step + 1) / warmup_length
 
 
 def const_lr(optimizer, base_lr, warmup_length, steps):
+    """Const Lr.
+
+        Args:
+            optimizer: optimizer parameter.
+            base_lr: base_lr parameter.
+            warmup_length: warmup_length parameter.
+            steps: steps parameter.
+        """
     _record_initial_lr(optimizer, base_lr)
 
     def _lr_adjuster(step):
+        """ Lr Adjuster.
+
+        Args:
+            step: step parameter.
+        """
         if step < warmup_length:
             lr = _warmup_lr(base_lr, warmup_length, step)
         else:
@@ -39,9 +66,25 @@ def const_lr(optimizer, base_lr, warmup_length, steps):
 
 
 def const_lr_cooldown(optimizer, base_lr, warmup_length, steps, cooldown_steps, cooldown_power=1.0, cooldown_end_lr=0.):
+    """Const Lr Cooldown.
+
+        Args:
+            optimizer: optimizer parameter.
+            base_lr: base_lr parameter.
+            warmup_length: warmup_length parameter.
+            steps: steps parameter.
+            cooldown_steps: cooldown_steps parameter.
+            cooldown_power: cooldown_power parameter.
+            cooldown_end_lr: cooldown_end_lr parameter.
+        """
     _record_initial_lr(optimizer, base_lr)
 
     def _lr_adjuster(step):
+        """ Lr Adjuster.
+
+        Args:
+            step: step parameter.
+        """
         start_cooldown_step = steps - cooldown_steps
         if step < warmup_length:
             lr = _warmup_lr(base_lr, warmup_length, step)
@@ -61,9 +104,22 @@ def const_lr_cooldown(optimizer, base_lr, warmup_length, steps, cooldown_steps, 
 
 
 def cosine_lr(optimizer, base_lr, warmup_length, steps):
+    """Cosine Lr.
+
+        Args:
+            optimizer: optimizer parameter.
+            base_lr: base_lr parameter.
+            warmup_length: warmup_length parameter.
+            steps: steps parameter.
+        """
     _record_initial_lr(optimizer, base_lr)
 
     def _lr_adjuster(step):
+        """ Lr Adjuster.
+
+        Args:
+            step: step parameter.
+        """
         if step < warmup_length:
             lr = _warmup_lr(base_lr, warmup_length, step)
         else:
@@ -74,4 +130,3 @@ def cosine_lr(optimizer, base_lr, warmup_length, steps):
         return lr
 
     return _lr_adjuster
-

@@ -1,3 +1,5 @@
+"""Zero-shot classifier utilities for CLIP models."""
+
 from functools import partial
 from itertools import islice
 from typing import Callable, List, Optional, Sequence, Union
@@ -50,6 +52,11 @@ def build_zero_shot_classifier(
         iter_wrap = iter
 
     def _process_batch(batch_classnames):
+        """ Process Batch.
+
+        Args:
+            batch_classnames: batch_classnames parameter.
+        """
         num_batch_classes = len(batch_classnames)
         texts = [template.format(c) if use_format else template(c) for c in batch_classnames for template in templates]
         texts = tokenizer(texts).to(device)
@@ -107,4 +114,3 @@ def build_zero_shot_classifier_legacy(
         zeroshot_weights = torch.stack(zeroshot_weights, dim=1).to(device)
 
     return zeroshot_weights
-

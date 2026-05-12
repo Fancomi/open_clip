@@ -1,10 +1,17 @@
+"""Precision module."""
 import torch
 from contextlib import suppress
 from functools import partial
 
 
 def get_autocast(precision, device_type='cuda'):
-    if precision =='amp':
+    """Get Autocast.
+
+        Args:
+            precision: precision parameter.
+            device_type: device_type parameter.
+        """
+    if precision == 'amp':
         amp_dtype = torch.float16
     elif precision == 'amp_bfloat16' or precision == 'amp_bf16':
         amp_dtype = torch.bfloat16
