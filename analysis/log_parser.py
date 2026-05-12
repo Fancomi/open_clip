@@ -222,8 +222,8 @@ def _plot_results(entries: list, out_dir: Path):
     fig, ax = plt.subplots(figsize=(max(8, len(tags) * 0.6), 4))
     x = np.arange(len(tags))
     w = 0.38
-    ax.bar(x - w/2, i2t_r1, w, label='i2t R@1 (best)', color='steelblue')
-    ax.bar(x + w/2, t2i_r1, w, label='t2i R@1 (best)', color='tomato')
+    ax.bar(x - w / 2, i2t_r1, w, label='i2t R@1 (best)', color='steelblue')
+    ax.bar(x + w / 2, t2i_r1, w, label='t2i R@1 (best)', color='tomato')
     ax.set_xticks(x)
     ax.set_xticklabels(tags, rotation=45, ha='right', fontsize=8)
     ax.set_ylabel('R@1')
@@ -247,7 +247,7 @@ def _plot_results(entries: list, out_dir: Path):
         hist = r["history"]
         eps  = sorted(hist)
         i2ts = [hist[ep].get("i2t_r1", float('nan')) for ep in eps]
-        vloss= [hist[ep].get("val_loss", float('nan')) for ep in eps]
+        vloss = [hist[ep].get("val_loss", float('nan')) for ep in eps]
         c = cmap(idx % 20)
         axes[0].plot(eps, i2ts,  marker='.', lw=1, color=c, label=tag, alpha=0.85)
         axes[1].plot(eps, vloss, marker='.', lw=1, color=c, label=tag, alpha=0.85)

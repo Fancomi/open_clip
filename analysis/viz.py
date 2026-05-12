@@ -450,12 +450,12 @@ def _make_trajectory_gif(sample_pts, traj_colors, step_ids, xlim, ylim,
                 seg = segs[slot]
                 seg_idx = win_start + slot
                 if slot < w - 1 and seg_idx + 1 <= frame:
-                    seg.set_data(pts[seg_idx:seg_idx+2, 0], pts[seg_idx:seg_idx+2, 1])
+                    seg.set_data(pts[seg_idx:seg_idx + 2, 0], pts[seg_idx:seg_idx + 2, 1])
                     seg.set_alpha(float(alphas[slot]))
                 else:
                     seg.set_data([], []); seg.set_alpha(0.0)
         for pts, sc in zip(sample_pts, cur_scats):
-            sc.set_offsets(pts[frame:frame+1, :2])
+            sc.set_offsets(pts[frame:frame + 1, :2])
         title_obj.set_text(
             f'{id_label} {step_ids[frame]}  ({(frame+1)/n*100:.0f}%)  '
             f'N={len(sample_pts)}  trail={trail}  *=current')
@@ -477,8 +477,8 @@ def _draw_static_trajectory(sample_pts, traj_colors, step_ids, xlim, ylim,
     fig, ax = plt.subplots(figsize=(8, 7))
     for pts, color in zip(sample_pts, traj_colors):
         for t in range(len(pts) - 1):
-            ax.plot(pts[t:t+2, 0], pts[t:t+2, 1], '-', color=color,
-                    alpha=float(alphas[t+1]), lw=float(lws[t+1]))
+            ax.plot(pts[t:t + 2, 0], pts[t:t + 2, 1], '-', color=color,
+                    alpha=float(alphas[t + 1]), lw=float(lws[t + 1]))
         ax.scatter(pts[0, 0],  pts[0, 1],  color=color, s=12, marker='o',
                    alpha=float(alphas[0]), zorder=3)
         ax.scatter(pts[-1, 0], pts[-1, 1], color=color, s=40, marker='*',

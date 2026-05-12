@@ -637,8 +637,8 @@ class VisionTransformer(nn.Module):
                 scale * torch.randn(self.grid_size[0] * self.grid_size[1] + 1, width))
         elif pos_embed_type == 'sin_cos_2d':
             # fixed sin-cos embedding
-            assert self.grid_size[0] == self.grid_size[1],\
-                'currently sin cos 2d pos embedding only supports square input'
+            assert self.grid_size[0] == self.grid_size[1], \
+            'currently sin cos 2d pos embedding only supports square input'
             self.positional_embedding = nn.Parameter(
                 torch.zeros(self.grid_size[0] * self.grid_size[1] + 1, width), requires_grad=False)
             pos_embed_type = get_2d_sincos_pos_embed(width, self.grid_size[0], cls_token=True)
@@ -780,7 +780,7 @@ class VisionTransformer(nn.Module):
 
         return pooled, tokens
 
-    def _embeds(self, x:torch.Tensor) -> torch.Tensor:
+    def _embeds(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv1(x)  # shape = [*, dim, grid, grid]
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]

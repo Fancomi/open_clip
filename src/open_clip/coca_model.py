@@ -540,7 +540,8 @@ class CoCa(nn.Module):
                 # (beam_idx // group_size) -> batch_idx
                 # (beam_idx % group_size) -> offset of idx inside the group
                 reordering_indices[batch_group_indices] = (
-                    num_beams * torch.div(beam_idx, group_size, rounding_mode="floor") + group_start_idx + (beam_idx % group_size)
+                    num_beams * torch.div(beam_idx, group_size, rounding_mode="floor")
+                    + group_start_idx + (beam_idx % group_size)
                 )
 
             input_ids = torch.cat([input_ids, current_tokens.unsqueeze(-1)], dim=-1)

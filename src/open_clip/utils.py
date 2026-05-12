@@ -22,7 +22,8 @@ def freeze_batch_norm_2d(module, module_match={}, name=''):
     Returns:
         torch.nn.Module: Resulting module
 
-    Inspired by https://github.com/pytorch/pytorch/blob/a5895f85be0f10212791145bfedc0261d364f103/torch/nn/modules/batchnorm.py#L762
+    Inspired by https://github.com/pytorch/pytorch/blob/
+    a5895f85be0f10212791145bfedc0261d364f103/torch/nn/modules/batchnorm.py#L762
     """
     res = module
     is_match = True
@@ -65,6 +66,7 @@ to_ntuple = lambda n, x: _ntuple(n)(x)
 # Replaces all linear layers with linear_replacement
 # TODO: add int8 support for other linear layers including attn and convnets
 def replace_linear(model, linear_replacement, include_modules=['c_fc', 'c_proj'], copy_weights=True):
+    """Replace all linear layers with linear_replacement."""
     for name, module in model.named_children():
         if len(list(module.children())) > 0:
             replace_linear(module, linear_replacement, include_modules, copy_weights)

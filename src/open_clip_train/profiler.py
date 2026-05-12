@@ -175,7 +175,9 @@ def profile_model(model_name, batch_size=1, profiler='torch', device="cuda"):
 
             if profiler == 'fvcore':
                 macs, acts = profile_fvcore(
-                    model, image_input_size=image_input_size, text_input_size=text_input_size, force_cpu=not retries, batch_size=batch_size)
+                    model, image_input_size=image_input_size,
+                    text_input_size=text_input_size,
+                    force_cpu=not retries, batch_size=batch_size)
 
                 image_macs, image_acts = profile_fvcore_image(
                     model.visual, image_input_size=image_input_size, force_cpu=not retries, batch_size=batch_size)
@@ -197,7 +199,9 @@ def profile_model(model_name, batch_size=1, profiler='torch', device="cuda"):
                 text_flops = profile_torch_text(
                     model.text, text_input_size=text_input_size, force_cpu=not retries, batch_size=batch_size)
                 total_flops = profile_torch(
-                    model, image_input_size=image_input_size, text_input_size=text_input_size, force_cpu=not retries, batch_size=batch_size)
+                    model, image_input_size=image_input_size,
+                    text_input_size=text_input_size,
+                    force_cpu=not retries, batch_size=batch_size)
 
                 results['gflops'] = round(total_flops / 1e9, 2)
                 results['image_gflops'] = round(image_flops / 1e9, 2)
@@ -220,7 +224,7 @@ def main():
     results = []
     models_with_errors = []
     for m in parsed_model:
-        print('='*100)
+        print('=' * 100)
         print(f'Profiling {m}')
         try:
             row = profile_model(m, batch_size=args.batch_size, profiler=args.profiler, device=args.device)
@@ -238,7 +242,7 @@ def main():
     else:
         df = df.sort_values(by=['gflops', 'mparams', 'model'])
 
-    print('='*100)
+    print('=' * 100)
     print('Done.')
     print(df)
     if args.results_file:

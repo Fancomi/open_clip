@@ -11,11 +11,18 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 
 from .convert import convert_state_dict
-from .model import CLIP, CustomTextCLIP, CLIPLeJEPA, CLIPWithDINO, convert_weights_to_lp, convert_to_custom_text_state_dict,\
-    resize_pos_embed, get_cast_dtype, resize_text_pos_embed, set_model_preprocess_cfg
+from .model import (
+    CLIP, CustomTextCLIP, CLIPLeJEPA, CLIPWithDINO,
+    convert_weights_to_lp, convert_to_custom_text_state_dict,
+    resize_pos_embed, get_cast_dtype, resize_text_pos_embed, set_model_preprocess_cfg,
+)
 from .coca_model import CoCa
-from .loss import ClipLoss, DistillClipLoss, CoCaLoss, SigLipLoss, SIGRegContrastiveLoss, CLIPWithDINOLoss, ModalityGapLoss, DualSigLipLoss, MultiTeacherLoss
-from .pretrained import is_pretrained_cfg, get_pretrained_cfg, download_pretrained,\
+from .loss import (
+    ClipLoss, DistillClipLoss, CoCaLoss, SigLipLoss,
+    SIGRegContrastiveLoss, CLIPWithDINOLoss, ModalityGapLoss,
+    DualSigLipLoss, MultiTeacherLoss,
+)
+from .pretrained import is_pretrained_cfg, get_pretrained_cfg, download_pretrained, \
     list_pretrained_tags_by_model, download_pretrained_from_hf
 from .transform import image_transform_v2, AugmentationCfg, PreprocessCfg, merge_preprocess_dict, merge_preprocess_kwargs
 from .tokenizer import HFTokenizer, SimpleTokenizer, SigLipTokenizer, DEFAULT_CONTEXT_LENGTH
@@ -581,7 +588,8 @@ def create_model(
          # If CLIP weights were required but failed to load, raise an error.
          # Loading tower-specific weights does not satisfy `require_pretrained`.
          raise RuntimeError(
-             f"Required pretrained weights (`model_name='{model_name}', pretrained='{pretrained}'`) could not be loaded. "
+             f"Required pretrained weights (`model_name='{model_name}',"
+             f" pretrained='{pretrained}'`) could not be loaded. "
          )
     elif not pretrained_loaded and partially_loaded:
          # Some tower weights loaded

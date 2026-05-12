@@ -78,7 +78,7 @@ def expand_urls(urls, weights=None):
     if isinstance(urls, str):
         urllist = urls.split("::")
         weights = weights.split('::')
-        assert len(weights) == len(urllist),\
+        assert len(weights) == len(urllist), \
             f"Expected the number of data components ({len(urllist)}) and weights({len(weights)}) to match."
         weights = [float(weight) for weight in weights]
         all_urls, all_weights = [], []
@@ -292,7 +292,7 @@ class ResampledShards2(IterableDataset):
         self.urls = urls
         self.weights = weights
         if self.weights is not None:
-            assert len(self.urls) == len(self.weights),\
+            assert len(self.urls) == len(self.weights), \
                 f"Number of urls {len(self.urls)} and weights {len(self.weights)} should match."
         assert isinstance(self.urls[0], str)
         self.nshards = nshards
@@ -407,7 +407,10 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
     shared_epoch = SharedEpoch(epoch=epoch)  # create a shared epoch store to sync epoch to dataloader worker proc
 
     if is_train and args.train_data_upsampling_factors is not None:
-        assert resampled, "--train_data_upsampling_factors is only supported when sampling with replacement (with --dataset-resampled)."
+        assert resampled, (
+            "--train_data_upsampling_factors is only supported when sampling"
+            " with replacement (with --dataset-resampled)."
+        )
     
     if resampled:
         pipeline = [ResampledShards2(

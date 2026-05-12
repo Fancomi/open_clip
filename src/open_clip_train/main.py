@@ -56,7 +56,8 @@ def natural_key(string_):
     return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_.lower())]
 
 
-def get_latest_checkpoint(path: str, remote : bool):
+def get_latest_checkpoint(path: str, remote: bool):
+    """Get the latest checkpoint from a local or remote path."""
     # as writen, this glob recurses, so can pick up checkpoints across multiple sub-folders
     if remote:
         result = subprocess.run(["aws", "s3", "ls", path + "/"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -313,7 +314,11 @@ def main(args):
         teacher_pe_text.requires_grad_(False)
         teacher_pe_text.eval()
         pe_backbone_dim = pe_model.visual.trunk.num_features  # 768
-        pe_dim = pe_model.visual.trunk.head.out_features if hasattr(pe_model.visual.trunk.head, 'out_features') else pe_backbone_dim
+        pe_dim = (
+            pe_model.visual.trunk.head.out_features
+            if hasattr(pe_model.visual.trunk.head, 'out_features')
+            else pe_backbone_dim
+        )
         del pe_model.visual  # free image tower memory
         logging.info(f"   PE teacher text loaded: output_dim={pe_dim}, backbone_dim={pe_backbone_dim}")
 
@@ -551,7 +556,10 @@ def main(args):
             )
         else:
             # If some params are not passed, we use the default values based on model name.
-            exclude = lambda n, p: p.ndim < 2 or "bn" in n or "ln" in n or "bias" in n or 'logit_scale' in n or 'logit_bias' in n
+            exclude = lambda n, p: (
+                p.ndim < 2 or "bn" in n or "ln" in n or "bias" in n
+                or 'logit_scale' in n or 'logit_bias' in n
+            )
             include = lambda n, p: not exclude(n, p)
 
             named_parameters = list(model.named_parameters())
@@ -586,9 +594,14 @@ def main(args):
                     and "logit_scale" not in n
                     and "logit_bias" not in n
                 )
-                muon_params   = [p for n, p in named_parameters if is_muon(n, p) and p.requires_grad]
-                adam_params_wd   = [p for n, p in named_parameters if not is_muon(n, p) and not exclude(n, p) and p.requires_grad]
-                adam_params_nowd = [p for n, p in named_parameters if not is_muon(n, p) and exclude(n, p) and p.requires_grad]
+                muon_params = [
+                    p for n, p in named_parameters if is_muon(n, p) and p.requires_grad]
+                adam_params_wd = [
+                    p for n, p in named_parameters
+                    if not is_muon(n, p) and not exclude(n, p) and p.requires_grad]
+                adam_params_nowd = [
+                    p for n, p in named_parameters
+                    if not is_muon(n, p) and exclude(n, p) and p.requires_grad]
 
                 param_groups = [
                     dict(params=adam_params_nowd, lr=args.lr, betas=(args.beta1, args.beta2),
@@ -672,7 +685,7 @@ def main(args):
         elif args.lr_scheduler == "const":
             scheduler = const_lr(optimizer, args.lr, args.warmup, total_steps)
         elif args.lr_scheduler == "const-cooldown":
-            assert args.epochs_cooldown is not None,\
+            assert args.epochs_cooldown is not None, \
                 "Please specify the number of cooldown epochs for this lr schedule."
             cooldown_steps = (data["train"].dataloader.num_batches // args.accum_freq) * args.epochs_cooldown
             scheduler = const_lr_cooldown(

@@ -42,8 +42,10 @@ class CLIPVisionCfg:
     image_size: Union[Tuple[int, int], int] = 224
 
     ls_init_value: Optional[float] = None  # layer scale initial value
-    patch_dropout: float = 0.  # what fraction of patches to dropout during training (0 would mean disabled and no patches dropped) - 0.5 to 0.75 recommended in the paper for optimal results
-    attentional_pool: bool = False  # whether to use attentional pooler in the last embedding layer (overrides pool_type)
+    patch_dropout: float = 0.  # what fraction of patches to dropout during training (0 would mean
+    # disabled and no patches dropped) - 0.5 to 0.75 recommended in the paper for optimal results
+    attentional_pool: bool = False  # whether to use attentional pooler in the last embedding layer
+    # (overrides pool_type)
     attn_pooler_queries: int = 256  # n_queries for attentional pooler
     attn_pooler_heads: int = 8  # n heads for attentional_pooling
     no_ln_pre: bool = False  # disable pre transformer LayerNorm
@@ -55,7 +57,8 @@ class CLIPVisionCfg:
     norm_kwargs: Optional[dict] = None
 
     # Custom attention block settings
-    block_type: Optional[str] = None  # attention block type ('default', 'custom'), auto-selects 'custom' if any below features enabled
+    block_type: Optional[str] = None  # attention block type ('default', 'custom'),
+    # auto-selects 'custom' if any below features enabled
     qk_norm: bool = False  # apply layer norm to q and k in attention
     scaled_cosine_attn: bool = False  # use scaled cosine attention
     scale_heads: bool = False  # learnable head-specific scale applied to attention logits
@@ -98,7 +101,8 @@ class CLIPTextCfg:
     norm_kwargs: dict = None
 
     # Custom attention block settings
-    block_type: Optional[str] = None  # attention block type ('default', 'custom'), auto-selects 'custom' if any custom features enabled
+    block_type: Optional[str] = None  # attention block type ('default', 'custom'),
+    # auto-selects 'custom' if any custom features enabled
     qk_norm: bool = False  # apply layer norm to q and k in attention
     scaled_cosine_attn: bool = False  # use scaled cosine attention
     scale_heads: bool = False  # learnable head-specific scale applied to attention logits

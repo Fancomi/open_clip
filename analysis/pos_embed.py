@@ -72,9 +72,9 @@ def spatial_cosim(patch_2d):
 def load_image(img_dir, size=224):
     paths = list(Path(img_dir).glob('*.jpg'))
     img = Image.open(random.choice(paths)).convert('RGB').resize((size, size))
-    t = torch.tensor(np.array(img)).permute(2,0,1).float() / 255.
-    mean = torch.tensor([0.485, 0.456, 0.406]).view(3,1,1)
-    std  = torch.tensor([0.229, 0.224, 0.225]).view(3,1,1)
+    t = torch.tensor(np.array(img)).permute(2, 0, 1).float() / 255.
+    mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+    std  = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
     return (t - mean) / std, img   # normalized tensor, PIL for display
 
 def capture_latent(model_visual, trunk):
@@ -108,12 +108,12 @@ m_vit.eval(); m_pe.eval(); m_dv3.eval()
 
 vit      = m_vit.visual           # VisionTransformer
 trunk_pe = m_pe.visual.trunk      # Eva (pretrained)
-trunk_dv3= m_dv3.visual.trunk     # Eva (random, dinov3)
+trunk_dv3 = m_dv3.visual.trunk     # Eva (random, dinov3)
 
 # ════════════════════════════════════════════════════════════════════
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("1. APE 静态分析（可学习参数矩阵，随机 vs 预训练）")
-print("="*60)
+print("=" * 60)
 # ════════════════════════════════════════════════════════════════════
 # APE 本质：nn.Parameter(shape=[N,D])，与 weight 一样由梯度下降优化
 # 初始化：trunc_normal_(std=0.02)，随机；训练后收敛为低秩空间坐标结构
@@ -123,7 +123,7 @@ ape_pe  = trunk_pe.pos_embed.data.squeeze()       # [197, 768]
 ape_dv3 = trunk_dv3.pos_embed.data.squeeze()      # [201, 768]
 
 print(f"\n{'模型':<30s} {'APE_std':>9} {'patch_norm':>11} {'PR/D':>7} {'空间(h,v)':>16}")
-print("-"*76)
+print("-" * 76)
 
 for label, ape, npt in [
     ("ViT-B-16-exp  (random)",  ape_vit, 1),
@@ -147,22 +147,22 @@ print(f"""
     （改变的是 conv1 输出，不是原始像素）""")
 
 # ════════════════════════════════════════════════════════════════════
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("2. APE 的 PCA 结构（学成了什么）→ 保存图像")
-print("="*60)
+print("=" * 60)
 # ════════════════════════════════════════════════════════════════════
 
 patch_pe = ape_pe[1:].numpy()                      # [196, 768]
-patch_vit= ape_vit[1:].numpy()
+patch_vit = ape_vit[1:].numpy()
 
 patch_pe_c = patch_pe - patch_pe.mean(0)
-patch_vit_c= patch_vit- patch_vit.mean(0)
+patch_vit_c = patch_vit - patch_vit.mean(0)
 
 U_pe, S_pe, _ = np.linalg.svd(patch_pe_c, full_matrices=False)
-U_vit,S_vit, _= np.linalg.svd(patch_vit_c,full_matrices=False)
+U_vit, S_vit, _ = np.linalg.svd(patch_vit_c, full_matrices=False)
 
-var_pe  = S_pe**2  / (S_pe**2).sum()
-var_vit = S_vit**2 / (S_vit**2).sum()
+var_pe  = S_pe ** 2 / (S_pe ** 2).sum()
+var_vit = S_vit ** 2 / (S_vit ** 2).sum()
 
 print(f"\n  PE-Core pretrained: 前4 PC 方差占比 = "
       f"{var_pe[:4].cumsum()[-1]*100:.1f}%  "
@@ -175,14 +175,14 @@ print(f"  ViT random:         前4 PC 方差占比 = "
 fig, axes = plt.subplots(2, 5, figsize=(16, 6))
 for ax in axes.flat: ax.axis('off')
 
-axes[0,0].set_title("APE 全部 patch\n（PCA RGB）", fontsize=9)
-axes[1,0].set_title("APE 全部 patch\n（PCA RGB，random）", fontsize=9)
+axes[0, 0].set_title("APE 全部 patch\n（PCA RGB）", fontsize=9)
+axes[1, 0].set_title("APE 全部 patch\n（PCA RGB，random）", fontsize=9)
 
 for row, (U, S, label) in enumerate([
     (U_pe,  S_pe,  "PE-Core-B-16 pretrained"),
     (U_vit, S_vit, "ViT-B-16-exp random"),
 ]):
-    var = S**2 / (S**2).sum()
+    var = S ** 2 / (S ** 2).sum()
     # PCA RGB（前3 PC → RGB）
     rgb = U[:, :3].copy()
     rgb = (rgb - rgb.min(0)) / (rgb.max(0) - rgb.min(0) + 1e-8)
@@ -191,7 +191,7 @@ for row, (U, S, label) in enumerate([
     axes[row, 0].axis('off')
 
     for pc in range(4):
-        ax = axes[row, pc+1]
+        ax = axes[row, pc + 1]
         pc_map = U[:, pc].reshape(14, 14)
         ax.imshow(pc_map, cmap='RdBu_r', interpolation='nearest')
         ax.set_title(f"PC{pc+1}  ({var[pc]*100:.1f}%)", fontsize=8)
@@ -213,9 +213,9 @@ print("""
   Random APE 的 PC 均匀分布（各占 ~0.5%），无空间结构""")
 
 # ════════════════════════════════════════════════════════════════════
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("3. APE 对 patch token 的幅度影响（pretrained）")
-print("="*60)
+print("=" * 60)
 # ════════════════════════════════════════════════════════════════════
 # APE 改变的是 patch_embed 输出（conv1 结果），不是原始像素
 
@@ -235,36 +235,36 @@ print("""
   → 此后经过 12 层 FFN + attention，位置信息逐渐与内容混合/衰减""")
 
 # ════════════════════════════════════════════════════════════════════
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("4. RoPE 数值特性（RotaryEmbeddingDinoV3）")
-print("="*60)
+print("=" * 60)
 # ════════════════════════════════════════════════════════════════════
 # RoPE 是确定性正弦函数，与初始化无关
 # 核心数学：score(m,n) = Re[q_m · conj(k_n) · e^{i(m-n)θ}] = f(q_m·k_n, m-n)
 # → attention score 只依赖相对位置 (m-n)，绝对坐标消除
 
 rope = trunk_dv3.rope
-re = rope.get_embed(shape=[14,14])  # [196, 128]: [sin|cos]
+re = rope.get_embed(shape=[14, 14])  # [196, 128]: [sin|cos]
 half = re.shape[1] // 2
 sin_e, cos_e = re[:, :half], re[:, half:]
 
 # sin²+cos²=1
-unity = (sin_e**2 + cos_e**2).mean().item()
+unity = (sin_e ** 2 + cos_e ** 2).mean().item()
 # 模长不变性
 from timm.layers.pos_embed_sincos import apply_rot_embed_cat
-q_r = torch.randn(1,1,196,half)
+q_r = torch.randn(1, 1, 196, half)
 q_rot = apply_rot_embed_cat(q_r, re.unsqueeze(0).unsqueeze(0), half=True)
 norm_diff = (q_r.norm(dim=-1) - q_rot.norm(dim=-1)).abs().max().item()
 
 # 旋转角度（最低频维度）
-angles = torch.atan2(sin_e[:,0], cos_e[:,0]).view(14,14)
-step_y = (angles[1,0] - angles[0,0]).item()
-step_x = (angles[0,1] - angles[0,0]).item()
+angles = torch.atan2(sin_e[:, 0], cos_e[:, 0]).view(14, 14)
+step_y = (angles[1, 0] - angles[0, 0]).item()
+step_x = (angles[0, 1] - angles[0, 0]).item()
 
 # 空间连续性
-rope_2d = re.view(14,14,-1)
-h_sim = torch.nn.functional.cosine_similarity(rope_2d[:,:-1], rope_2d[:,1:], dim=-1).mean().item()
-v_sim = torch.nn.functional.cosine_similarity(rope_2d[:-1,:], rope_2d[1:,:], dim=-1).mean().item()
+rope_2d = re.view(14, 14, -1)
+h_sim = torch.nn.functional.cosine_similarity(rope_2d[:, :-1], rope_2d[:, 1:], dim=-1).mean().item()
+v_sim = torch.nn.functional.cosine_similarity(rope_2d[:-1, :], rope_2d[1:, :], dim=-1).mean().item()
 
 print(f"""
   sin²+cos²=1 验证: {unity:.6f} (精确)   模长不变性 max_diff: {norm_diff:.2e}
@@ -280,9 +280,9 @@ print(f"""
   → RoPE 不改变 x，每层 attention 独立施加，位置信息不随深度衰减""")
 
 # ════════════════════════════════════════════════════════════════════
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("5. RoPE 位置偏置：覆盖不对称性 + 多层多查询位置分析")
-print("="*60)
+print("=" * 60)
 # ════════════════════════════════════════════════════════════════════
 
 from collections import defaultdict
@@ -325,8 +325,8 @@ def bias_map(layer, qr, qc, head=0):
     k_all = rec_layers[layer]['k'][:, :, npt_pe:, :]
     q_rot = apply_rot_embed_cat(q_all, re_4d, half=False)
     k_rot = apply_rot_embed_cat(k_all, re_4d, half=False)
-    s_no = (q_all[0,head,q_flat] @ k_all[0,head].T * scale_f).view(14,14).numpy()
-    s_ro = (q_rot[0,head,q_flat] @ k_rot[0,head].T * scale_f).view(14,14).numpy()
+    s_no = (q_all[0, head, q_flat] @ k_all[0, head].T * scale_f).view(14, 14).numpy()
+    s_ro = (q_rot[0, head, q_flat] @ k_rot[0, head].T * scale_f).view(14, 14).numpy()
     return s_no, s_ro, s_ro - s_no
 
 def theo_affinity(qr, qc):
@@ -348,7 +348,7 @@ for q_name, qr, qc in Q_PATCHES:
         for i in range(14):
             for j in range(14):
                 d = abs(i - qr) + abs(j - qc)
-                buckets[d].append((s_no[i,j], s_ro[i,j], diff[i,j]))
+                buckets[d].append((s_no[i, j], s_ro[i, j], diff[i, j]))
         for d in sorted(buckets)[:7]:
             v = buckets[d]
             mn, mr, md = np.mean([x[0] for x in v]), np.mean([x[1] for x in v]), np.mean([x[2] for x in v])

@@ -171,7 +171,7 @@ def _do_wds(model_name, args):
                      for im in imgs]
             chunks = []
             for ci in range(0, len(tiles), _TIPS_CHUNK):
-                tx = torch.stack(tiles[ci:ci+_TIPS_CHUNK]).to(DEVICE)
+                tx = torch.stack(tiles[ci:ci + _TIPS_CHUNK]).to(DEVICE)
                 with torch.autocast(device_type=DEVICE.type, dtype=torch.bfloat16,
                                     enabled=(DEVICE.type != 'cpu')):
                     tout = ti_m.encode_image(tx)

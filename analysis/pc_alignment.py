@@ -63,11 +63,11 @@ def compute_pc_alignment(feats_a: np.ndarray, feats_b: np.ndarray,
     grassmann = float(np.sqrt((np.arccos(sigma) ** 2).sum()))
 
     return dict(
-        per_pc_cos   = per_pc,
-        subspace_cos = sigma,
-        grassmann    = grassmann,
-        var_ratio_a  = pca_a.explained_variance_ratio_,
-        var_ratio_b  = pca_b.explained_variance_ratio_,
+        per_pc_cos=per_pc,
+        subspace_cos=sigma,
+        grassmann=grassmann,
+        var_ratio_a=pca_a.explained_variance_ratio_,
+        var_ratio_b=pca_b.explained_variance_ratio_,
     )
 
 

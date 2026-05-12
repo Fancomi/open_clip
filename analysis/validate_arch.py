@@ -150,11 +150,13 @@ print("\n>>> REGISTER TOKENS VERIFICATION (PE-DINOv3):")
 print(f"Register tokens at positions 1-4:")
 for i in range(1, 5):
     reg_token = features_dino_after_blocks[:, i, :]
-    print(f"  pos {i}: mean={reg_token.mean().item():.4f}, std={reg_token.std().item():.4f}, norm={reg_token.norm().item():.4f}")
+    print(f"  pos {i}: mean={reg_token.mean().item():.4f}, "
+          f"std={reg_token.std().item():.4f}, norm={reg_token.norm().item():.4f}")
 
 print(f"\nFirst patch token (pos 5):")
 patch_token = features_dino_after_blocks[:, 5, :]
-print(f"  mean={patch_token.mean().item():.4f}, std={patch_token.std().item():.4f}, norm={patch_token.norm().item():.4f}")
+print(f"  mean={patch_token.mean().item():.4f}, "
+      f"std={patch_token.std().item():.4f}, norm={patch_token.norm().item():.4f}")
 
 # ============================================================================
 # 4. FEATURE NORM ANALYSIS
@@ -226,12 +228,14 @@ stats_dino = compute_norm_stats(model_dino, num_samples=10)
 print("--- PE-CLS Feature Norms ---")
 for stage, stat in stats_cls.items():
     if stat:
-        print(f"{stage:20s}: mean={stat['mean']:.4f}, std={stat['std']:.4f}, min={stat['min']:.4f}, max={stat['max']:.4f}")
+        print(f"{stage:20s}: mean={stat['mean']:.4f}, std={stat['std']:.4f}, "
+              f"min={stat['min']:.4f}, max={stat['max']:.4f}")
 
 print("\n--- PE-DINOv3 Feature Norms ---")
 for stage, stat in stats_dino.items():
     if stat:
-        print(f"{stage:20s}: mean={stat['mean']:.4f}, std={stat['std']:.4f}, min={stat['min']:.4f}, max={stat['max']:.4f}")
+        print(f"{stage:20s}: mean={stat['mean']:.4f}, std={stat['std']:.4f}, "
+              f"min={stat['min']:.4f}, max={stat['max']:.4f}")
 
 print("\n>>> NORM COMPARISON:")
 if stats_cls['final_pooled'] and stats_dino['final_pooled']:
@@ -269,7 +273,8 @@ print(f"   PE-DINOv3: {model_dino.visual.trunk.num_prefix_tokens} prefix tokens 
 print("\n4. Feature Norms:")
 if stats_cls['final_pooled'] and stats_dino['final_pooled']:
     print(f"   PE-CLS final norm: {stats_cls['final_pooled']['mean']:.4f} ± {stats_cls['final_pooled']['std']:.4f}")
-    print(f"   PE-DINOv3 final norm: {stats_dino['final_pooled']['mean']:.4f} ± {stats_dino['final_pooled']['std']:.4f}")
+    print(f"   PE-DINOv3 final norm: {stats_dino['final_pooled']['mean']:.4f} "
+          f"± {stats_dino['final_pooled']['std']:.4f}")
     print("   ✓ No extreme norm explosion detected")
 
 print("\n" + "=" * 80)

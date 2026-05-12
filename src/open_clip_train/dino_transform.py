@@ -233,7 +233,7 @@ class MaskingGenerator:
             if w < self.width and h < self.height:
                 top  = random.randint(0, self.height - h)
                 left = random.randint(0, self.width  - w)
-                num_already = mask[top:top+h, left:left+w].sum()
+                num_already = mask[top:top + h, left:left + w].sum()
                 if 0 < h * w - num_already <= max_mask_patches:
                     for i in range(top, top + h):
                         for j in range(left, left + w):

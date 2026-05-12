@@ -414,7 +414,9 @@ class EvaBlock(nn.Module):
             x = x + self.drop_path1(self.attn(self.norm1(x), rope=rope, attn_mask=attn_mask, is_causal=is_causal))
             x = x + self.drop_path2(self.mlp(self.norm2(x)))
         else:
-            x = x + self.drop_path1(self.gamma_1 * self.attn(self.norm1(x), rope=rope, attn_mask=attn_mask, is_causal=is_causal))
+            x = x + self.drop_path1(
+                self.gamma_1 * self.attn(
+                    self.norm1(x), rope=rope, attn_mask=attn_mask, is_causal=is_causal))
             x = x + self.drop_path2(self.gamma_2 * self.mlp(self.norm2(x)))
         return x
 
@@ -1429,18 +1431,21 @@ default_cfgs = generate_default_cfgs({
 
     # in22k or m38m MIM pretrain w/ intermediate in22k fine-tune and final in1k fine-tune
     'eva02_base_patch14_448.mim_in22k_ft_in22k_in1k': _cfg(
-        # hf_hub_id='Yuxin-CV/EVA-02', hf_hub_filename='eva02/cls/in21k_to_in1k/eva02_B_pt_in21k_medft_in21k_ft_in1k_p14.pt',
+        # hf_hub_id='Yuxin-CV/EVA-02',
+        # hf_hub_filename='eva02/cls/in21k_to_in1k/eva02_B_pt_in21k_medft_in21k_ft_in1k_p14.pt',
         hf_hub_id='timm/',
         input_size=(3, 448, 448), crop_pct=1.0, crop_mode='squash',
     ),
     'eva02_large_patch14_448.mim_in22k_ft_in22k_in1k': _cfg(
-        # hf_hub_id='Yuxin-CV/EVA-02', hf_hub_filename='eva02/cls/in21k_to_in1k/eva02_L_pt_in21k_medft_in21k_ft_in1k_p14.pt',
+        # hf_hub_id='Yuxin-CV/EVA-02',
+        # hf_hub_filename='eva02/cls/in21k_to_in1k/eva02_L_pt_in21k_medft_in21k_ft_in1k_p14.pt',
         hf_hub_id='timm/',
         input_size=(3, 448, 448), crop_pct=1.0, crop_mode='squash',
     ),
     'eva02_large_patch14_448.mim_m38m_ft_in22k_in1k': _cfg(
         hf_hub_id='timm/',
-        #hf_hub_id='Yuxin-CV/EVA-02', hf_hub_filename='eva02/cls/in21k_to_in1k/eva02_L_pt_m38m_medft_in21k_ft_in1k_p14.pt',
+        # hf_hub_id='Yuxin-CV/EVA-02',
+        # hf_hub_filename='eva02/cls/in21k_to_in1k/eva02_L_pt_m38m_medft_in21k_ft_in1k_p14.pt',
         input_size=(3, 448, 448), crop_pct=1.0, crop_mode='squash',
     ),
 

@@ -404,7 +404,10 @@ def image_transform(
             ])
             train_transform = Compose(train_transform)
             if aug_cfg_dict:
-                warnings.warn(f'Unused augmentation cfg items, specify `use_timm` to use ({list(aug_cfg_dict.keys())}).')
+                warnings.warn(
+                    f'Unused augmentation cfg items, specify `use_timm` to use'
+                    f' ({list(aug_cfg_dict.keys())}).'
+                )
         return train_transform
     else:
         if resize_mode == 'longest':

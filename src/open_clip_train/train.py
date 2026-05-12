@@ -157,7 +157,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                         model_out = model(images, texts, texts2)
                     else:
                         model_out = model(images, texts)
-                logit_scale = model_out.get("logit_scale", model_out.get("logit_scale_pe", model_out.get("logit_scale_0", None)))
+                logit_scale = model_out.get(
+                    "logit_scale",
+                    model_out.get("logit_scale_pe", model_out.get("logit_scale_0", None))
+                )
                 logit_bias = model_out.get("logit_bias", None)
                 if args.distill:
                     with torch.no_grad():
@@ -210,7 +213,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                     else:
                         model_out = model(images, texts)
 
-                    for f in ("logit_scale", "logit_bias", "logit_scale_pe", "logit_scale_sig", "logit_bias_sig", "n_teachers"):
+                    for f in (
+                        "logit_scale", "logit_bias", "logit_scale_pe",
+                        "logit_scale_sig", "logit_bias_sig", "n_teachers"
+                    ):
                         model_out.pop(f, None)
                     for key in list(model_out.keys()):
                         if key.startswith("logit_scale_") or key.startswith("logit_bias_"):
@@ -415,7 +421,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             }
             if logit_bias_scalar is not None:
                 log_data["bias"] = logit_bias_scalar
-            log_data.update({name:val.val for name,val in losses_m.items()})
+            log_data.update({name: val.val for name, val in losses_m.items()})
 
             log_data = {"train/" + name: val for name, val in log_data.items()}
 
@@ -566,7 +572,10 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
 
     _i2t = {k: v for k, v in metrics.items() if k.startswith("image_to_text")}
     _t2i = {k: v for k, v in metrics.items() if k.startswith("text_to_image")}
-    _rest = {k: v for k, v in metrics.items() if not k.startswith("image_to_text") and not k.startswith("text_to_image")}
+    _rest = {
+        k: v for k, v in metrics.items()
+        if not k.startswith("image_to_text") and not k.startswith("text_to_image")
+    }
     def _fmt(d): return "\t".join(f"{k}: {round(v, 4):.4f}" for k, v in d.items())
     logging.info(f"Eval Epoch: {epoch} [i2t]\t" + _fmt(_i2t))
     logging.info(f"Eval Epoch: {epoch} [t2i]\t" + _fmt(_t2i))

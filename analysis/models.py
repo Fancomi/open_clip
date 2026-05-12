@@ -17,14 +17,14 @@ _HF_CACHE = os.path.expanduser('~/.cache/huggingface/modules/transformers_module
 _BASE     = '/root/paddlejob/workspace/env_run/penghaotian'
 
 CKPT = dict(
-    pe_core   = f'{_BASE}/models/timm/PE-Core-B-16/open_clip_model.safetensors',
-    siglip2   = f'{_BASE}/models/timm/ViT-B-16-SigLIP2/open_clip_model.safetensors',
-    dino_repo = f'{_BASE}/vision_encoder/dinov3',
-    dino_ckpt = f'{_BASE}/models/dino/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth',
-    radio     = f'{_BASE}/models/C-RADIOv4-SO400M',
-    eupe_repo = f'{_BASE}/vision_encoder/EUPE',
-    eupe_ckpt = f'{_BASE}/models/EUPE-ViT-B/EUPE-ViT-B.pt',
-    tips      = f'{_BASE}/models/tipsv2-b14',
+    pe_core=f'{_BASE}/models/timm/PE-Core-B-16/open_clip_model.safetensors',
+    siglip2=f'{_BASE}/models/timm/ViT-B-16-SigLIP2/open_clip_model.safetensors',
+    dino_repo=f'{_BASE}/vision_encoder/dinov3',
+    dino_ckpt=f'{_BASE}/models/dino/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth',
+    radio=f'{_BASE}/models/C-RADIOv4-SO400M',
+    eupe_repo=f'{_BASE}/vision_encoder/EUPE',
+    eupe_ckpt=f'{_BASE}/models/EUPE-ViT-B/EUPE-ViT-B.pt',
+    tips=f'{_BASE}/models/tipsv2-b14',
 )
 
 
@@ -99,8 +99,12 @@ def load_radio(path=None):
 # ── EUPE native ViT-B/16 (matches checkpoint key structure exactly) ───────────
 
 class _LS(nn.Module):
+    """Layer scale module."""
+
     def __init__(self, dim): super().__init__(); self.gamma = nn.Parameter(torch.ones(dim))
-    def forward(self, x):    return x * self.gamma
+    def forward(self, x):
+        """Forward pass."""
+        return x * self.gamma
 
 class _Attn(nn.Module):
     def __init__(self, dim, heads):
@@ -118,7 +122,9 @@ class _MLP(nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.fc1 = nn.Linear(dim, dim * 4); self.fc2 = nn.Linear(dim * 4, dim)
-    def forward(self, x): return self.fc2(F.gelu(self.fc1(x)))
+    def forward(self, x):
+        """Forward pass."""
+        return self.fc2(F.gelu(self.fc1(x)))
 
 class _Block(nn.Module):
     def __init__(self, dim, heads):
@@ -132,7 +138,9 @@ class _Block(nn.Module):
 
 class _PatchEmbed(nn.Module):
     def __init__(self, dim, ps): super().__init__(); self.proj = nn.Conv2d(3, dim, ps, ps)
-    def forward(self, x):        return self.proj(x).flatten(2).transpose(1, 2)
+    def forward(self, x):
+        """Forward pass."""
+        return self.proj(x).flatten(2).transpose(1, 2)
 
 class _RopeEmbed(nn.Module):
     """Placeholder — holds rope_embed.periods from checkpoint, not used in forward."""

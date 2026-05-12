@@ -114,7 +114,8 @@ def main():
     parser.add_argument("--out-dir",   default=None, help="输出目录，默认 <coco-root>/annotations")
     parser.add_argument("--seed",      type=int, default=42)
     parser.add_argument("--karpathy-json",
-                        default="/root/paddlejob/workspace/env_run/penghaotian/datas/coco/annotations/coco_karpathy_test.json",
+                        default="/root/paddlejob/workspace/env_run/"
+                        "penghaotian/datas/coco/annotations/coco_karpathy_test.json",
                         help="coco_karpathy_test.json 路径（Salesforce LAVIS 格式）")
     args = parser.parse_args()
 

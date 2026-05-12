@@ -16,17 +16,20 @@ from .extractors import (load_from_cache,
                           extract_pe_core_pil_raw,
                           extract_radio_pil, extract_eupe_pil, extract_tips_pil)
 from .metrics      import fps_sample, compute_anisotropy
-from .viz          import plot_scatter, plot_overlap, plot_anisotropy, plot_aniso_evolution, plot_evolution, plot_crop_probe, plot_umap_evolution
+from .viz          import (
+    plot_scatter, plot_overlap, plot_anisotropy,
+    plot_aniso_evolution, plot_evolution, plot_crop_probe, plot_umap_evolution
+)
 from .pc_alignment import _plot_final_pc_pairs
 
 _BASE = '/root/paddlejob/workspace/env_run/penghaotian'
 _DATA = dict(
-    data     = f'{_BASE}/datas/coco/annotations/karpathy_1cap.tsv',
-    out_dir  = f'{_BASE}/datas/coco/feature_probe',
-    coco_dir = f'{_BASE}/datas/coco/feature_probe/pretrained',
-    cc3m_wds = f'{_BASE}/datas/LLaVA-ReCap-CC3M/wds/{{00000..00280}}.tar',
-    cc3m_out = f'{_BASE}/datas/LLaVA-ReCap-CC3M/feature_probe',
-    cc3m_dir = f'{_BASE}/datas/LLaVA-ReCap-CC3M/feature_probe/pretrained',
+    data=f'{_BASE}/datas/coco/annotations/karpathy_1cap.tsv',
+    out_dir=f'{_BASE}/datas/coco/feature_probe',
+    coco_dir=f'{_BASE}/datas/coco/feature_probe/pretrained',
+    cc3m_wds=f'{_BASE}/datas/LLaVA-ReCap-CC3M/wds/{{00000..00280}}.tar',
+    cc3m_out=f'{_BASE}/datas/LLaVA-ReCap-CC3M/feature_probe',
+    cc3m_dir=f'{_BASE}/datas/LLaVA-ReCap-CC3M/feature_probe/pretrained',
 )
 
 # ── Anisotropy summary table helper ──────────────────────────────────────────

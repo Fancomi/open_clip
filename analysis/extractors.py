@@ -35,16 +35,16 @@ _TIPS_SZ  = 448
 _TIPS_CHUNK = 8             # TIPSv2 sub-batch: 1024 patches @ 448² → OOM guard
 
 # ── DINOv3-style crop augmentation (RandomResizedCrop applied to PIL) ─────────
-_GC_CROP = T.RandomResizedCrop(224, scale=(0.32, 1.0),  ratio=(3/4, 4/3),
+_GC_CROP = T.RandomResizedCrop(224, scale=(0.32, 1.0), ratio=(3 / 4, 4 / 3),
                                 interpolation=T.InterpolationMode.BICUBIC)
-_LC_CROP = T.RandomResizedCrop(96,  scale=(0.05, 0.32), ratio=(3/4, 4/3),
+_LC_CROP = T.RandomResizedCrop(96, scale=(0.05, 0.32), ratio=(3 / 4, 4 / 3),
                                 interpolation=T.InterpolationMode.BICUBIC)
 
 # ── Required npz for cache-hit ─────────────────────────────────────────────────
 _REQUIRED_NPZS = {
     'pe_img':    'pe_core_img.npz',  'pe_txt':   'pe_core_txt.npz',
     'sig2_img':  'siglip2_img.npz',  'sig2_txt': 'siglip2_txt.npz',
-    'dino_img':  'dinov3_img.npz',   'radio_img':'radio_img.npz',
+    'dino_img':  'dinov3_img.npz',   'radio_img': 'radio_img.npz',
     'tips_img':  'tips_img.npz',     'tips_txt': 'tips_txt.npz',
 }
 _OPTIONAL_NPZS = {'eupe_img': 'eupe_img.npz'}
@@ -99,7 +99,7 @@ def extract_clip_img(model, paths, preproc, out_path, force=False, bs=256):
         feats = []
         for i in range(0, len(paths), bs):
             x = torch.stack([preproc(Image.open(p).convert('RGB'))
-                             for p in paths[i:i+bs]]).to(dev)
+                             for p in paths[i:i + bs]]).to(dev)
             feats.append(model.encode_image(x, normalize=True).detach().cpu().float().numpy())
         feat = np.concatenate(feats)
     else:
@@ -126,7 +126,7 @@ def extract_pe_core_img_raw(model, paths, preproc, out_path, force=False, bs=256
     feats = []
     for i in range(0, len(paths), bs):
         x = torch.stack([preproc(Image.open(p).convert('RGB'))
-                         for p in paths[i:i+bs]]).to(DEVICE)
+                         for p in paths[i:i + bs]]).to(DEVICE)
         trunk_out = model.visual.trunk.forward_features(x)   # [B, N, 768]
         cls = trunk_out[:, 0, :].float()                      # CLS token, raw
         feats.append(cls.cpu().numpy())
@@ -142,7 +142,7 @@ def extract_clip_txt(model, tok, caps, out_path, force=False, bs=512):
     feat = _npz(out_path, force)
     if feat is not None:
         return feat
-    feats = [model.encode_text(tok(caps[i:i+bs]).to(DEVICE), normalize=True)
+    feats = [model.encode_text(tok(caps[i:i + bs]).to(DEVICE), normalize=True)
              .cpu().float().numpy() for i in range(0, len(caps), bs)]
     feat = np.concatenate(feats)
     np.savez_compressed(out_path, features=feat)
@@ -157,7 +157,7 @@ def extract_dinov3_img(model, paths, out_path, force=False, bs=128):
     feats = []
     for i in range(0, len(paths), bs):
         x = torch.stack([_DINO_TF(Image.open(p).convert('RGB'))
-                         for p in paths[i:i+bs]]).to(DEVICE)
+                         for p in paths[i:i + bs]]).to(DEVICE)
         cls = model.forward_features(x)['x_norm_clstoken']
         feats.append(cls.cpu().float().numpy())
         if (i // bs + 1) % 5 == 0 or i + bs >= len(paths):
@@ -175,7 +175,7 @@ def extract_radio_img(model, cond, paths, out_path, force=False, bs=128):
     feats = []
     for i in range(0, len(paths), bs):
         x = torch.stack([_RADIO_TF(Image.open(p).convert('RGB'))
-                         for p in paths[i:i+bs]]).to(DEVICE)
+                         for p in paths[i:i + bs]]).to(DEVICE)
         if cond is not None:
             x = cond(x)
         out = model(x)
@@ -196,7 +196,7 @@ def extract_eupe_img(model, paths, out_path, force=False, bs=128):
     feats, dev = [], DEVICE.type
     for i in range(0, len(paths), bs):
         x = torch.stack([_EUPE_TF(Image.open(p).convert('RGB'))
-                         for p in paths[i:i+bs]]).to(DEVICE)
+                         for p in paths[i:i + bs]]).to(DEVICE)
         with torch.autocast(device_type=dev, dtype=torch.bfloat16, enabled=(dev != 'cpu')):
             cls = model.forward_features(x)['x_norm_clstoken']
         feats.append(cls.cpu().float().numpy())
@@ -217,7 +217,7 @@ def extract_tips_img(model, paths, out_path, force=False, bs=8):
     for i in range(0, len(paths), bs):
         imgs = [_TIPS_TF(Image.open(p).convert('RGB')
                          .resize((_TIPS_SZ, _TIPS_SZ), Image.BICUBIC))
-                for p in paths[i:i+bs]]
+                for p in paths[i:i + bs]]
         x = torch.stack(imgs).to(DEVICE)
         with torch.autocast(device_type=dev, dtype=torch.bfloat16, enabled=(dev != 'cpu')):
             out = model.encode_image(x)
@@ -237,7 +237,7 @@ def extract_tips_txt(model, tok, caps, out_path, force=False, bs=512):
         return feat
     feats = []
     for i in range(0, len(caps), bs):
-        ids, pads = tok.tokenize(caps[i:i+bs], max_len=model.config.max_len)
+        ids, pads = tok.tokenize(caps[i:i + bs], max_len=model.config.max_len)
         ids  = torch.from_numpy(ids).to(DEVICE)
         pads = torch.from_numpy(pads).to(DEVICE)
         feats.append(F.normalize(model.encode_text(ids, pads), dim=-1)
