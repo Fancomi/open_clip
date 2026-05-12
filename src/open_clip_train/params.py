@@ -29,7 +29,8 @@ def parse_args(args):
         "--train-data",
         type=str,
         default=None,
-        help="Path to file(s) with training data. When using webdataset, multiple datasources can be combined using the `::` separator.",
+        help="Path to file(s) with training data. When using webdataset, "
+        "multiple datasources can be combined using the `::` separator.",
     )
     parser.add_argument(
         "--train-data-upsampling-factors",
@@ -176,7 +177,8 @@ def parse_args(args):
         "--lr-scheduler",
         type=str,
         default='cosine',
-        help="LR scheduler. One of: 'cosine', 'const' (constant), 'const-cooldown' (constant w/ cooldown). Default: cosine",
+        help="LR scheduler. One of: 'cosine', 'const' (constant), "
+        "'const-cooldown' (constant w/ cooldown). Default: cosine",
     )
     parser.add_argument(
         "--lr-cooldown-end", type=float, default=0.0,
