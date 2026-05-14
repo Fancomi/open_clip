@@ -497,12 +497,16 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
                     all_text_features.append(text_features.cpu())
                     logit_scale = logit_scale.mean()
                     neg_mode = getattr(args, 'neg_mode', 'standard')
-                    if neg_mode == 'projective':
-                        logits_per_image = logit_scale * (image_features @ text_features.t()).abs()
+                    neg_alpha = getattr(args, 'neg_alpha', 1.0)
+                    raw = logit_scale * image_features @ text_features.t()
+                    if neg_alpha < 1.0:
+                        logits_per_image = neg_alpha * raw + (1.0 - neg_alpha) * raw.abs()
+                    elif neg_mode == 'projective':
+                        logits_per_image = raw.abs()
                     elif neg_mode == 'antipodal':
-                        logits_per_image = -logit_scale * image_features @ text_features.t()
+                        logits_per_image = -raw
                     else:
-                        logits_per_image = logit_scale * image_features @ text_features.t()
+                        logits_per_image = raw
                     logits_per_text = logits_per_image.t()
 
                     batch_size = images.shape[0]
@@ -561,6 +565,7 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
                 logit_scale=logit_scale.cpu(),
                 num_captions_per_image=n_caps,
                 neg_mode=getattr(args, 'neg_mode', 'standard'),
+                neg_alpha=getattr(args, 'neg_alpha', 1.0),
             )
             logging.info(f"Eval:   Step 3/3 - Metrics computed.")
             loss = cumulative_loss / num_samples
@@ -613,7 +618,8 @@ def evaluate(model, data, epoch, args, tb_writer=None, tokenizer=None):
 
 def get_clip_metrics(image_features, text_features, logit_scale,
                      num_captions_per_image: int = 1,
-                     neg_mode: str = 'standard'):
+                     neg_mode: str = 'standard',
+                     neg_alpha: float = 1.0):
     """计算检索指标，支持 1:1 和 1:N（论文标准 COCO 5cap）两种协议。
 
     num_captions_per_image=1  : 标准 1:1，ground_truth[i] = i
@@ -626,15 +632,18 @@ def get_clip_metrics(image_features, text_features, logit_scale,
     n_img  = len(image_features)          # 图数 = total_pairs / n_caps
     n_txt  = len(text_features)           # 文本数 = n_img * n_caps
 
-    sim_sign = -1.0 if neg_mode == 'antipodal' else 1.0
     logging.info(f"Eval:   Step 1/3 - Computing similarity matrix "
                  f"[{n_img} imgs, {n_txt} texts, {n_caps} caps/img]...")
-    # image_features: [n_img, d]  text_features: [n_txt, d]
     raw_sim = image_features @ text_features.t()
-    if neg_mode == 'projective':
-        logits_per_image = (logit_scale * raw_sim.abs()).detach().cpu()
+    raw_logits = logit_scale * raw_sim
+    if neg_alpha < 1.0:
+        logits_per_image = (neg_alpha * raw_logits + (1.0 - neg_alpha) * raw_logits.abs()).detach().cpu()
+    elif neg_mode == 'projective':
+        logits_per_image = raw_logits.abs().detach().cpu()
+    elif neg_mode == 'antipodal':
+        logits_per_image = (-raw_logits).detach().cpu()
     else:
-        logits_per_image = (sim_sign * logit_scale * raw_sim).detach().cpu()
+        logits_per_image = raw_logits.detach().cpu()
     # [n_img, n_txt]
     logits_per_text  = logits_per_image.t().detach().cpu()
     # [n_txt, n_img]

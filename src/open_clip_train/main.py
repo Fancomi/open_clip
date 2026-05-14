@@ -223,8 +223,8 @@ def main(args):
     random_seed(args.seed, 0)
     model_kwargs = {}
     if args.siglip:
-        model_kwargs['init_logit_scale'] = np.log(10)  # different from CLIP
-        model_kwargs['init_logit_bias'] = -10
+        model_kwargs['init_logit_scale'] = np.log(getattr(args, 'init_logit_scale', None) or 10)
+        model_kwargs['init_logit_bias'] = getattr(args, 'init_logit_bias', None) or -10
     model, preprocess_train, preprocess_val = create_model_and_transforms(
         args.model,
         args.pretrained,

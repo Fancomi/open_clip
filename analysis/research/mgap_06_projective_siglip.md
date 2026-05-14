@@ -206,7 +206,24 @@ Projective 的 +16.3% i2t 提升远超 orthogonal (+3.5%)。区别在于：ortho
 
 ### 6.2 结果
 
-*(CC3M 实验进行中)*
+| 方法 | best i2t R@1 | i2t Δ | best t2i R@1 | t2i Δ | best epoch |
+|------|-------------|-------|-------------|-------|-----------|
+| **Baseline** (standard) | 0.2190 | -- | 0.1603 | -- | 9/8 |
+| **Orthogonal** | 0.2270 | +3.7% | 0.1636 | +2.1% | 8/8 |
+| **Projective** | 0.2278 | +4.0% | 0.1602 | -0.1% | 8/8 |
+
+### 6.3 CC3M 分析
+
+1. **Projective i2t 略优**: +4.0% vs orthogonal +3.7%，但差异在噪声范围内
+2. **t2i 持平**: projective 在 CC3M 上 t2i 与 baseline 持平（0.1602 vs 0.1603），orthogonal 更优（0.1636, +2.1%）
+3. **COCO vs CC3M 差异**: COCO 上 projective +16.3% i2t，CC3M 上仅 +4.0%。COCO 小数据集（82K）对负样本几何更敏感；CC3M 2.9M 样本的统计量更稳定
+4. **Orthogonal 在 CC3M 上更均衡**: 双向均有 2-4% 提升，是 CC3M 上最佳方法
+
+### 6.4 综合判断
+
+- **小数据/快速迭代场景**: Projective 更优（COCO +16.3% i2t 且 t2i 也提升）
+- **大数据正式训练**: Orthogonal 更稳健（CC3M 双向均匀提升）
+- **两者均优于 baseline**: 在不同数据规模上，正交类方法一致优于标准 SigLIP
 
 ---
 

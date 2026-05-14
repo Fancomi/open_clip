@@ -798,8 +798,9 @@ def _set_model_device_and_precision(
 
 def create_loss(args):
     neg_mode = getattr(args, 'neg_mode', 'standard')
-    if neg_mode != 'standard':
-        assert getattr(args, 'siglip', False), f"--neg-mode {neg_mode} requires --siglip"
+    neg_alpha = getattr(args, 'neg_alpha', 1.0)
+    if neg_mode != 'standard' or neg_alpha < 1.0:
+        assert getattr(args, 'siglip', False), f"--neg-mode {neg_mode} / --neg-alpha {neg_alpha} requires --siglip"
 
     if args.distill:
         return DistillClipLoss(
@@ -840,6 +841,7 @@ def create_loss(args):
             uniformity_t=getattr(args, 'uniformity_t', 2.0),
             koleo_weight=getattr(args, 'koleo_weight', 0.0),
             neg_mode=neg_mode,
+            neg_alpha=neg_alpha,
         )
     elif getattr(args, 'dinov3', False):
         # CLIPWithDINOLoss：需要从 model 中读取 embed_dim，由 main.py 传入
@@ -861,6 +863,7 @@ def create_loss(args):
             dist_impl=getattr(args, 'loss_dist_impl', None),
             n_global_crops=getattr(args, 'dino_n_global_crops', 2),
             neg_mode=neg_mode,
+            neg_alpha=neg_alpha,
         )
     elif getattr(args, 'multi_teacher', False):
         weights = None
@@ -886,6 +889,7 @@ def create_loss(args):
             world_size=args.world_size,
             dist_impl=args.loss_dist_impl,
             neg_mode=neg_mode,
+            neg_alpha=neg_alpha,
         )
 
     return ClipLoss(
