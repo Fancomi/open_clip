@@ -225,6 +225,11 @@ def main(args):
     if args.siglip:
         model_kwargs['init_logit_scale'] = np.log(10)  # different from CLIP
         model_kwargs['init_logit_bias'] = -10
+    # CLI overrides for scale/bias init
+    if args.init_logit_scale is not None:
+        model_kwargs['init_logit_scale'] = args.init_logit_scale
+    if args.init_logit_bias is not None:
+        model_kwargs['init_logit_bias'] = args.init_logit_bias
     model, preprocess_train, preprocess_val = create_model_and_transforms(
         args.model,
         args.pretrained,
@@ -493,6 +498,16 @@ def main(args):
 
     if args.grad_checkpointing:
         model.set_grad_checkpointing()
+
+    # Freeze logit_scale / logit_bias if requested
+    if getattr(args, 'freeze_logit_params', False):
+        from open_clip import get_model_config  # noqa: F811
+        m_ = model.module if hasattr(model, 'module') else model
+        for name in ('logit_scale', 'logit_bias'):
+            p = getattr(m_, name, None)
+            if p is not None and isinstance(p, torch.nn.Parameter):
+                p.requires_grad = False
+                logging.info(f"Froze {name} = {p.data.item():.4f}")
 
     if is_master(args):
         logging.info("Model:")

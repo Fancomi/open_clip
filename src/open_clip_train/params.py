@@ -577,6 +577,24 @@ def parse_args(args):
         )
     )
     parser.add_argument(
+        "--init-logit-scale",
+        default=None,
+        type=float,
+        help='Override init logit_scale (log-space). Default: ln(10) for SigLIP, ln(1/0.07) for CLIP.'
+    )
+    parser.add_argument(
+        "--init-logit-bias",
+        default=None,
+        type=float,
+        help='Override init logit_bias. Default: -10 for SigLIP, None for CLIP.'
+    )
+    parser.add_argument(
+        "--freeze-logit-params",
+        default=False,
+        action="store_true",
+        help='Freeze logit_scale and logit_bias (non-learnable).'
+    )
+    parser.add_argument(
         "--loss-dist-impl",
         default=None,
         type=str,

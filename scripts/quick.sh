@@ -120,7 +120,7 @@ LR_1_100=$(python3 -c "print($LR / 100)")
 LR_1_50=$(python3 -c "print($LR / 50)")
 
 # 含Muon不含Dinov3的目前的baseline
-run_cc3m "pe_dinov3_sigreg_siglip_muon"   "PE-Core-B-16-dinov3" 29560 "--siglip --sigreg-target cls --sigreg-weight 1e-4 --epochs 10 --warmup 512  --lr ${LR} --opt muon --muon-lr ${MUON_LR}  --probe-data ${PROBE_TSV}"
+run_cc3m "pe_dinov3_sigreg_siglip_muon"   "PE-Core-B-16-dinov3" 29560 "--siglip --sigreg-target cls --sigreg-weight 1e-4 --epochs 100 --warmup 512  --lr ${LR} --opt muon --muon-lr ${MUON_LR}  --probe-data ${PROBE_TSV}"
 
 # ===
 # ORI
