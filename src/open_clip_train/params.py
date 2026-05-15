@@ -595,10 +595,33 @@ def parse_args(args):
         help='Freeze logit_scale and logit_bias (non-learnable).'
     )
     parser.add_argument(
+        "--neg-alpha",
+        type=float,
+        default=1.0,
+        help=(
+            'Blend factor between standard (1.0) and projective (0.0) similarity. '
+            'logits = alpha * (scale*cos) + (1-alpha) * (scale*|cos|). '
+            'alpha=0.5 is "half-orthogonal" (cos<0 neutral). Overrides --neg-mode when <1.0. '
+            'Requires --siglip.'
+        )
+    )
+    parser.add_argument(
         "--loss-dist-impl",
         default=None,
         type=str,
         help='A string to specify a specific distributed loss implementation.'
+    )
+    parser.add_argument(
+        "--init-logit-scale",
+        type=float,
+        default=None,
+        help='Override initial logit scale value (actual scale, not log). Default: 10 for SigLIP.'
+    )
+    parser.add_argument(
+        "--init-logit-bias",
+        type=float,
+        default=None,
+        help='Override initial logit bias value. Default: -10 for SigLIP.'
     )
 
     # ============ SIGReg 正则化参数 (https://arxiv.org/abs/2511.08544) ============

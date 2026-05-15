@@ -346,6 +346,7 @@ class SigLipLoss(nn.Module):
             world_size: int = 1,
             dist_impl: Optional[str] = None,
             neg_mode: str = 'standard',
+            neg_alpha: float = 1.0,
     ):
         super().__init__()
         self.cache_labels = cache_labels
@@ -353,6 +354,7 @@ class SigLipLoss(nn.Module):
         self.world_size = world_size
         assert neg_mode in ('standard', 'antipodal', 'orthogonal', 'projective')
         self.neg_mode = neg_mode
+        self.neg_alpha = neg_alpha
         self.dist_impl = dist_impl or 'bidir'  # default to bidir exchange for now, this will likely change
         assert self.dist_impl in ('bidir', 'shift', 'reduce', 'gather')
 
@@ -368,7 +370,9 @@ class SigLipLoss(nn.Module):
 
     def get_logits(self, image_features, text_features, logit_scale, logit_bias=None, negative_only=False):
         logits = logit_scale * image_features @ text_features.T
-        if self.neg_mode == 'antipodal':
+        if self.neg_alpha < 1.0:
+            logits = self.neg_alpha * logits + (1.0 - self.neg_alpha) * logits.abs()
+        elif self.neg_mode == 'antipodal':
             logits = -logits
         elif self.neg_mode == 'orthogonal':
             if negative_only:
@@ -1034,6 +1038,7 @@ class SIGRegContrastiveLoss(nn.Module):
             uniformity_t: float = 2.0,
             koleo_weight: float = 0.0,
             neg_mode: str = 'standard',
+            neg_alpha: float = 1.0,
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
@@ -1051,7 +1056,7 @@ class SIGRegContrastiveLoss(nn.Module):
 
         if use_siglip:
             assert not use_horovod, "Horovod not supported for SigLip"
-            self.main_loss = SigLipLoss(rank=rank, world_size=world_size, dist_impl=dist_impl, neg_mode=neg_mode)
+            self.main_loss = SigLipLoss(rank=rank, world_size=world_size, dist_impl=dist_impl, neg_mode=neg_mode, neg_alpha=neg_alpha)
         else:
             self.main_loss = ClipLoss(
                 local_loss=local_loss, gather_with_grad=gather_with_grad,
@@ -1286,6 +1291,7 @@ class CLIPWithDINOLoss(nn.Module):
         dist_impl: Optional[str] = None,
         n_global_crops: int = 2,
         neg_mode: str = 'standard',
+        neg_alpha: float = 1.0,
     ):
         super().__init__()
         self.dino_loss_weight = dino_loss_weight
@@ -1296,7 +1302,7 @@ class CLIPWithDINOLoss(nn.Module):
 
         if use_siglip:
             self.contrastive_loss = SigLipLoss(
-                rank=rank, world_size=world_size, dist_impl=dist_impl, neg_mode=neg_mode
+                rank=rank, world_size=world_size, dist_impl=dist_impl, neg_mode=neg_mode, neg_alpha=neg_alpha
             )
         else:
             self.contrastive_loss = ClipLoss(

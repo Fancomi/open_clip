@@ -46,13 +46,16 @@ def run(model, classifier, dataloader, args):
                 output = model(image=images)
                 image_features = output['image_features'] if isinstance(output, dict) else output[0]
                 neg_mode = getattr(args, 'neg_mode', 'standard')
-                raw = image_features @ classifier
-                if neg_mode == 'projective':
-                    logits = 100. * raw.abs()
+                neg_alpha = getattr(args, 'neg_alpha', 1.0)
+                raw = 100. * image_features @ classifier
+                if neg_alpha < 1.0:
+                    logits = neg_alpha * raw + (1.0 - neg_alpha) * raw.abs()
+                elif neg_mode == 'projective':
+                    logits = raw.abs()
                 elif neg_mode == 'antipodal':
-                    logits = -100. * raw
+                    logits = -raw
                 else:
-                    logits = 100. * raw
+                    logits = raw
 
             # measure accuracy
             acc1, acc5 = accuracy(logits, target, topk=(1, 5))
