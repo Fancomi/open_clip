@@ -163,8 +163,9 @@ def run_pc_alignment(args):
                     id_label, plots_dir)
     _plot_perpc_heatmap(step_ids, perpc_first, perpc_final,
                         id_label, plots_dir)
-    _plot_perpc_lines(step_ids, perpc_first, grass_prev, id_label, plots_dir,
-                      perpc_prev=perpc_prev)
+    if n > 1:
+        _plot_perpc_lines(step_ids, perpc_first, grass_prev, id_label, plots_dir,
+                          perpc_prev=perpc_prev)
     _plot_final_pc_pairs(all_feats[-1], k, step_ids[-1], id_label, plots_dir,
                          txt_feats=txt_final)
 

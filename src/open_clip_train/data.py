@@ -47,6 +47,59 @@ class CsvDataset(Dataset):
         return images, texts
 
 
+class VideoFrameDataset(Dataset):
+    """从 b64 帧缓存中随机采帧，配对视觉描述文本。
+
+    支持两种初始化模式:
+      1. split="train"/"eval": 从 {root}/split.json 加载预划分子集
+      2. split=None: 全量扫描目录（兼容旧用法）
+    """
+
+    VIEWS = ("front", "side")
+    CAPTION_KEY = "category_1_visual_description"
+
+    def __init__(self, root, transforms, tokenizer, max_side=768, split=None):
+        import io, base64 as _b64
+        self._io, self._b64 = io, _b64
+        self.transforms = transforms
+        self.tokenize = tokenizer
+
+        root = os.path.normpath(root)
+        split_file = os.path.join(root, "split.json")
+        if split and os.path.isfile(split_file):
+            with open(split_file) as f:
+                split_data = json.load(f)
+            records = split_data[split]
+            self.samples = [(r["b64_path"], r["caption"]) for r in records]
+            logging.info(f'VideoFrameDataset [{split}]: {len(self.samples)} samples')
+        else:
+            self.samples = []
+            for dirpath, _, filenames in os.walk(root):
+                for view in self.VIEWS:
+                    aug_name = f"augment_{view}_cn.json"
+                    if aug_name not in filenames:
+                        continue
+                    b64_path = os.path.join(dirpath, f"frames_{max_side}p", f"{view}.b64")
+                    if not os.path.isfile(b64_path):
+                        continue
+                    with open(os.path.join(dirpath, aug_name)) as f:
+                        caption = json.load(f).get(self.CAPTION_KEY, "")
+                    if caption:
+                        self.samples.append((b64_path, caption))
+            logging.info(f'VideoFrameDataset: {len(self.samples)} samples from {root}')
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        b64_path, caption = self.samples[idx]
+        # 读取所有帧并随机选 1 帧
+        lines = open(b64_path, "r").read().splitlines()
+        frame_b64 = random.choice(lines)
+        img = Image.open(self._io.BytesIO(self._b64.b64decode(frame_b64))).convert("RGB")
+        return self.transforms(img), self.tokenize([caption])[0]
+
+
 class SharedEpoch:
     def __init__(self, epoch: int = 0):
         self.shared_epoch = Value('i', epoch)
@@ -635,11 +688,42 @@ def get_synthetic_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None
     return DataInfo(dataloader, sampler)
 
 
+def get_video_frame_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None, **kwargs):
+    input_path = args.train_data if is_train else args.val_data
+    assert input_path
+    dataset = VideoFrameDataset(
+        root=input_path,
+        transforms=preprocess_fn,
+        tokenizer=tokenizer,
+        max_side=getattr(args, 'video_max_side', 768),
+        split="train" if is_train else "eval",
+    )
+    num_samples = len(dataset)
+    sampler = DistributedSampler(dataset) if args.distributed and is_train else None
+    shuffle = is_train and sampler is None
+
+    dataloader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=shuffle,
+        num_workers=args.workers,
+        pin_memory=True,
+        sampler=sampler,
+        drop_last=is_train,
+    )
+    dataloader.num_samples = num_samples
+    dataloader.num_batches = len(dataloader)
+
+    return DataInfo(dataloader, sampler)
+
+
 def get_dataset_fn(data_path, dataset_type):
     if dataset_type == "webdataset":
         return get_wds_dataset
     elif dataset_type == "csv":
         return get_csv_dataset
+    elif dataset_type == "video_frame":
+        return get_video_frame_dataset
     elif dataset_type == "synthetic":
         return get_synthetic_dataset
     elif dataset_type == "auto":
@@ -665,9 +749,13 @@ def get_data(args, preprocess_fns, epoch=0, tokenizer=None, tokenizer_secondary=
             tokenizer_secondary=tokenizer_secondary, tokenizer_list=tokenizer_list)
 
     if args.val_data:
-        # val data may differ from train format (e.g. train=webdataset, val=tsv),
-        # so auto-detect by file extension instead of reusing args.dataset_type.
-        val_dataset_type = 'auto' if args.dataset_type == 'webdataset' else args.dataset_type
+        # video_frame: val 走 split.json 中的 eval 子集（同一根目录）
+        if args.dataset_type == 'video_frame' and os.path.isfile(os.path.join(args.val_data, 'split.json')):
+            val_dataset_type = 'video_frame'
+        elif args.dataset_type == 'webdataset':
+            val_dataset_type = 'auto'
+        else:
+            val_dataset_type = args.dataset_type
         data["val"] = get_dataset_fn(args.val_data, val_dataset_type)(
             args, preprocess_val, is_train=False, tokenizer=tokenizer)
 

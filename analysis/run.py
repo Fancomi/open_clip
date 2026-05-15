@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
 
 from .models        import CKPT
-from .pipeline      import _DATA, run_pretrained, run_overlap, run_anisotropy, run_epochs, run_crop_probe
+from .pipeline      import _DATA, run_pretrained, run_overlap, run_anisotropy, run_epochs, run_crop_probe, run_eval_pretrained
 from .pc_alignment  import run_pc_alignment
 
 
@@ -20,7 +20,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--mode', required=True,
                    choices=['pretrained', 'epochs', 'overlap', 'anisotropy',
-                            'pc_alignment', 'crop_probe'])
+                            'pc_alignment', 'crop_probe', 'eval_pretrained'])
     # Data
     p.add_argument('--data',         default=_DATA['data'])
     p.add_argument('--data-type',    choices=['tsv', 'wds'], default='tsv')
@@ -48,6 +48,9 @@ def main():
     p.add_argument('--aniso-dir',    default=_DATA['coco_dir'])
     p.add_argument('--n-pcs',        type=int, default=20,
                    help='PCs to compare in pc_alignment mode (default: 20)')
+    p.add_argument('--eval-model',   default=None,
+                   choices=['pe_core', 'siglip2'],
+                   help='Pretrained model for eval_pretrained mode')
     args = p.parse_args()
 
     if   args.mode == 'pretrained': run_pretrained(args)
@@ -60,6 +63,9 @@ def main():
         assert args.probe_dir, '--probe-dir required for pc_alignment mode'
         run_pc_alignment(args)
     elif args.mode == 'crop_probe': run_crop_probe(args)
+    elif args.mode == 'eval_pretrained':
+        assert args.eval_model, '--eval-model required for eval_pretrained mode'
+        run_eval_pretrained(args)
 
 
 if __name__ == '__main__':

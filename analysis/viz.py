@@ -370,11 +370,17 @@ def _compute_lims(projs, txt_projs=None, pad=0.05):
 
 
 def _make_evolution_gif(projs, txt_projs, step_ids, xlim, ylim,
-                        save_path, id_label, method, fps=4):
-    """Scatter GIF: one frame per checkpoint, shared coordinate system."""
+                        save_path, id_label, method, fps=4, fps_indices=None):
+    """Scatter GIF: one frame per checkpoint, shared coordinate system.
+
+    fps_indices : optional array of 5 int indices for FPS pair-link overlay.
+                  When provided and txt_projs is not None, draws green/violet
+                  marker pairs connected by lines on each frame.
+    """
     from matplotlib.animation import FuncAnimation, PillowWriter
     _C_IMG, _C_TXT = '#0055FF', '#FF2200'
     n = len(step_ids)
+    has_fps = fps_indices is not None and txt_projs is not None
 
     fig, ax = plt.subplots(figsize=(5, 5))
     scat_img = ax.scatter([], [], s=3, alpha=0.35, color=_C_IMG,
@@ -383,21 +389,59 @@ def _make_evolution_gif(projs, txt_projs, step_ids, xlim, ylim,
                            label='Text', rasterized=True)
                 if txt_projs is not None else None)
     ax.set_xlim(xlim); ax.set_ylim(ylim); ax.axis('off')
-    if scat_txt is not None:
-        ax.legend(markerscale=3, fontsize=7, loc='lower right')
+
+    # FPS pair-link artists
+    fps_lines, fps_img_scats, fps_txt_scats = [], [], []
+    if has_fps:
+        for i, mk in enumerate(_FPS_MARKERS[:len(fps_indices)]):
+            ln, = ax.plot([], [], '-', color=_PAIR_LINE_COL,
+                          lw=1.0, alpha=0.65, zorder=4)
+            si = ax.scatter([], [], marker=mk, s=160, color=_PAIR_COL_IMG,
+                            edgecolors='black', linewidths=0.6, zorder=6)
+            st = ax.scatter([], [], marker=mk, s=160, color=_PAIR_COL_TXT,
+                            edgecolors='black', linewidths=0.6, zorder=6)
+            fps_lines.append(ln)
+            fps_img_scats.append(si)
+            fps_txt_scats.append(st)
+
+    # Legend with controlled marker sizes (avoid markerscale bloating FPS markers)
+    from matplotlib.lines import Line2D
+    handles = [Line2D([], [], marker='o', color='w', markerfacecolor=_C_IMG,
+                      markersize=6, label='Image'),
+               Line2D([], [], marker='o', color='w', markerfacecolor=_C_TXT,
+                      markersize=6, label='Text')]
+    if has_fps:
+        handles += [Line2D([], [], marker='*', color='w', markerfacecolor=_PAIR_COL_IMG,
+                           markeredgecolor='black', markersize=8, label='Img FPS'),
+                    Line2D([], [], marker='*', color='w', markerfacecolor=_PAIR_COL_TXT,
+                           markeredgecolor='black', markersize=8, label='Txt FPS')]
+    if scat_txt is not None or has_fps:
+        ax.legend(handles=handles, fontsize=7, loc='lower right')
     title_obj = ax.set_title('', fontsize=10)
-    artists = [scat_img] + ([scat_txt] if scat_txt else []) + [title_obj]
+    artists = ([scat_img] + ([scat_txt] if scat_txt else [])
+               + fps_lines + fps_img_scats + fps_txt_scats + [title_obj])
 
     def _init():
         scat_img.set_offsets(np.empty((0, 2)))
         if scat_txt is not None:
             scat_txt.set_offsets(np.empty((0, 2)))
+        for ln in fps_lines:
+            ln.set_data([], [])
+        for sc in fps_img_scats + fps_txt_scats:
+            sc.set_offsets(np.empty((0, 2)))
         return artists
 
     def _update(frame):
         scat_img.set_offsets(projs[frame][:, :2])
         if scat_txt is not None:
             scat_txt.set_offsets(txt_projs[frame][:, :2])
+        if has_fps:
+            for i, fi in enumerate(fps_indices):
+                xi, yi = projs[frame][fi, 0], projs[frame][fi, 1]
+                xt, yt = txt_projs[frame][fi, 0], txt_projs[frame][fi, 1]
+                fps_lines[i].set_data([xi, xt], [yi, yt])
+                fps_img_scats[i].set_offsets([[xi, yi]])
+                fps_txt_scats[i].set_offsets([[xt, yt]])
         sfx = '+Text' if txt_projs is not None else ''
         title_obj.set_text(
             f'{id_label} {step_ids[frame]}  ({(frame+1)/n*100:.0f}%)  [{method}{sfx}]')
@@ -469,8 +513,13 @@ def _make_trajectory_gif(sample_pts, traj_colors, step_ids, xlim, ylim,
 
 
 def _draw_static_trajectory(sample_pts, traj_colors, step_ids, xlim, ylim,
-                            save_path, id_label, axis_prefix='PC'):
-    """Static trajectory: full paths overlaid, light→dark = early→late."""
+                            save_path, id_label, axis_prefix='PC',
+                            fps_indices=None, all_projs=None, all_txt_projs=None):
+    """Static trajectory: full paths overlaid, light→dark = early→late.
+
+    fps_indices / all_projs / all_txt_projs : when all provided, overlay FPS
+    image (green) and text (violet) trajectories with final-checkpoint pair link.
+    """
     n = len(step_ids)
     alphas = np.linspace(0.10, 1.00, n)
     lws    = np.linspace(0.3,  1.8,  n)
@@ -483,10 +532,42 @@ def _draw_static_trajectory(sample_pts, traj_colors, step_ids, xlim, ylim,
                    alpha=float(alphas[0]), zorder=3)
         ax.scatter(pts[-1, 0], pts[-1, 1], color=color, s=40, marker='*',
                    alpha=1.0, zorder=4)
+
+    # FPS pair-link overlay
+    if fps_indices is not None and all_projs is not None and all_txt_projs is not None:
+        for i, (fi, mk) in enumerate(zip(fps_indices, _FPS_MARKERS[:len(fps_indices)])):
+            img_path = np.array([all_projs[t][fi, :2] for t in range(n)])
+            txt_path = np.array([all_txt_projs[t][fi, :2] for t in range(n)])
+            # Image trajectory (green)
+            for t in range(n - 1):
+                ax.plot(img_path[t:t + 2, 0], img_path[t:t + 2, 1], '-',
+                        color=_PAIR_COL_IMG, alpha=float(alphas[t + 1]), lw=2.0)
+            # Text trajectory (violet)
+            for t in range(n - 1):
+                ax.plot(txt_path[t:t + 2, 0], txt_path[t:t + 2, 1], '-',
+                        color=_PAIR_COL_TXT, alpha=float(alphas[t + 1]), lw=2.0)
+            # Final-checkpoint connecting line + markers
+            ax.plot([img_path[-1, 0], txt_path[-1, 0]],
+                    [img_path[-1, 1], txt_path[-1, 1]],
+                    '-', color=_PAIR_LINE_COL, lw=1.0, alpha=0.65, zorder=5)
+            ax.scatter(img_path[-1, 0], img_path[-1, 1], marker=mk, s=160,
+                       color=_PAIR_COL_IMG, edgecolors='black', linewidths=0.6,
+                       zorder=7)
+            ax.scatter(txt_path[-1, 0], txt_path[-1, 1], marker=mk, s=160,
+                       color=_PAIR_COL_TXT, edgecolors='black', linewidths=0.6,
+                       zorder=7)
+
     ax.set_xlim(xlim); ax.set_ylim(ylim)
     ax.set_title(f'Sample Trajectories  N={len(sample_pts)}\n'
                  f'o=start  *=end  light→dark = early→late {id_label.lower()}', fontsize=9)
     ax.set_xlabel(f'{axis_prefix}1'); ax.set_ylabel(f'{axis_prefix}2')
+    if fps_indices is not None and all_txt_projs is not None:
+        from matplotlib.lines import Line2D
+        handles = [Line2D([], [], marker='*', color='w', markerfacecolor=_PAIR_COL_IMG,
+                          markeredgecolor='black', markersize=8, label='Img FPS'),
+                   Line2D([], [], marker='*', color='w', markerfacecolor=_PAIR_COL_TXT,
+                          markeredgecolor='black', markersize=8, label='Txt FPS')]
+        ax.legend(handles=handles, fontsize=7, loc='lower right')
     plt.tight_layout()
     plt.savefig(save_path, dpi=150); plt.close()
     print(f'[viz] {save_path}')
@@ -495,12 +576,13 @@ def _draw_static_trajectory(sample_pts, traj_colors, step_ids, xlim, ylim,
 # ── Main evolution plots ─────────────────────────────────────────────────────
 
 def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
-                   id_label='Step', fps=4, txt_feats=None):
+                   id_label='Step', fps=4, txt_feats=None, fps_indices=None):
     """PCA scatter GIF + trajectory GIF + static trajectory plot.
 
     txt_feats : optional list of (N, D) text feature arrays, one per checkpoint.
                 When provided, the scatter GIF shows both modalities in the same
                 PCA space (image=blue, text=red).  Trajectory tracks image only.
+    fps_indices : optional array of 5 int indices for FPS pair-link overlay.
 
     Outputs
     -------
@@ -523,7 +605,7 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
     # GIF: PCA scatter snapshot per checkpoint
     gif_path = os.path.join(save_dir, f'{id_label.lower()}_evolution.gif')
     _make_evolution_gif(projs, txt_projs, step_ids, xlim, ylim,
-                        gif_path, id_label, 'PCA', fps)
+                        gif_path, id_label, 'PCA', fps, fps_indices=fps_indices)
 
     # Trajectory GIF + static plot
     rng = np.random.default_rng(seed)
@@ -534,7 +616,9 @@ def plot_evolution(step_feats, step_ids, save_dir, n_traj=100, seed=42,
     _make_trajectory_gif(sample_pts, traj_colors, step_ids, xlim, ylim,
                          os.path.join(save_dir, 'trajectory.gif'), id_label, fps)
     _draw_static_trajectory(sample_pts, traj_colors, step_ids, xlim, ylim,
-                            os.path.join(save_dir, 'trajectory.png'), id_label)
+                            os.path.join(save_dir, 'trajectory.png'), id_label,
+                            fps_indices=fps_indices, all_projs=projs,
+                            all_txt_projs=txt_projs)
 
 
 # ── UMAP evolution & trajectory ───────────────────────────────────────────────
@@ -544,7 +628,7 @@ def plot_umap_evolution(step_feats, step_ids, save_dir,
                         n_traj=100, seed=42, id_label='Step',
                         fps=4, txt_feats=None,
                         n_neighbors=15, min_dist=0.1,
-                        subsample=2000):
+                        subsample=2000, fps_indices=None):
     """UMAP evolution GIF + static trajectory plot (GPU-accelerated via cuML).
 
     Outputs
@@ -591,7 +675,7 @@ def plot_umap_evolution(step_feats, step_ids, save_dir,
     # GIF: scatter snapshot per checkpoint
     gif_path = os.path.join(save_dir, 'umap_evolution.gif')
     _make_evolution_gif(projs, txt_projs, step_ids, xlim, ylim,
-                        gif_path, id_label, 'UMAP', fps)
+                        gif_path, id_label, 'UMAP', fps, fps_indices=fps_indices)
 
     # Static trajectory
     traj_colors = cm.tab20(np.linspace(0, 1, traj_n))
@@ -599,7 +683,9 @@ def plot_umap_evolution(step_feats, step_ids, save_dir,
                    for i in range(traj_n)]
     _draw_static_trajectory(sample_pts, traj_colors, step_ids, xlim, ylim,
                             os.path.join(save_dir, 'umap_trajectory.png'),
-                            id_label, axis_prefix='UMAP')
+                            id_label, axis_prefix='UMAP',
+                            fps_indices=fps_indices, all_projs=projs,
+                            all_txt_projs=txt_projs)
 
 
 

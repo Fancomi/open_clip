@@ -119,6 +119,12 @@ case "$MODE" in
             python3 -m analysis.log_parser "${FORCE[@]}" "${PY_EXTRA[@]}"
         fi
         ;;
+    eval_pretrained|eval)
+        MODEL="${PY_EXTRA[0]:?Usage: probe.sh eval_pretrained <model>  (pe_core|siglip2)}"
+        PY_EXTRA=("${PY_EXTRA[@]:1}")
+        python3 -m analysis.run "${FORCE[@]}" --mode eval_pretrained \
+            --eval-model "${MODEL}" --max-samples 5000 "${PY_EXTRA[@]}"
+        ;;
     *)
         echo "Usage:"
         echo "  bash analysis/probe.sh coco"
@@ -127,6 +133,7 @@ case "$MODE" in
         echo "  bash analysis/probe.sh anisotropy [coco|cc3m]"
         echo "  bash analysis/probe.sh layers <model>  (dinov3|pe_core|siglip2|eupe)"
         echo "  bash analysis/probe.sh probe_full <probe_dir|logs_root> [--rerun] [--n-pcs N]"
+        echo "  bash analysis/probe.sh eval_pretrained <model>  (pe_core|siglip2)"
         echo "  bash analysis/probe.sh log_parse [prefix] [--logs-dir DIR] [--plot-dir DIR] [--no-plot] [--no-md]"
         echo ""
         echo "  --rerun  bypass all sentinels (re-generate all outputs)"

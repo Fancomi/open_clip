@@ -356,15 +356,20 @@ def run_epochs(args):
     # step_evolution GIF: prefer projected CLIP space (modality gap visible there)
     # fall back to backbone CLS when proj_features not present
     evo_feats = proj_feats if proj_feats is not None else feats
+
+    # FPS anchors on final checkpoint image features (consistent with pretrained mode)
+    fps_idx = fps_sample(evo_feats[-1], k=5)
+    logging.info(f'[epochs] FPS anchor indices: {fps_idx.tolist()}')
+
     plot_evolution(evo_feats, ids, out, n_traj=args.n_traj, id_label=id_label,
-                   txt_feats=txt_feats)
+                   txt_feats=txt_feats, fps_indices=fps_idx)
 
     # UMAP (GPU-accelerated via cuML)
     try:
         logging.info(f'[epochs] fitting UMAP on {len(evo_feats)} checkpoints...')
         plot_umap_evolution(evo_feats, ids, out,
                             n_traj=args.n_traj, id_label=id_label,
-                            txt_feats=txt_feats)
+                            txt_feats=txt_feats, fps_indices=fps_idx)
     except ImportError:
         logging.warning('[epochs] cuml not installed — skip UMAP plots'
                         '  (pip install cuml-cu12 --extra-index-url=https://pypi.nvidia.com)')
@@ -398,6 +403,67 @@ def run_epochs(args):
         step_id=ids[-1], id_label=id_label, plots_dir=out,
         txt_feats=txt_feats[-1] if txt_feats is not None else None,
     )
+
+
+# ── Mode: eval_pretrained ────────────────────────────────────────────────────
+
+def run_eval_pretrained(args):
+    """Extract probe-compatible npz from a pretrained model, then run epochs pipeline.
+
+    Output layout mirrors training probe:
+      logs/eval_<model>/checkpoints/probe/step_000000.npz
+    The single npz is then processed by run_epochs for consistent visuals.
+    """
+    from .models import DEVICE
+
+    model_name = args.eval_model
+    out_root = os.path.join('logs', f'eval_{model_name}')
+    probe_dir = os.path.join(out_root, 'checkpoints', 'probe')
+    npz_path = os.path.join(probe_dir, 'step_000000.npz')
+
+    if not os.path.exists(npz_path) or args.force:
+        logging.info(f'[eval_pretrained] extracting {model_name} features...')
+        # Load model (only need model + preprocess, not tokenizer)
+        import open_clip
+        if model_name == 'pe_core':
+            model, _, preproc = open_clip.create_model_and_transforms(
+                'PE-Core-B-16', pretrained=CKPT['pe_core'])
+        elif model_name == 'siglip2':
+            model, _, preproc = open_clip.create_model_and_transforms(
+                'ViT-B-16-SigLIP2', pretrained=CKPT['siglip2'])
+        else:
+            raise ValueError(f'Unsupported eval model: {model_name}')
+        from .models import DEVICE
+        model = model.eval().to(DEVICE)
+
+        # Load data (same TSV as training probe)
+        df = pd.read_csv(args.data, sep='\t')
+        paths = df['filepath'].tolist()[:args.max_samples]
+        caps = df['caption'].tolist()[:args.max_samples] if 'caption' in df.columns else None
+
+        # Extract using probe_hook functions
+        from open_clip_train.probe_hook import extract_backbone_cls, extract_text_features
+        bb_cls, proj_cls = extract_backbone_cls(model, paths, preproc, DEVICE)
+        txt_feats = extract_text_features(model, caps, DEVICE) if caps else None
+
+        # Save
+        os.makedirs(probe_dir, exist_ok=True)
+        save_kw = dict(features=bb_cls, paths=np.array(paths))
+        if proj_cls is not None:
+            save_kw['proj_features'] = proj_cls
+        if txt_feats is not None:
+            save_kw['txt_features'] = txt_feats
+        np.savez_compressed(npz_path, **save_kw)
+        logging.info(f'[eval_pretrained] saved {npz_path}  '
+                     f'bb={bb_cls.shape}'
+                     + (f'  proj={proj_cls.shape}' if proj_cls is not None else '')
+                     + (f'  txt={txt_feats.shape}' if txt_feats is not None else ''))
+    else:
+        logging.info(f'[eval_pretrained] cache exists: {npz_path}')
+
+    # Run epochs pipeline on the single-checkpoint probe dir
+    args.probe_dir = probe_dir
+    run_epochs(args)
 
 
 # ── Mode: crop_probe ──────────────────────────────────────────────────────────
