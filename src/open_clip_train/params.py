@@ -611,18 +611,6 @@ def parse_args(args):
         type=str,
         help='A string to specify a specific distributed loss implementation.'
     )
-    parser.add_argument(
-        "--init-logit-scale",
-        type=float,
-        default=None,
-        help='Override initial logit scale value (actual scale, not log). Default: 10 for SigLIP.'
-    )
-    parser.add_argument(
-        "--init-logit-bias",
-        type=float,
-        default=None,
-        help='Override initial logit bias value. Default: -10 for SigLIP.'
-    )
 
     # ============ SIGReg 正则化参数 (https://arxiv.org/abs/2511.08544) ============
     parser.add_argument(
@@ -903,6 +891,16 @@ def parse_args(args):
              "If None, probe runs once per epoch as before. "
              "E.g. set to steps_per_epoch//4 for 4 probes per epoch."
     )
+
+    # ============ Curriculum Learning ============
+    parser.add_argument("--curriculum-strategy", type=str, default=None,
+        choices=["fps", "fps_reverse", "density_high", "density_low", "curvature_high", "curvature_low"],
+        help="Per-epoch sample ordering strategy. None=disabled.")
+    parser.add_argument("--curriculum-init", type=str, default="self",
+        choices=["dinov3", "pe_core", "self"],
+        help="Feature extractor for epoch 0 ordering.")
+    parser.add_argument("--curriculum-k", type=int, default=50,
+        help="kNN K for density/curvature metrics.")
 
     args = parser.parse_args(args)
 

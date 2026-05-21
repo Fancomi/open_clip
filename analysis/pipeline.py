@@ -15,10 +15,12 @@ from .extractors import (load_from_cache,
                           extract_dinov3_pil, extract_clip_pil,
                           extract_pe_core_pil_raw,
                           extract_radio_pil, extract_eupe_pil, extract_tips_pil)
-from .metrics      import fps_sample, compute_anisotropy
+from .metrics      import (fps_sample, compute_anisotropy,
+                           compute_knn_density, compute_knn_curvature)
 from .viz          import (
     plot_scatter, plot_overlap, plot_anisotropy,
-    plot_aniso_evolution, plot_evolution, plot_crop_probe, plot_umap_evolution
+    plot_aniso_evolution, plot_evolution, plot_crop_probe, plot_umap_evolution,
+    plot_pc_pairs_allmodels, plot_extremes_single,
 )
 from .pc_alignment import _plot_final_pc_pairs
 
@@ -112,6 +114,75 @@ def _load_npz(out_dir, fname):
 
 # ── Mode: pretrained (COCO tsv or CC3M wds) ──────────────────────────────────
 
+_TARGET_3 = ['DINOv3', 'PE-Core', 'SigLIP2']
+_SLUG_MAP = {'DINOv3': 'dinov3', 'PE-Core': 'pe_core', 'SigLIP2': 'siglip2'}
+
+
+def _save_extreme_images(out_dir, model_slug, all_paths, extremes):
+    """复制极端 case 原图到 <out_dir>/<model_slug>/<category>/.
+
+    extremes: {'high_density': ndarray(5,), ...}
+    """
+    import shutil
+    for cat, idxs in extremes.items():
+        cat_dir = os.path.join(out_dir, model_slug, cat)
+        os.makedirs(cat_dir, exist_ok=True)
+        for rank, idx in enumerate(idxs):
+            src = all_paths[idx] if idx < len(all_paths) else None
+            if src and os.path.isfile(src):
+                ext = os.path.splitext(src)[1] or '.jpg'
+                dst = os.path.join(cat_dir, f'rank{rank+1}_idx{idx}{ext}')
+                shutil.copy2(src, dst)
+            else:
+                logging.warning(f'  图片不存在: idx={idx} path={src}')
+    logging.info(f'  极端样本原图 → {os.path.join(out_dir, model_slug)}/')
+
+
+def _run_extended_pretrained(out, img_feats_3, txt_feats_map, all_paths):
+    """扩展分析: PC pairs 图 + 密度/曲率极端点.
+    (batch GIF 已移至 clip_fps_probe.py 独立模块)"""
+    # ── Req1: PC pairs (独立 PCA, 每模型一行) ─────────────────────────────────
+    logging.info('[extended] 生成 stride-2 PC pairs 图 ...')
+    plot_pc_pairs_allmodels(img_feats_3, os.path.join(out, 'image_allmodels.png'))
+
+    # ── Req3: kNN 密度 + 曲率, 极端点标注 ──────────────────────────────────────
+    for name, feats in img_feats_3.items():
+        slug = _SLUG_MAP[name]
+        logging.info(f'[extended] {name} — 计算 kNN 密度/曲率 ...')
+        density = compute_knn_density(feats, K=50)
+        curvature = compute_knn_curvature(feats, K=50)
+        extremes = {
+            'high_density':   np.argsort(density)[-5:][::-1],
+            'low_density':    np.argsort(density)[:5],
+            'high_curvature': np.argsort(curvature)[-5:][::-1],
+            'low_curvature':  np.argsort(curvature)[:5],
+        }
+        plot_extremes_single(feats, extremes,
+                             os.path.join(out, f'extremes_{slug}_img.png'), name)
+        if all_paths:
+            _save_extreme_images(out, slug, all_paths, extremes)
+
+    # ── Req3 (text): 文本塔模型密度/曲率 ──────────────────────────────────────
+    for name, txt_feats in txt_feats_map.items():
+        if txt_feats is None:
+            continue
+        slug = _SLUG_MAP[name]
+        logging.info(f'[extended] {name} Text — 计算 kNN 密度/曲率 ...')
+        density = compute_knn_density(txt_feats, K=50)
+        curvature = compute_knn_curvature(txt_feats, K=50)
+        extremes = {
+            'high_density':   np.argsort(density)[-5:][::-1],
+            'low_density':    np.argsort(density)[:5],
+            'high_curvature': np.argsort(curvature)[-5:][::-1],
+            'low_curvature':  np.argsort(curvature)[:5],
+        }
+        plot_extremes_single(txt_feats, extremes,
+                             os.path.join(out, f'extremes_{slug}_txt.png'),
+                             name, feat_type='Text')
+
+    logging.info('[extended] 扩展分析完成')
+
+
 def run_pretrained(args):
     out = os.path.join(args.out_dir, 'pretrained')
     os.makedirs(out, exist_ok=True)
@@ -182,8 +253,21 @@ def run_pretrained(args):
 
     plot_scatter(img_feats,
                  f'Vision Encoder Image Features  (* = FPS anchors from {fps_model} space)',
-                 os.path.join(out, 'image_allmodels.png'),
+                 os.path.join(out, 'image_allmodels_legacy.png'),
                  n_pca=args.n_pca, fps_indices=fps_idx)
+
+    # ── Extended analysis (DINOv3 + PE-Core + SigLIP2 only) ────────────────
+    img_feats_3 = {k: img_feats[k] for k in _TARGET_3 if k in img_feats}
+    if len(img_feats_3) == len(_TARGET_3):
+        # 获取图片路径 (从 npz 或 TSV)
+        dino_npz_path = os.path.join(out, 'dinov3_img.npz')
+        _d = np.load(dino_npz_path)
+        all_paths = _d['paths'].tolist() if 'paths' in _d else []
+        txt_feats_map = {'PE-Core': pe_txt, 'SigLIP2': sig2_txt}
+        _run_extended_pretrained(out, img_feats_3, txt_feats_map, all_paths)
+    else:
+        logging.warning('[extended] 缺少模型, 跳过扩展分析: '
+                        f'需要 {_TARGET_3}, 可用 {list(img_feats_3.keys())}')
 
     # ── Anisotropy (includes rank + multimodality) ──────────────────────────
     aniso = {name: compute_anisotropy(feat) for name, feat in img_feats.items()}

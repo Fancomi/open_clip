@@ -74,7 +74,11 @@ def _do_tsv(model_name, args):
         if eu is not None:
             extract_eupe_img(eu, paths, os.path.join(out, 'eupe_img.npz'), force)
     elif model_name == 'tips_img':
-        ti_m, ti_t = load_tips(args.tips)
+        try:
+            ti_m, ti_t = load_tips(args.tips)
+        except (ImportError, ModuleNotFoundError) as e:
+            logging.warning(f'[worker/tips_img] TIPSv2 unavailable ({e}) — skip')
+            return
         extract_tips_img(ti_m, paths, os.path.join(out, 'tips_img.npz'), force)
         extract_tips_txt(ti_m, ti_t, caps,
                          os.path.join(out, 'tips_txt.npz'), force)
@@ -125,7 +129,11 @@ def _do_wds(model_name, args):
             logging.warning('[worker/eupe_img] EUPE unavailable — skip')
             return
     elif model_name == 'tips_img':
-        ti_m, ti_t = load_tips(args.tips)
+        try:
+            ti_m, ti_t = load_tips(args.tips)
+        except (ImportError, ModuleNotFoundError) as e:
+            logging.warning(f'[worker/tips_img] TIPSv2 unavailable ({e}) — skip')
+            return
     else:
         raise ValueError(f'Unknown wds model: {model_name}')
 

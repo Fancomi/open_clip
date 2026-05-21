@@ -689,6 +689,196 @@ def plot_umap_evolution(step_feats, step_ids, save_dir,
 
 
 
+# ── Extended analysis: PC pairs overlay + batch GIF + extremes ───────────────
+
+
+def plot_pc_pairs_allmodels(feats_dict, save_path, n_pcs=12, extremes=None):
+    """每个模型独立 PCA, stride-2 PC pair. Layout: rows=models, cols=6 PC pairs.
+
+    feats_dict : {model_name: (N, D)}
+    extremes   : {model: {'high_density': idx5, ...}} or None
+    """
+    labels = list(feats_dict.keys())
+    n_pairs = n_pcs // 2
+    nrows, ncols = len(labels), n_pairs
+    colors = cm.tab10(np.linspace(0, 0.9, nrows))
+
+    _EXT_MK = {'high_density': ('D', '#CC0000', 'High Density'),
+               'low_density': ('D', '#0044CC', 'Low Density'),
+               'high_curvature': ('^', '#CC0000', 'High Curvature'),
+               'low_curvature': ('^', '#0044CC', 'Low Curvature')}
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=(3.8 * ncols, 3.5 * nrows))
+    axes = np.array(axes).reshape(nrows, ncols)
+
+    for row, (name, c) in enumerate(zip(labels, colors)):
+        feats = feats_dict[name]
+        pca = PCA(n_components=n_pcs).fit(feats)
+        vr = pca.explained_variance_ratio_
+        proj = pca.transform(feats)
+
+        for col in range(n_pairs):
+            pi, pj = col * 2, col * 2 + 1
+            ax = axes[row, col]
+            ax.scatter(proj[:, pi], proj[:, pj], s=2, alpha=0.3,
+                       color=c, rasterized=True)
+            if extremes and name in extremes:
+                for cat, (mk, mc, lbl) in _EXT_MK.items():
+                    idxs = extremes[name].get(cat)
+                    if idxs is None:
+                        continue
+                    ax.scatter(proj[idxs, pi], proj[idxs, pj], marker=mk, s=100,
+                               color=mc, edgecolors='black', linewidths=0.5, zorder=5)
+            ax.set_xlabel(f'PC{pi+1} ({vr[pi]*100:.1f}%)', fontsize=7)
+            if col == 0:
+                ax.set_ylabel(f'{name}\nPC{pj+1} ({vr[pj]*100:.1f}%)', fontsize=8)
+            else:
+                ax.set_ylabel(f'PC{pj+1} ({vr[pj]*100:.1f}%)', fontsize=7)
+            ax.set_title(f'PC{pi+1} vs PC{pj+1}', fontsize=8)
+            ax.tick_params(labelsize=6)
+
+    fig.suptitle('Vision Encoder Image Features — PC Pairs (per-model PCA)', fontsize=11)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight'); plt.close()
+    print(f'[viz] {save_path}')
+
+
+def plot_batch_gif(feats, batches, save_path, n_pcs=12, method='Random', model='', fps=4):
+    """Batch sampling GIF: 2×3 panels (6 PC pairs), 20 frames.
+
+    Each frame: all points in gray, batch highlighted, center + 1σ ellipse.
+    """
+    from matplotlib.animation import FuncAnimation, PillowWriter
+    from matplotlib.patches import Ellipse as MplEllipse
+
+    pca = PCA(n_components=n_pcs).fit(feats)
+    proj = pca.transform(feats)  # (N, n_pcs)
+    vr = pca.explained_variance_ratio_
+
+    n_pairs = n_pcs // 2
+    ncols, nrows = 3, (n_pairs + 2) // 3
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4.5 * ncols, 4 * nrows))
+    axes_flat = np.array(axes).reshape(-1)
+
+    # Static background (gray)
+    bg_scats = []
+    for idx in range(n_pairs):
+        pi, pj = idx * 2, idx * 2 + 1
+        ax = axes_flat[idx]
+        ax.scatter(proj[:, pi], proj[:, pj], s=1, alpha=0.12,
+                   color='#999999', rasterized=True)
+        ax.set_xlabel(f'PC{pi+1} ({vr[pi]*100:.1f}%)', fontsize=7)
+        ax.set_ylabel(f'PC{pj+1} ({vr[pj]*100:.1f}%)', fontsize=7)
+        ax.tick_params(labelsize=6)
+        # Set fixed limits
+        pad = 0.05
+        xr = proj[:, pi].max() - proj[:, pi].min()
+        yr = proj[:, pj].max() - proj[:, pj].min()
+        ax.set_xlim(proj[:, pi].min() - pad * xr, proj[:, pi].max() + pad * xr)
+        ax.set_ylim(proj[:, pj].min() - pad * yr, proj[:, pj].max() + pad * yr)
+    for i in range(n_pairs, len(axes_flat)):
+        axes_flat[i].set_visible(False)
+
+    # Dynamic artists per panel
+    batch_scats = []
+    center_scats = []
+    ellipses = []
+    for idx in range(n_pairs):
+        ax = axes_flat[idx]
+        sc = ax.scatter([], [], s=6, alpha=0.85, color='#E63946', rasterized=True)
+        ct = ax.scatter([], [], marker='X', s=200, color='black', zorder=6)
+        ell = MplEllipse((0, 0), 0, 0, fill=False, color='black', lw=1.5, ls='--', zorder=5)
+        ax.add_patch(ell)
+        batch_scats.append(sc)
+        center_scats.append(ct)
+        ellipses.append(ell)
+
+    title_obj = fig.suptitle('', fontsize=10)
+    n_frames = len(batches)
+
+    def _update(frame):
+        batch_idx = batches[frame]
+        batch_proj = proj[batch_idx]
+        for idx in range(n_pairs):
+            pi, pj = idx * 2, idx * 2 + 1
+            bp = batch_proj[:, [pi, pj]]
+            batch_scats[idx].set_offsets(bp)
+            center = bp.mean(axis=0)
+            center_scats[idx].set_offsets([center])
+            # 1-sigma ellipse from covariance
+            cov = np.cov(bp.T)
+            eigvals, eigvecs = np.linalg.eigh(cov)
+            order = eigvals.argsort()[::-1]
+            eigvals, eigvecs = eigvals[order], eigvecs[:, order]
+            angle = np.degrees(np.arctan2(eigvecs[1, 0], eigvecs[0, 0]))
+            w, h = 2 * np.sqrt(eigvals)
+            ellipses[idx].set_center(center)
+            ellipses[idx].width = w
+            ellipses[idx].height = h
+            ellipses[idx].angle = angle
+        title_obj.set_text(
+            f'{model} — {method} Batch {frame+1}/{n_frames}  (n={len(batch_idx)})')
+        return batch_scats + center_scats + ellipses + [title_obj]
+
+    anim = FuncAnimation(fig, _update, frames=n_frames, interval=1000 // fps, blit=False)
+    plt.tight_layout()
+    anim.save(save_path, writer=PillowWriter(fps=fps))
+    plt.close(fig)
+    print(f'[viz] {save_path}')
+
+
+def plot_extremes_single(feats, extremes, save_path, model_name, n_pcs=12, feat_type='Image'):
+    """单模型极端点可视化: 6 PC pair panels, 标注 density/curvature extremes.
+
+    extremes: {'high_density': idx5, 'low_density': idx5,
+               'high_curvature': idx5, 'low_curvature': idx5}
+    """
+    pca = PCA(n_components=n_pcs).fit(feats)
+    proj = pca.transform(feats)
+    vr = pca.explained_variance_ratio_
+
+    _MK = {'high_density': ('D', '#CC0000', 'High Density'),
+            'low_density': ('D', '#0044CC', 'Low Density'),
+            'high_curvature': ('^', '#CC0000', 'High Curvature'),
+            'low_curvature': ('^', '#0044CC', 'Low Curvature')}
+
+    n_pairs = n_pcs // 2
+    ncols, nrows = 3, (n_pairs + 2) // 3
+    fig, axes = plt.subplots(nrows, ncols, figsize=(5 * ncols, 4.5 * nrows))
+    axes_flat = np.array(axes).reshape(-1)
+
+    for idx in range(n_pairs):
+        pi, pj = idx * 2, idx * 2 + 1
+        ax = axes_flat[idx]
+        ax.scatter(proj[:, pi], proj[:, pj], s=2, alpha=0.15,
+                   color='#999999', rasterized=True)
+        for cat, (mk, mc, lbl) in _MK.items():
+            idxs = extremes.get(cat)
+            if idxs is None:
+                continue
+            ax.scatter(proj[idxs, pi], proj[idxs, pj], marker=mk, s=140,
+                       color=mc, edgecolors='black', linewidths=0.6, zorder=5,
+                       label=lbl if idx == 0 else '')
+            # 标注序号
+            for rank, i in enumerate(idxs):
+                ax.annotate(str(rank + 1), (proj[i, pi], proj[i, pj]),
+                            fontsize=6, ha='center', va='bottom',
+                            xytext=(0, 4), textcoords='offset points')
+        ax.set_xlabel(f'PC{pi+1} ({vr[pi]*100:.1f}%)', fontsize=8)
+        ax.set_ylabel(f'PC{pj+1} ({vr[pj]*100:.1f}%)', fontsize=8)
+        ax.set_title(f'PC{pi+1} vs PC{pj+1}', fontsize=9)
+        ax.tick_params(labelsize=7)
+        if idx == 0:
+            ax.legend(fontsize=7, loc='best')
+
+    for i in range(n_pairs, len(axes_flat)):
+        axes_flat[i].set_visible(False)
+    fig.suptitle(f'{model_name} {feat_type} — Density & Curvature Extremes (K=50)', fontsize=11)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150, bbox_inches='tight'); plt.close()
+    print(f'[viz] {save_path}')
+
+
 def plot_crop_probe(img_feats, crops_feats, fps_idx, out_path):
     """Show where DINOv3-style global/local crops land vs the full-image features.
 

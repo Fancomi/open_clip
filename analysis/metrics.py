@@ -35,6 +35,56 @@ def fps_sample(feats: np.ndarray, k: int = 5, seed: int = 0) -> np.ndarray:
     return np.array(chosen)
 
 
+def random_batches(N: int, batch_size: int = 256, n_batches: int = 20, seed: int = 0):
+    """返回 n_batches 组随机采样索引 (不放回, 各组独立)."""
+    rng = np.random.default_rng(seed)
+    return [rng.choice(N, min(batch_size, N), replace=False) for _ in range(n_batches)]
+
+
+def fps_batches(feats: np.ndarray, batch_size: int = 256, n_batches: int = 20, seed: int = 0):
+    """FPS 顺序分区: 反复从剩余点中选 batch_size 个最远点."""
+    N = len(feats)
+    remaining = np.arange(N)
+    batches = []
+    for i in range(n_batches):
+        if len(remaining) < batch_size:
+            batches.append(remaining.copy())
+            break
+        # FPS on remaining subset
+        sub_feats = feats[remaining]
+        sub_idx = fps_sample(sub_feats, k=batch_size, seed=seed + i)
+        batches.append(remaining[sub_idx])
+        remaining = np.delete(remaining, sub_idx)
+    return batches
+
+
+def compute_knn_density(feats: np.ndarray, K: int = 50) -> np.ndarray:
+    """kNN 密度: 1 / mean_knn_distance. 返回 (N,) 数组."""
+    from sklearn.neighbors import BallTree
+    tree = BallTree(feats)
+    dists, _ = tree.query(feats, k=K + 1)  # 含自身
+    mean_dist = dists[:, 1:].mean(axis=1)  # 排除自身距离0
+    return 1.0 / (mean_dist + 1e-10)
+
+
+def compute_knn_curvature(feats: np.ndarray, K: int = 50) -> np.ndarray:
+    """kNN 曲率: 1 - lambda_max / sum_lambda (局部PCA各向异性).
+    值高=局部弯曲, 值低=局部平坦. 返回 (N,) 数组."""
+    from sklearn.neighbors import BallTree
+    tree = BallTree(feats)
+    _, indices = tree.query(feats, k=K + 1)
+    N = len(feats)
+    curvature = np.empty(N)
+    for i in range(N):
+        nbrs = feats[indices[i, 1:]]  # (K, D)
+        nbrs_c = nbrs - nbrs.mean(axis=0)
+        # 仅需最大奇异值和总方差
+        s = np.linalg.svd(nbrs_c, compute_uv=False)
+        lam = s ** 2
+        curvature[i] = 1.0 - lam[0] / (lam.sum() + 1e-10)
+    return curvature
+
+
 def compute_anisotropy(feats: np.ndarray, max_components: int = 256) -> dict:
     """Compute full-dimensional isotropy + rank + multimodality metrics.
 

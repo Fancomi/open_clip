@@ -1,6 +1,7 @@
-# bash analysis/probe.sh coco                    # COCO — 有缓存则直接出图
-# bash analysis/probe.sh cc3m                    # CC3M — 有缓存则直接出图
+bash analysis/probe.sh coco                    # COCO — 有缓存则直接出图
+bash analysis/probe.sh cc3m                    # CC3M — 有缓存则直接出图
 # bash analysis/probe.sh overlap                 # COCO vs CC3M 分布重合
+exit
 
 # # crop_probe: 仅支持 COCO（tsv 模式，图片文件可直接访问）
 # # wds/CC3M 图片存于 tar，PIL 无法打开，不支持

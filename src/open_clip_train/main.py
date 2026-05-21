@@ -814,6 +814,11 @@ def main(args):
         if is_master(args):
             logging.info(f'Start epoch {epoch}')
 
+        # ---- Curriculum learning: 按特征空间度量重排样本顺序 ----
+        if getattr(args, 'curriculum_strategy', None):
+            from open_clip_train.curriculum import apply_curriculum
+            apply_curriculum(original_model, data, epoch, args, preprocess_val, device)
+
         train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist_model, args,
                         tb_writer=writer, dino_schedules=dino_schedules,
                         original_model=original_model, preprocess_val=preprocess_val)
