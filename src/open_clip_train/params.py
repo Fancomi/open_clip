@@ -698,6 +698,26 @@ def parse_args(args):
         )
     )
 
+    # ============ Positive-only (no negatives) ============
+    parser.add_argument(
+        "--pos-only",
+        type=str,
+        default='none',
+        choices=['none', 'sigmoid', 'mse'],
+        help=(
+            'Positive-only cross-modal loss (no negatives). '
+            '"sigmoid": -logsigmoid(scale*cos+bias) on matched pairs. '
+            '"mse": (1-cos)^2 on matched pairs. '
+            'Requires --sigreg-target for regularization.'
+        )
+    )
+    parser.add_argument(
+        "--sigreg-joint",
+        default=False,
+        action='store_true',
+        help='SIGReg on concatenated [img;txt] (joint isotropy) instead of separately.'
+    )
+
     # ============ Representation uniformity losses ============
     parser.add_argument(
         "--uniformity-weight",

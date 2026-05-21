@@ -799,7 +799,7 @@ def _set_model_device_and_precision(
 def create_loss(args):
     neg_mode = getattr(args, 'neg_mode', 'standard')
     neg_alpha = getattr(args, 'neg_alpha', 1.0)
-    if neg_mode != 'standard' or neg_alpha < 1.0:
+    if neg_mode == 'antipodal' or neg_alpha < 1.0:
         assert getattr(args, 'siglip', False), f"--neg-mode {neg_mode} / --neg-alpha {neg_alpha} requires --siglip"
 
     if args.distill:
@@ -842,6 +842,8 @@ def create_loss(args):
             koleo_weight=getattr(args, 'koleo_weight', 0.0),
             neg_mode=neg_mode,
             neg_alpha=neg_alpha,
+            pos_only=getattr(args, 'pos_only', 'none'),
+            sigreg_joint=getattr(args, 'sigreg_joint', False),
         )
     elif getattr(args, 'dinov3', False):
         # CLIPWithDINOLoss：需要从 model 中读取 embed_dim，由 main.py 传入
@@ -899,6 +901,7 @@ def create_loss(args):
         rank=args.rank,
         world_size=args.world_size,
         use_horovod=args.horovod,
+        neg_mode=neg_mode,
     )
 
 

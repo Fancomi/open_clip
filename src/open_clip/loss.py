@@ -77,6 +77,7 @@ class ClipLoss(nn.Module):
             rank=0,
             world_size=1,
             use_horovod=False,
+            neg_mode='standard',
     ):
         super().__init__()
         self.local_loss = local_loss
@@ -85,6 +86,7 @@ class ClipLoss(nn.Module):
         self.rank = rank
         self.world_size = world_size
         self.use_horovod = use_horovod
+        self.neg_mode = neg_mode
 
         # cache state
         self.prev_num_logits = 0
@@ -124,6 +126,10 @@ class ClipLoss(nn.Module):
         else:
             logits_per_image = logit_scale * image_features @ text_features.T
             logits_per_text = logit_scale * text_features @ image_features.T
+
+        if self.neg_mode == 'projective':
+            logits_per_image = logits_per_image.abs()
+            logits_per_text = logits_per_text.abs()
 
         if logit_bias is not None:
             logits_per_image += logit_bias
@@ -1039,9 +1045,13 @@ class SIGRegContrastiveLoss(nn.Module):
             koleo_weight: float = 0.0,
             neg_mode: str = 'standard',
             neg_alpha: float = 1.0,
+            pos_only: str = 'none',
+            sigreg_joint: bool = False,
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
+        self.pos_only = pos_only
+        self.sigreg_joint = sigreg_joint
         self.within_modal_weight = within_modal_weight
         assert within_modal_sides in ('both', 'img', 'txt'), \
             f"within_modal_sides must be 'both'/'img'/'txt', got {within_modal_sides!r}"
@@ -1061,6 +1071,7 @@ class SIGRegContrastiveLoss(nn.Module):
             self.main_loss = ClipLoss(
                 local_loss=local_loss, gather_with_grad=gather_with_grad,
                 cache_labels=cache_labels, rank=rank, world_size=world_size, use_horovod=use_horovod,
+                neg_mode=neg_mode,
             )
         self.sigreg = SIGReg(knots=sigreg_knots, num_slices=sigreg_num_slices)
 
@@ -1161,10 +1172,30 @@ class SIGRegContrastiveLoss(nn.Module):
             output_dict: bool = False,
     ):
         # SIGReg 作用在 unnormalized proj 上（由 CLIPLeJEPA 提供）
-        reg = sum(self.sigreg(f) for f in (image_proj, text_proj) if f is not None)
+        projs = [f for f in (image_proj, text_proj) if f is not None]
+        if self.sigreg_joint and len(projs) == 2 and projs[0].shape[-1] == projs[1].shape[-1]:
+            reg = self.sigreg(torch.cat(projs, dim=0))
+        else:
+            reg = sum(self.sigreg(f) for f in projs) if projs else 0
         weighted_reg = self.sigreg_weight * reg
 
-        if self.within_modal_weight > 0:
+        if self.pos_only != 'none':
+            # ── 正样本 only 模式（无负样本）──────────────────────────────────
+            if self.pos_only == 'sigmoid':
+                cross_loss = self._cross_modal_positive_only(
+                    image_features, text_features, logit_scale, logit_bias)
+            else:  # mse: 在 unnormalized proj 空间做 MSE (NOVA-style)
+                ip = image_proj if image_proj is not None else image_features
+                tp = text_proj if text_proj is not None else text_features
+                cross_loss = (ip - tp).pow(2).mean()
+                # dummy: 让 logit_scale/bias 参与图以兼容 DDP static_graph
+                if logit_scale is not None:
+                    cross_loss = cross_loss + 0.0 * logit_scale
+                if logit_bias is not None:
+                    cross_loss = cross_loss + 0.0 * logit_bias
+            losses = {"contrastive_loss": cross_loss, "sigreg_loss": weighted_reg}
+
+        elif self.within_modal_weight > 0:
             # ── within-modal 模式 ─────────────────────────────────────────────
             sides = self.within_modal_sides
 

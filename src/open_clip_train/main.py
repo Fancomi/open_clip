@@ -527,13 +527,10 @@ def main(args):
         if args.ddp_static_graph:
             ddp_args['static_graph'] = True
         if getattr(args, 'dinov3', False):
-            # The visual backbone is shared between the contrastive and DINO paths,
-            # causing parameters to appear multiple times in the backward graph.
-            # static_graph=True tells DDP the graph is fixed across iterations,
-            # which also handles teacher parameters (requires_grad=False).
-            # Note: static_graph and find_unused_parameters are mutually exclusive.
             ddp_args['static_graph'] = True
             ddp_args.pop('find_unused_parameters', None)
+        elif getattr(args, 'pos_only', 'none') != 'none':
+            ddp_args['static_graph'] = True
         if getattr(args, 'dual_teacher', False):
             ddp_args['static_graph'] = True
         if getattr(args, 'multi_teacher', False):
