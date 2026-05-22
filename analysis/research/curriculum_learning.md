@@ -184,42 +184,55 @@ Epoch 1+ 始终用当前模型 checkpoint 提取 (特征空间随训练演化, �
 
 ---
 
-## CC3M 验证实验 (Shard-level 近似排序)
+## CC3M 验证实验 (Sample-level 精确排序)
 
-### 设计
+### 数据与设计
 
-对标基线: `wds_cc3m_pe_dinov3_sigreg_siglip_muon` (i2t R@1=0.2190, t2i R@1=0.1557, 10 epochs)
+历史 WDS 基线: `wds_cc3m_pe_dinov3_sigreg_siglip_muon_0507_2352`  
+- epoch9: i2t R@1=0.2190, t2i R@1=0.1557
 
-**重要区别**: CC3M 为 WebDataset 格式，无法做样本级精确排序。采用 **shard 级近似排序**:
-- 576 shards × ~5046 samples/shard
-- 每 shard 采样 32 张图提取特征 → 计算 shard 质心 (576 × 768)
-- 对 576 个质心做精确 FPS/排序 → 按排序后的 shard 顺序喂数据
-- 禁用 shard-level shuffle (`detshuffle2` bypass)，保留 sample-level buffer shuffle (5000)
-- 排序耗时: ~120s (epoch 0 质心提取) + <1s (FPS on 576 points)
+为了做真正的样本级采样，已将 `cc3m-wds` 解包成类 COCO 格式：
+- TSV: `/root/paddlejob/workspace/env_run/penghaotian/datas/cc3m-tsv/annotations/clip_train.tsv`
+- rows: 2,905,954
+- dataset-type: `csv`
 
-**与 COCO 实验的本质差异**:
-- COCO: 样本级精确排序 (82K 样本逐个排序)
-- CC3M: shard 级粗粒度排序 (576 个 ~5K 样本块排序，块内仍有 buffer shuffle)
-- 粒度差 ~5000x，信号可能被稀释
+**重要区别**:
+- 之前 WDS/Shard 方案只是 shard-level 近似排序，不作为正式结论。
+- 本节结果为 sample-level 精确排序：对 2,905,954 个样本逐个排序。
+- 特征提取为分布式：8 ranks 各提 1/8 样本，rank0 gather 后排序。
+- smoke 实测: 2.9M 样本 self 特征提取 + gather 约 347s，FPS 排序约 0.2s。
 
 ### 实验矩阵 (5 runs)
 
 | # | Strategy | Init | 选择依据 |
 |---|----------|------|---------|
-| 0 | baseline | - | 复现对标 |
+| 0 | baseline | - | CSV-loader baseline，隔离 loader 格式影响 |
 | 1 | fps_reverse | dinov3 | COCO Top-1 (+16.1%) |
-| 2 | curvature_high | dinov3 | COCO Top-2 (+11.5%) |
-| 3 | fps_reverse | self | COCO 最稳定 (+4.6%) |
+| 2 | fps | pe_core | COCO FPS 正序强配置 |
+| 3 | fps_reverse | self | 无外部模型稳定配置 |
 | 4 | fps | self | 正反序对照 |
 
 ### 效果
 
-*待实验完成后填写*
+| Strategy | Init | final i2t R@1 | final t2i R@1 | best i2t R@1 | best t2i R@1 | vs CSV baseline final |
+|----------|------|---------------|---------------|--------------|--------------|------------------------|
+| baseline | - | 0.2250 | 0.1630 | 0.2324 (ep7) | 0.1688 | - |
+| fps | pe_core | **0.2356** | **0.1638** | **0.2356 (ep9)** | 0.1694 | **+4.7%** |
+| fps_reverse | self | 0.2274 | 0.1614 | 0.2302 (ep7) | **0.1695** | +1.1% |
+| fps | self | 0.2302 | 0.1591 | 0.2302 (ep9) | 0.1646 | +2.3% |
+| fps_reverse | dinov3 | 0.2192 | 0.1610 | 0.2302 (ep7) | 0.1637 | -2.6% |
 
-| Strategy | Init | i2t R@1 | t2i R@1 | vs baseline (0.2190) |
-|----------|------|---------|---------|---------------------|
-| baseline | - | | | - |
-| fps_reverse | dinov3 | | | |
-| curvature_high | dinov3 | | | |
-| fps_reverse | self | | | |
-| fps | self | | | |
+### 对 WDS 历史基线的说明
+
+CSV baseline 本身已经强于历史 WDS baseline：
+- WDS baseline epoch9: i2t 0.2190 / t2i 0.1557
+- CSV baseline epoch9: i2t 0.2250 / t2i 0.1630
+
+因此 CC3M sample-level curriculum 应主要对比同 loader 的 CSV baseline；历史 WDS baseline 只作为强基线参考。
+
+### CC3M 结论
+
+1. **COCO 冠军 `fps_reverse + dinov3` 没有迁移到 CC3M**：final i2t 低于 CSV baseline (-2.6%)，best i2t 也低于 baseline best。
+2. **CC3M 最优是 `fps + pe_core`**：final i2t 0.2356，相比 CSV baseline final +4.7%，同时刷新 best i2t。
+3. **self 初始化的 FPS 正反序都较稳定**：`fps_self` final +2.3%，`fps_reverse_self` final +1.1%。
+4. **更可信的规律**：在 CC3M 大数据上，PE-Core 几何空间中的多样性优先（FPS 正序）比 DINOv3 的冗余→多样课程更有效。
