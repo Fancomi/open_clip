@@ -917,10 +917,12 @@ def parse_args(args):
         choices=["fps", "fps_reverse", "density_high", "density_low", "curvature_high", "curvature_low"],
         help="Per-epoch sample ordering strategy. None=disabled.")
     parser.add_argument("--curriculum-init", type=str, default="self",
-        choices=["dinov3", "pe_core", "self"],
-        help="Feature extractor for epoch 0 ordering.")
+        choices=["dinov3", "pe_core", "pe_core_always", "self", "siglip2", "datacomp", "dfn2b", "eva02", "laion2b", "metaclip", "random_init"],
+        help="Feature extractor for curriculum ordering.")
     parser.add_argument("--curriculum-k", type=int, default=50,
         help="kNN K for density/curvature metrics.")
+    parser.add_argument("--curriculum-epochs", type=int, default=0,
+        help="Number of initial epochs to apply curriculum. 0=all epochs.")
 
     args = parser.parse_args(args)
 

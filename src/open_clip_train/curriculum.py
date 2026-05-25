@@ -20,8 +20,18 @@ import torch.distributed as dist
 from torch.utils.data import Sampler, DataLoader
 
 _BASE = '/root/paddlejob/workspace/env_run/penghaotian'
+_TIMM = f'{_BASE}/models/timm'
 _DINOV3_DIR = f'{_BASE}/models/dino/dinov3-vitb16-pretrain-lvd1689m'
-_PE_CORE_CKPT = f'{_BASE}/models/timm/PE-Core-B-16/open_clip_model.safetensors'
+_PE_CORE_CKPT = f'{_TIMM}/PE-Core-B-16/open_clip_model.safetensors'
+_EXTERNAL_CLIPS = {
+    'pe_core_always': ('PE-Core-B-16', _PE_CORE_CKPT),
+    'siglip2': ('ViT-B-16-SigLIP2', f'{_TIMM}/ViT-B-16-SigLIP2/open_clip_model.safetensors'),
+    'datacomp': ('ViT-B-16', f'{_TIMM}/DataComp-XL-B-16/open_clip_pytorch_model.bin'),
+    'dfn2b': ('ViT-B-16', f'{_TIMM}/DFN2B-ViT-B-16/open_clip_pytorch_model.bin'),
+    'eva02': ('EVA02-B-16', f'{_TIMM}/EVA02-B-16/open_clip_model.safetensors'),
+    'laion2b': ('ViT-B-16', f'{_TIMM}/LAION2B-B-16/open_clip_model.safetensors'),
+    'metaclip': ('ViT-B-16-quickgelu', f'{_TIMM}/MetaCLIP-FullCC-B-16/open_clip_model.safetensors'),
+}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -74,20 +84,54 @@ def _extract_with_dinov3(paths, preprocess, device):
 
 
 @torch.no_grad()
-def _extract_with_pe_core(paths, preprocess, device):
+def _extract_with_open_clip(init_name, paths, device):
+    import os
     import open_clip
     from open_clip_train.probe_hook import _ImgDataset
-    logging.info('[curriculum] Loading PE-Core for epoch-0 features...')
-    model, _, _ = open_clip.create_model_and_transforms('PE-Core-B-16', pretrained=_PE_CORE_CKPT)
+
+    if init_name == 'pe_core':
+        model_name, ckpt = 'PE-Core-B-16', _PE_CORE_CKPT
+    elif init_name == 'random_init':
+        model_name, ckpt = 'ViT-B-16', None
+    else:
+        model_name, ckpt = _EXTERNAL_CLIPS[init_name]
+    if ckpt is not None and not os.path.exists(ckpt):
+        raise FileNotFoundError(f'[curriculum] checkpoint not found for {init_name}: {ckpt}')
+
+    logging.info(f'[curriculum] Loading external CLIP features: {init_name} ({model_name})')
+    model, _, preproc = open_clip.create_model_and_transforms(model_name, pretrained=ckpt)
+    if init_name == 'random_init':
+        torch.manual_seed(0)
+        for p in model.visual.parameters():
+            if p.ndim > 1:
+                torch.nn.init.xavier_uniform_(p)
+            else:
+                torch.nn.init.zeros_(p)
     model = model.eval().to(device)
-    dl = DataLoader(_ImgDataset(paths, preprocess), batch_size=256, num_workers=4, pin_memory=True)
+    vis = model.visual
+    use_trunk = hasattr(vis, 'trunk') and hasattr(vis.trunk, 'forward_features')
+    dl = DataLoader(_ImgDataset(paths, preproc), batch_size=256, num_workers=4, pin_memory=True)
     feats = []
     for imgs, _ in dl:
-        out = model.visual.trunk.forward_features(imgs.to(device))
-        feats.append(out[:, 0].float().cpu())
+        imgs = imgs.to(device)
+        if use_trunk:
+            out = vis.trunk.forward_features(imgs)
+            cls = out[:, 0]
+        else:
+            proj_bak = getattr(vis, 'proj', None)
+            if hasattr(vis, 'proj'):
+                vis.proj = None
+            cls = model.encode_image(imgs, normalize=False)
+            if hasattr(vis, 'proj'):
+                vis.proj = proj_bak
+        feats.append(cls.float().cpu())
     del model
     torch.cuda.empty_cache()
     return torch.cat(feats, 0).numpy()
+
+
+def _extract_with_pe_core(paths, preprocess, device):
+    return _extract_with_open_clip('pe_core', paths, device)
 
 
 @torch.no_grad()
@@ -231,6 +275,24 @@ def compute_curriculum_order(features_np, strategy, k, device):
 # 主入口
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _save_base_loader(train_info):
+    if not hasattr(train_info, '_curriculum_base_dataloader'):
+        train_info._curriculum_base_dataloader = train_info.dataloader
+        train_info._curriculum_base_sampler = train_info.sampler
+
+
+def restore_default_order(data, args, epoch=None):
+    """恢复 curriculum 介入前的随机/DistributedSampler DataLoader。"""
+    train_info = data.get('train') if isinstance(data, dict) else None
+    if train_info is None or not hasattr(train_info, '_curriculum_base_dataloader'):
+        return
+    if train_info.dataloader is not train_info._curriculum_base_dataloader:
+        train_info.dataloader = train_info._curriculum_base_dataloader
+        train_info.sampler = train_info._curriculum_base_sampler
+        if getattr(args, 'rank', 0) == 0:
+            logging.info(f'[curriculum] Restored default random sampler at epoch {epoch}')
+
+
 def apply_curriculum(model, data, epoch, args, preprocess_val, device):
     """Epoch 开始前: 提取特征 → 计算排序 → 替换 DataLoader/shard 顺序。
 
@@ -254,17 +316,21 @@ def _rank_range(n, world_size, rank):
 
 
 def _extract_feature_block(model, paths, preprocess, device, args, epoch):
-    if epoch == 0 and args.curriculum_init == 'dinov3':
+    init = args.curriculum_init
+    if init == 'dinov3' and epoch == 0:
         return _extract_with_dinov3(paths, preprocess, device)
-    if epoch == 0 and args.curriculum_init == 'pe_core':
+    if init == 'pe_core' and epoch == 0:
         return _extract_with_pe_core(paths, preprocess, device)
+    if init in _EXTERNAL_CLIPS or init == 'random_init':
+        return _extract_with_open_clip(init, paths, device)
     return _extract_with_self(model, paths, preprocess, device)
 
 
 def _apply_curriculum_csv(model, data, epoch, args, preprocess_val, device):
     """CSV 数据集: 样本级精确排序。分布式提特征，rank0 排序。"""
     train_info = data['train']
-    dataset = train_info.dataloader.dataset
+    _save_base_loader(train_info)
+    dataset = train_info._curriculum_base_dataloader.dataset
     paths = dataset.images
     N = len(paths)
 
@@ -311,7 +377,7 @@ def _apply_curriculum_csv(model, data, epoch, args, preprocess_val, device):
 
     sampler = OrderedDistributedSampler(
         ordered.tolist(), num_replicas=args.world_size, rank=args.rank, drop_last=True)
-    old_dl = train_info.dataloader
+    old_dl = train_info._curriculum_base_dataloader
     new_dl = DataLoader(
         dataset, batch_size=old_dl.batch_size, num_workers=old_dl.num_workers,
         pin_memory=True, sampler=sampler, drop_last=True)
