@@ -1,0 +1,531 @@
+{
+  "read_stats": {
+    "records": 5000,
+    "bad_lines": 0,
+    "path": "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/analysis_outputs/slots/coco_val_5000/slots.jsonl"
+  },
+  "probe": "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/logs/20260507_baseline_cc3m/cc3m_pe_dinov3_leproj_muon_lr001_0429_1821/checkpoints/probe/step_007040.npz",
+  "feature_key": "features",
+  "slots": {
+    "nouns": {
+      "high_words": [
+        "man",
+        "people",
+        "woman",
+        "table",
+        "group"
+      ],
+      "low_words": [
+        "ability",
+        "accents",
+        "access sign",
+        "accident",
+        "adventure"
+      ],
+      "alignment": {
+        "slot_type": "nouns",
+        "match_by": "filepath",
+        "total_records": 5000,
+        "records_with_slot_words": 5000,
+        "matched_records": 5000,
+        "unmatched_records": 0,
+        "match_rate": 1.0,
+        "total_feature_rows": 5000,
+        "unique_feature_paths": 5000,
+        "unique_words": 2397
+      },
+      "plots": {
+        "density": {
+          "save_path": "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/analysis_outputs/slots/coco_val_5000/overlay/slot_overlay_nouns_density.png",
+          "slot_type": "nouns",
+          "metric": "density",
+          "n_features": 5000,
+          "metric_points": 5000,
+          "background_points": 5000,
+          "words": {
+            "man": {
+              "matched": 618,
+              "shown": 200
+            },
+            "people": {
+              "matched": 317,
+              "shown": 200
+            },
+            "woman": {
+              "matched": 288,
+              "shown": 200
+            },
+            "table": {
+              "matched": 238,
+              "shown": 200
+            },
+            "group": {
+              "matched": 225,
+              "shown": 200
+            },
+            "ability": {
+              "matched": 1,
+              "shown": 1
+            },
+            "accents": {
+              "matched": 1,
+              "shown": 1
+            },
+            "access sign": {
+              "matched": 1,
+              "shown": 1
+            },
+            "accident": {
+              "matched": 1,
+              "shown": 1
+            },
+            "adventure": {
+              "matched": 1,
+              "shown": 1
+            }
+          }
+        },
+        "curvature": {
+          "save_path": "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/analysis_outputs/slots/coco_val_5000/overlay/slot_overlay_nouns_curvature.png",
+          "slot_type": "nouns",
+          "metric": "curvature",
+          "n_features": 5000,
+          "metric_points": 5000,
+          "background_points": 5000,
+          "words": {
+            "man": {
+              "matched": 618,
+              "shown": 200
+            },
+            "people": {
+              "matched": 317,
+              "shown": 200
+            },
+            "woman": {
+              "matched": 288,
+              "shown": 200
+            },
+            "table": {
+              "matched": 238,
+              "shown": 200
+            },
+            "group": {
+              "matched": 225,
+              "shown": 200
+            },
+            "ability": {
+              "matched": 1,
+              "shown": 1
+            },
+            "accents": {
+              "matched": 1,
+              "shown": 1
+            },
+            "access sign": {
+              "matched": 1,
+              "shown": 1
+            },
+            "accident": {
+              "matched": 1,
+              "shown": 1
+            },
+            "adventure": {
+              "matched": 1,
+              "shown": 1
+            }
+          }
+        }
+      }
+    },
+    "verbs": {
+      "high_words": [
+        "sitting",
+        "standing",
+        "holding",
+        "riding",
+        "walking"
+      ],
+      "low_words": [
+        "accented",
+        "acknowledging",
+        "addressing",
+        "adjusting",
+        "adorn"
+      ],
+      "alignment": {
+        "slot_type": "verbs",
+        "match_by": "filepath",
+        "total_records": 5000,
+        "records_with_slot_words": 3806,
+        "matched_records": 3806,
+        "unmatched_records": 0,
+        "match_rate": 1.0,
+        "total_feature_rows": 5000,
+        "unique_feature_paths": 5000,
+        "unique_words": 709
+      },
+      "plots": {
+        "density": {
+          "save_path": "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/analysis_outputs/slots/coco_val_5000/overlay/slot_overlay_verbs_density.png",
+          "slot_type": "verbs",
+          "metric": "density",
+          "n_features": 5000,
+          "metric_points": 5000,
+          "background_points": 5000,
+          "words": {
+            "sitting": {
+              "matched": 547,
+              "shown": 200
+            },
+            "standing": {
+              "matched": 457,
+              "shown": 200
+            },
+            "holding": {
+              "matched": 265,
+              "shown": 200
+            },
+            "riding": {
+              "matched": 213,
+              "shown": 200
+            },
+            "walking": {
+              "matched": 133,
+              "shown": 133
+            },
+            "accented": {
+              "matched": 1,
+              "shown": 1
+            },
+            "acknowledging": {
+              "matched": 1,
+              "shown": 1
+            },
+            "addressing": {
+              "matched": 1,
+              "shown": 1
+            },
+            "adjusting": {
+              "matched": 1,
+              "shown": 1
+            },
+            "adorn": {
+              "matched": 1,
+              "shown": 1
+            }
+          }
+        },
+        "curvature": {
+          "save_path": "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/analysis_outputs/slots/coco_val_5000/overlay/slot_overlay_verbs_curvature.png",
+          "slot_type": "verbs",
+          "metric": "curvature",
+          "n_features": 5000,
+          "metric_points": 5000,
+          "background_points": 5000,
+          "words": {
+            "sitting": {
+              "matched": 547,
+              "shown": 200
+            },
+            "standing": {
+              "matched": 457,
+              "shown": 200
+            },
+            "holding": {
+              "matched": 265,
+              "shown": 200
+            },
+            "riding": {
+              "matched": 213,
+              "shown": 200
+            },
+            "walking": {
+              "matched": 133,
+              "shown": 133
+            },
+            "accented": {
+              "matched": 1,
+              "shown": 1
+            },
+            "acknowledging": {
+              "matched": 1,
+              "shown": 1
+            },
+            "addressing": {
+              "matched": 1,
+              "shown": 1
+            },
+            "adjusting": {
+              "matched": 1,
+              "shown": 1
+            },
+            "adorn": {
+              "matched": 1,
+              "shown": 1
+            }
+          }
+        }
+      }
+    },
+    "adjectives": {
+      "high_words": [
+        "white",
+        "large",
+        "black",
+        "young",
+        "small"
+      ],
+      "low_words": [
+        "1969s looking",
+        "adjustable",
+        "aerial",
+        "afixed",
+        "air"
+      ],
+      "alignment": {
+        "slot_type": "adjectives",
+        "match_by": "filepath",
+        "total_records": 5000,
+        "records_with_slot_words": 2775,
+        "matched_records": 2775,
+        "unmatched_records": 0,
+        "match_rate": 1.0,
+        "total_feature_rows": 5000,
+        "unique_feature_paths": 5000,
+        "unique_words": 709
+      },
+      "plots": {
+        "density": {
+          "save_path": "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/analysis_outputs/slots/coco_val_5000/overlay/slot_overlay_adjectives_density.png",
+          "slot_type": "adjectives",
+          "metric": "density",
+          "n_features": 5000,
+          "metric_points": 5000,
+          "background_points": 5000,
+          "words": {
+            "white": {
+              "matched": 339,
+              "shown": 200
+            },
+            "large": {
+              "matched": 221,
+              "shown": 200
+            },
+            "black": {
+              "matched": 179,
+              "shown": 179
+            },
+            "young": {
+              "matched": 170,
+              "shown": 170
+            },
+            "small": {
+              "matched": 168,
+              "shown": 168
+            },
+            "1969s looking": {
+              "matched": 1,
+              "shown": 1
+            },
+            "adjustable": {
+              "matched": 1,
+              "shown": 1
+            },
+            "aerial": {
+              "matched": 1,
+              "shown": 1
+            },
+            "afixed": {
+              "matched": 1,
+              "shown": 1
+            },
+            "air": {
+              "matched": 1,
+              "shown": 1
+            }
+          }
+        },
+        "curvature": {
+          "save_path": "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/analysis_outputs/slots/coco_val_5000/overlay/slot_overlay_adjectives_curvature.png",
+          "slot_type": "adjectives",
+          "metric": "curvature",
+          "n_features": 5000,
+          "metric_points": 5000,
+          "background_points": 5000,
+          "words": {
+            "white": {
+              "matched": 339,
+              "shown": 200
+            },
+            "large": {
+              "matched": 221,
+              "shown": 200
+            },
+            "black": {
+              "matched": 179,
+              "shown": 179
+            },
+            "young": {
+              "matched": 170,
+              "shown": 170
+            },
+            "small": {
+              "matched": 168,
+              "shown": 168
+            },
+            "1969s looking": {
+              "matched": 1,
+              "shown": 1
+            },
+            "adjustable": {
+              "matched": 1,
+              "shown": 1
+            },
+            "aerial": {
+              "matched": 1,
+              "shown": 1
+            },
+            "afixed": {
+              "matched": 1,
+              "shown": 1
+            },
+            "air": {
+              "matched": 1,
+              "shown": 1
+            }
+          }
+        }
+      }
+    },
+    "spatial_relations": {
+      "high_words": [
+        "on",
+        "in",
+        "next to",
+        "on top of",
+        "near"
+      ],
+      "low_words": [
+        "a top",
+        "all over",
+        "amongst",
+        "at side of",
+        "at the back of"
+      ],
+      "alignment": {
+        "slot_type": "spatial_relations",
+        "match_by": "filepath",
+        "total_records": 5000,
+        "records_with_slot_words": 3536,
+        "matched_records": 3536,
+        "unmatched_records": 0,
+        "match_rate": 1.0,
+        "total_feature_rows": 5000,
+        "unique_feature_paths": 5000,
+        "unique_words": 138
+      },
+      "plots": {
+        "density": {
+          "save_path": "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/analysis_outputs/slots/coco_val_5000/overlay/slot_overlay_spatial_relations_density.png",
+          "slot_type": "spatial_relations",
+          "metric": "density",
+          "n_features": 5000,
+          "metric_points": 5000,
+          "background_points": 5000,
+          "words": {
+            "on": {
+              "matched": 1287,
+              "shown": 200
+            },
+            "in": {
+              "matched": 737,
+              "shown": 200
+            },
+            "next to": {
+              "matched": 435,
+              "shown": 200
+            },
+            "on top of": {
+              "matched": 249,
+              "shown": 200
+            },
+            "near": {
+              "matched": 153,
+              "shown": 153
+            },
+            "a top": {
+              "matched": 1,
+              "shown": 1
+            },
+            "all over": {
+              "matched": 1,
+              "shown": 1
+            },
+            "amongst": {
+              "matched": 1,
+              "shown": 1
+            },
+            "at side of": {
+              "matched": 1,
+              "shown": 1
+            },
+            "at the back of": {
+              "matched": 1,
+              "shown": 1
+            }
+          }
+        },
+        "curvature": {
+          "save_path": "/root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip/analysis_outputs/slots/coco_val_5000/overlay/slot_overlay_spatial_relations_curvature.png",
+          "slot_type": "spatial_relations",
+          "metric": "curvature",
+          "n_features": 5000,
+          "metric_points": 5000,
+          "background_points": 5000,
+          "words": {
+            "on": {
+              "matched": 1287,
+              "shown": 200
+            },
+            "in": {
+              "matched": 737,
+              "shown": 200
+            },
+            "next to": {
+              "matched": 435,
+              "shown": 200
+            },
+            "on top of": {
+              "matched": 249,
+              "shown": 200
+            },
+            "near": {
+              "matched": 153,
+              "shown": 153
+            },
+            "a top": {
+              "matched": 1,
+              "shown": 1
+            },
+            "all over": {
+              "matched": 1,
+              "shown": 1
+            },
+            "amongst": {
+              "matched": 1,
+              "shown": 1
+            },
+            "at side of": {
+              "matched": 1,
+              "shown": 1
+            },
+            "at the back of": {
+              "matched": 1,
+              "shown": 1
+            }
+          }
+        }
+      }
+    }
+  }
+}
