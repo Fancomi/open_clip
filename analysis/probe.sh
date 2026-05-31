@@ -20,6 +20,11 @@ export PYTHONPATH="./src:${PYTHONPATH}"
 _BASE='/root/paddlejob/workspace/env_run/penghaotian'
 CC3M_WDS="${_BASE}/datas/LLaVA-ReCap-CC3M/wds/{00000..00280}.tar"
 CC3M_OUT="${_BASE}/datas/LLaVA-ReCap-CC3M/feature_probe"
+COCO_LAYERS_DATA="${_BASE}/datas/coco/annotations/karpathy_1cap.tsv"
+COCO_LAYERS_OUT="${_BASE}/datas/coco/feature_probe/layers"
+CC3M_LAYERS_DATA="${_BASE}/datas/cc3m-tsv/_shards/cc3m-train-*.tsv"
+CC3M_LAYERS_OUT="${_BASE}/datas/cc3m-tsv/feature_probe/layers"
+LAYER_MODELS=(dinov3 pe_core siglip2 datacomp dfn2b eva02 laion2b metaclip eupe)
 
 # ── Arg parsing ───────────────────────────────────────────────────────────────
 MODE="${1:-}"; shift || true
@@ -93,9 +98,43 @@ case "$MODE" in
         python3 -m analysis.run "${FORCE[@]}" --mode anisotropy --aniso-dir "${ANISO_DIR}"
         ;;
     layers)
-        MODEL="${PY_EXTRA[0]:?Usage: probe.sh layers <model>  (dinov3|pe_core|siglip2|eupe)}"
-        OUT_DIR="${PY_EXTRA[1]:-analysis/layer_probe_out}"
-        python3 -m analysis.layer_probe --model "${MODEL}" --out-dir "${OUT_DIR}"
+        MODEL="${PY_EXTRA[0]:?Usage: probe.sh layers <model> [coco|cc3m|out_dir] [out_dir] [extra python args...]}"
+        TARGET="${PY_EXTRA[1]:-coco}"
+        PY_EXTRA=("${PY_EXTRA[@]:2}")
+        case "$TARGET" in
+            coco|pretrained)
+                DATA="$COCO_LAYERS_DATA"; OUT_DIR="$COCO_LAYERS_OUT" ;;
+            cc3m)
+                DATA="$CC3M_LAYERS_DATA"; OUT_DIR="$CC3M_LAYERS_OUT" ;;
+            *)
+                DATA="$COCO_LAYERS_DATA"; OUT_DIR="$TARGET" ;;
+        esac
+        # Optional explicit out_dir after dataset target.
+        if [[ "${PY_EXTRA[0]:-}" != --* && -n "${PY_EXTRA[0]:-}" ]]; then
+            OUT_DIR="${PY_EXTRA[0]}"; PY_EXTRA=("${PY_EXTRA[@]:1}")
+        fi
+        python3 -m analysis.layer_probe "${FORCE[@]}" --model "${MODEL}" \
+            --data "${DATA}" --out-dir "${OUT_DIR}" "${PY_EXTRA[@]}"
+        ;;
+    layers_all)
+        TARGET="${PY_EXTRA[0]:-coco}"
+        PY_EXTRA=("${PY_EXTRA[@]:1}")
+        case "$TARGET" in
+            coco|pretrained)
+                DATA="$COCO_LAYERS_DATA"; OUT_DIR="$COCO_LAYERS_OUT" ;;
+            cc3m)
+                DATA="$CC3M_LAYERS_DATA"; OUT_DIR="$CC3M_LAYERS_OUT" ;;
+            *)
+                echo "Usage: probe.sh layers_all [coco|cc3m] [out_dir] [extra python args...]"; exit 1 ;;
+        esac
+        if [[ "${PY_EXTRA[0]:-}" != --* && -n "${PY_EXTRA[0]:-}" ]]; then
+            OUT_DIR="${PY_EXTRA[0]}"; PY_EXTRA=("${PY_EXTRA[@]:1}")
+        fi
+        for MODEL in "${LAYER_MODELS[@]}"; do
+            echo "=== [layers_all] ${MODEL} on ${TARGET} ==="
+            python3 -m analysis.layer_probe "${FORCE[@]}" --model "${MODEL}" \
+                --data "${DATA}" --out-dir "${OUT_DIR}" "${PY_EXTRA[@]}"
+        done
         ;;
     probe_full|probe)
         # TARGET is the first non-flag arg; the rest are extra Python flags (e.g. --n-pcs 30)
@@ -125,15 +164,21 @@ case "$MODE" in
         python3 -m analysis.run "${FORCE[@]}" --mode eval_pretrained \
             --eval-model "${MODEL}" --max-samples 5000 "${PY_EXTRA[@]}"
         ;;
+    cluster_balance)
+        # CC3M 特征空间聚类长尾分析
+        python3 analysis/cluster_balance.py "${FORCE[@]}" "${PY_EXTRA[@]}"
+        ;;
     *)
         echo "Usage:"
         echo "  bash analysis/probe.sh coco"
         echo "  bash analysis/probe.sh cc3m"
         echo "  bash analysis/probe.sh overlap"
         echo "  bash analysis/probe.sh anisotropy [coco|cc3m]"
-        echo "  bash analysis/probe.sh layers <model>  (dinov3|pe_core|siglip2|eupe)"
+        echo "  bash analysis/probe.sh layers <model> [coco|cc3m|out_dir] [out_dir] [extra args]"
+        echo "  bash analysis/probe.sh layers_all [coco|cc3m] [out_dir] [extra args]"
         echo "  bash analysis/probe.sh probe_full <probe_dir|logs_root> [--rerun] [--n-pcs N]"
         echo "  bash analysis/probe.sh eval_pretrained <model>  (pe_core|siglip2)"
+        echo "  bash analysis/probe.sh cluster_balance [--teachers t1 t2] [--k 5000] [--force]"
         echo "  bash analysis/probe.sh log_parse [prefix] [--logs-dir DIR] [--plot-dir DIR] [--no-plot] [--no-md]"
         echo ""
         echo "  --rerun  bypass all sentinels (re-generate all outputs)"

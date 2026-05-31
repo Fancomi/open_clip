@@ -103,33 +103,71 @@ else:
 
 ## 效果
 
-待实验完成后填写（20 epoch × 12 run，运行中）。
+策略A × 6 teacher × 2方向全部完成（20 epoch），对比策略B（来自 `curriculum_clip_paradigm_coco.md`）：
 
-| Tag | i2t R@1 (ep19) | t2i R@1 (ep19) | vs baseline | vs 策略B同teacher同方向 |
-|-----|----------------|----------------|-------------|----------------------|
-| fps_siglip2_e0 | | | | vs 0.0186 |
-| fpsrev_siglip2_e0 | | | | vs 0.0174 |
-| fps_datacomp_e0 | | | | vs 0.0170 |
-| fpsrev_datacomp_e0 | | | | vs 0.0164 |
-| fps_dfn2b_e0 | | | | vs 0.0138 |
-| fpsrev_dfn2b_e0 | | | | vs 0.0174 |
-| fps_eva02_e0 | | | | vs 0.0148 |
-| fpsrev_eva02_e0 | | | | vs 0.0166 |
-| fps_laion2b_e0 | | | | vs 0.0174 |
-| fpsrev_laion2b_e0 | | | | vs 0.0168 |
-| fps_metaclip_e0 | | | | vs 0.0162 |
-| fpsrev_metaclip_e0 | | | | vs 0.0178 |
+| Tag | i2t R@1 | t2i R@1 | vs baseline | 策略B同配置 | A vs B |
+|-----|---------|---------|-------------|------------|--------|
+| **fps_eva02_e0** | **0.0210** | 0.0144 | **+54%** | 0.0148 (+9%) | **A +62pp** |
+| fpsrev_eva02_e0 | 0.0176 | 0.0154 | +29% | 0.0166 (+22%) | A +10pp |
+| fps_metaclip_e0 | 0.0166 | 0.0144 | +22% | 0.0162 (+19%) | A +4pp |
+| fpsrev_dfn2b_e0 | 0.0164 | 0.0143 | +21% | 0.0174 (+28%) | B +10pp |
+| fpsrev_siglip2_e0 | 0.0158 | 0.0146 | +16% | 0.0174 (+28%) | B +16pp |
+| fps_laion2b_e0 | 0.0158 | 0.0141 | +16% | 0.0174 (+28%) | B +16pp |
+| fps_dfn2b_e0 | 0.0156 | 0.0128 | +15% | 0.0138 (+1%) | A +18pp |
+| fpsrev_datacomp_e0 | 0.0156 | 0.0135 | +15% | 0.0164 (+21%) | B +8pp |
+| fpsrev_laion2b_e0 | 0.0154 | 0.0135 | +13% | 0.0168 (+24%) | B +14pp |
+| fpsrev_metaclip_e0 | 0.0160 | 0.0144 | +18% | 0.0178 (+31%) | B +18pp |
+| fps_siglip2_e0 | 0.0148 | 0.0149 | +9% | 0.0186 (+37%) | B +38pp |
+| fps_datacomp_e0 | 0.0120 | 0.0143 | -12% | 0.0170 (+25%) | B +50pp |
+
+**baseline:** i2t R@1 = 0.0136，t2i R@1 = （策略B实验中约 0.0100）
+
+A > B 的情况：eva02 fps/fpsrev、dfn2b fps、metaclip fps（4/12）  
+B > A 的情况：siglip2 fps/fpsrev、datacomp fps/fpsrev、dfn2b fpsrev、laion2b fps/fpsrev、metaclip fpsrev（8/12）
 
 ## 分析
 
-待实验完成后填写。
+### 1. 策略A不普遍优于策略B
 
-**核心问题（待验证）：**
+pe_core teacher 下 A (+28%) > B (+12%) 的规律**未能推广**到其他 teacher。整体计分 A:B = 4:8，策略B在多数teacher+方向组合下仍更强。
 
-1. **策略A是否普遍优于策略B？** pe_core teacher下A>B (+28% vs +12%)，若此规律在多数teacher下成立，说明epoch0 teacher冲击是关键机制，持续排序带来的是不必要的归纳偏差。
+**pe_core 的特殊性**：pe_core_always 和 pe_core_e0_random 的差距（+12% vs +28%）可能与 pe_core 特征空间的"洋葱结构"（`fps_convergence_pecore.md`中记录的独特几何：中心密集、密度动态范围5.6x）有关——在这种结构下，持续排序带来的重复几何偏差会消耗收益，一次性冲击反而最优。其他 CLIP 模型的特征分布更均匀（密度动态范围仅2x），持续排序可以稳定地提供有效信号。
 
-2. **哪个teacher配策略A最强？** 策略B下siglip2是最强teacher（fps_siglip2 +37%）。策略A下siglip2是否仍领先？还是某些teacher（如dfn2b，策略B的fps方向异常弱，fpsrev却很强）在策略A下会反转？
+### 2. fps_eva02_e0 是跨所有实验的最强配置
 
-3. **fps vs fpsrev方向一致性：** 策略B下发现dfn2b在fps方向几乎无效（+1%），但fpsrev方向强（+28%）。这是因为dfn2b特征空间的FPS排序结构不同，还是与策略B的持续排序机制耦合？策略A下是否改变这一方向偏好？
+| 实验范围 | 最强单 run | i2t R@1 | vs baseline |
+|---------|-----------|---------|-------------|
+| 本实验（策略A） | fps_eva02_e0 | **0.0210** | **+54%** |
+| 策略B扫描 | fps_siglip2 | 0.0186 | +37% |
+| pe_core 对照 | fps_pe_e0_random | 0.0174 | +28% |
+| 历史 COCO 实验（策略C） | fps_reverse_dinov3 | 0.0202 | +16% |
 
-4. **三策略总结：** 结合策略C（历史实验，`curriculum_learning.md`，只在COCO小实验数据上有结果）、策略B（本次全扫），策略A（本次扫），可以对三种teacher介入方式做完整结论。
+eva02 + fps + 策略A 的组合跑出了所有 curriculum 实验中最高分。EVA02 与策略A 的协同效应显著：策略B下 eva02_fps 仅 +9%，而策略A下爆发至 +54%（差异 62pp）。这说明 EVA02 特征空间的几何结构非常适合做**一次性**FPS冲击，但不适合反复使用——反复排序可能在其均匀分布+边缘簇的结构上产生负向归纳偏差。
+
+### 3. dfn2b 的 fps 方向异常被部分修复
+
+策略B 下 dfn2b 有显著的方向不对称：fps +1%（几乎无效），fpsrev +28%。本实验中：
+- fps_dfn2b_e0：+15%（策略A显著好于策略B的 +1%）
+- fpsrev_dfn2b_e0：+21%（策略A略低于策略B的 +28%）
+
+说明 dfn2b fps 方向在策略B下的近零收益**与持续排序机制耦合**，而非 dfn2b 特征空间的内在性质。一次性冲击下，dfn2b fps 方向同样有效。
+
+### 4. datacomp fps 方向在策略A下跌负
+
+fps_datacomp_e0 = 0.0120（-12% vs baseline），是所有非 random_init 配置中唯一跌破 baseline 的。策略B下 fps_datacomp = 0.0170（+25%）。这一反转说明：持续的 datacomp fps 几何约束对训练有正向效果，而仅 epoch0 一次性冲击不仅无益反而有害，可能因为 datacomp 特征空间的 FPS 排序与随机训练的预热节奏产生了干扰。
+
+### 5. 三策略总结
+
+| 策略 | 机制 | 整体表现 | 最优配置 |
+|------|------|---------|---------|
+| **A**（epoch0冲击+随机） | teacher 几何一次性初始化采样顺序 | 结果分化大，有高峰也有低谷 | eva02+fps = **0.0210** |
+| **B**（全程frozen） | 每epoch持续在teacher几何上采样 | 稳定正向，整体胜率高 | siglip2+fps = 0.0186 |
+| **C**（epoch0冲击+自身） | teacher初始化，后续随训练自适应 | COCO小实验下 dinov3 最优，CC3M下 pe_core 最优 | dinov3+fpsrev = 0.0202（COCO）|
+
+**结论：没有跨teacher普适的最优策略**。策略的优劣与 teacher 特征空间的几何性质紧密耦合：
+- pe_core（洋葱结构，5.6x密度动态范围）：策略A最优
+- eva02（均匀+边缘簇，但FPS冲击协同强）：策略A爆发
+- siglip2/laion2b/metaclip（均匀分布）：策略B稳健更优
+- datacomp（fps方向对策略A敏感）：策略B安全，策略A有风险
+
+**最优绝对性能：** `fps_eva02_e0`（策略A）= 0.0210，是目前所有 COCO curriculum 实验中的新高分。

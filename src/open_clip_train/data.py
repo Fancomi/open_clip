@@ -42,7 +42,11 @@ class CsvDataset(Dataset):
         return len(self.captions)
 
     def __getitem__(self, idx):
-        images = self.transforms(Image.open(str(self.images[idx])))
+        try:
+            images = self.transforms(Image.open(str(self.images[idx])))
+        except (OSError, IOError):
+            # 损坏图片: 返回随机邻居替代
+            return self.__getitem__((idx + 1) % len(self))
         texts = self.tokenize([str(self.captions[idx])])[0]
         return images, texts
 
