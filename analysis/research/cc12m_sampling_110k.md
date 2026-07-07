@@ -1,7 +1,7 @@
 # CC12M 1/100 采样策略对比实验
 
 > 实验脚本：`experiments/sample_cc12m_50k.sh`  
-> 采样工具：`tools/sample_cc12m.py`  
+> 采样工具：`scripts/tools/sample_cc12m.py`  
 > 开始日期：2026-05-30  
 > 最终更新：2026-05-30
 
@@ -174,6 +174,6 @@ FAIR 原文使用 4 级分层 K-Means (K=10 per level → 10^4 叶子)，适用�
 
 | 脚本/工具 | 功能 |
 |-----------|------|
-| `tools/sample_cc12m.py` | CC12M 特征提取 + 子集采样 + 批量导出 |
+| `scripts/tools/sample_cc12m.py` | CC12M 特征提取 + 子集采样 + 批量导出 |
 | `experiments/sample_cc12m_50k.sh` | 完整实验流程 (Phase 1-3) |
-| `tools/eval_retrieval.py` | Checkpoint → retrieval 评估 |
+| `scripts/tools/eval_retrieval.py` | Checkpoint → retrieval 评估 |

@@ -47,7 +47,7 @@ case "${PRESET}" in
 esac
 
 SUBSETS="/root/paddlejob/workspace/env_run/penghaotian/datas/${DATASET}-$([ $DATASET = cc3m ] && echo tsv || echo wds)/subsets"
-SAMPLER="tools/sample_${DATASET}.py"
+SAMPLER="scripts/tools/sample_${DATASET}.py"
 [ "${DATASET}" = "cc12m" ] && SAMPLE_CMD="sample" || SAMPLE_CMD=""
 
 # ── SMOKE / FULL 运行参数 ─────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 import open_clip
 from open_clip_train.probe_hook import _ImgDataset, _TxtDataset
 

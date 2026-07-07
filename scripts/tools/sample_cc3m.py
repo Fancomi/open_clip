@@ -2,9 +2,9 @@
 """从 CC3M 中采样 80K 子集: FPS (多样性最大化) 或 K-Means (均匀覆盖)。
 
 用法:
-    python tools/sample_cc3m.py --teacher siglip2 --method fps --n-samples 80000
-    python tools/sample_cc3m.py --teacher eva02 --method kmeans --n-samples 80000
-    python tools/sample_cc3m.py --method random --n-samples 80000
+    python scripts/tools/sample_cc3m.py --teacher siglip2 --method fps --n-samples 80000
+    python scripts/tools/sample_cc3m.py --teacher eva02 --method kmeans --n-samples 80000
+    python scripts/tools/sample_cc3m.py --method random --n-samples 80000
 """
 import argparse
 import logging
@@ -16,7 +16,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from open_clip_train.curriculum import (
     _gpu_fps, _EXTERNAL_CLIPS, _DINOV3_DIR, _PE_CORE_CKPT,

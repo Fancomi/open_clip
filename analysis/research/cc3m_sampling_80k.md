@@ -1,8 +1,8 @@
 # CC3M 采样策略对比实验
 
 > 实验脚本：`experiments/sample_cc3m_80k.sh` / `experiments/sample_cc3m_500k.sh`  
-> 采样工具：`tools/sample_cc3m.py`  
-> 评估工具：`tools/eval_retrieval.py`  
+> 采样工具：`scripts/tools/sample_cc3m.py`  
+> 评估工具：`scripts/tools/eval_retrieval.py`  
 > 开始日期：2026-05-27  
 > 最终更新：2026-05-28
 
@@ -328,8 +328,8 @@ FAIR 论文有效的前提条件我们都不满足：
 
 | 脚本/工具 | 功能 |
 |-----------|------|
-| `tools/sample_cc3m.py` | CC3M 子集采样: FPS / K-Means++ 分层随机 / Random |
-| `tools/eval_retrieval.py` | Checkpoint → retrieval 评估 (任意 val TSV) |
+| `scripts/tools/sample_cc3m.py` | CC3M 子集采样: FPS / K-Means++ 分层随机 / Random |
+| `scripts/tools/eval_retrieval.py` | Checkpoint → retrieval 评估 (任意 val TSV) |
 | `analysis/cluster_balance.py` | CC3M 聚类均衡性分析 + Lorenz 曲线可视化 |
 | `experiments/sample_cc3m_80k.sh` | 80K 实验 (训练不足, 无区分度) |
 | `experiments/sample_cc3m_500k.sh` | 500K 正式实验 (projective + wds 配置) |

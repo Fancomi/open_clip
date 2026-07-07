@@ -6,13 +6,13 @@ CC12M 是未经精细筛选的 web 图文对 (~11M), 比 CC3M 更脏。
 
 用法:
     # Phase 1: 提取特征 (单 GPU, ~30min/teacher)
-    python tools/sample_cc12m.py extract --teacher siglip2
+    python scripts/tools/sample_cc12m.py extract --teacher siglip2
 
     # Phase 2: 采样
-    python tools/sample_cc12m.py sample --teacher siglip2 --method fps --n-samples 50000
+    python scripts/tools/sample_cc12m.py sample --teacher siglip2 --method fps --n-samples 50000
 
     # Phase 3: 导出选中图片为 TSV (从 tar 中抽取)
-    python tools/sample_cc12m.py export --tsv subsets/fps_siglip2_50k.tsv
+    python scripts/tools/sample_cc12m.py export --tsv subsets/fps_siglip2_50k.tsv
 """
 import argparse
 import logging
@@ -24,7 +24,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, IterableDataset
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from open_clip_train.curriculum import _EXTERNAL_CLIPS, _DINOV3_DIR, _PE_CORE_CKPT
 
