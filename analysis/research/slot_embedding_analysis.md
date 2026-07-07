@@ -2,7 +2,7 @@
 
 > 数据集：COCO val（Karpathy split），5000 条 caption  
 > 特征来源：`logs/20260507_baseline_cc3m/cc3m_pe_dinov3_leproj_muon_lr001_0429_1821/checkpoints/probe/step_007040.npz`  
-> 输出目录：`analysis_outputs/slots/coco_val_5000/`  
+> 输出目录：`analysis/outputs/slots/coco_val_5000/`  
 > 更新日期：2026-05-24
 
 ---
@@ -33,7 +33,7 @@ COCO caption (5000)
     ↓
 [词频统计] → slot_frequencies.json / stats/*.png
     ↓
-[Embedding Overlay] → overlay_min{5,10}/*.png + slot_geometry_summary.csv
+[Embedding Overlay] → overlay_min10/*.png + slot_geometry_summary.csv
 ```
 
 ### 2.2 Slot 抽取
@@ -53,13 +53,8 @@ VLM 抽取质量：5000/5000 成功，bad 率 = 0。
 
 对每个 slot 类型，分别选 **high 频词**（Top-5）和 **low 频词**（min_count 以上的低频词），在 UMAP/t-SNE 投影空间上 overlay density 和 curvature，观察分布规律。
 
-低频词版本说明：
-
-| 版本 | min_count | 用途 |
-|------|-----------|------|
-| `overlay/` | 1 | 不推荐，有 singleton 噪声 |
-| `overlay_min5/` | 5 | 推荐展示，低频长尾更完整 |
-| `overlay_min10/` | 10 | 推荐定量，更稳定 |
+低频词统一使用 `min_count=10`。旧的 `overlay/`（min_count=1）和
+`overlay_min5/` 已清理，避免 singleton 或低计数词带来的噪声。
 
 ---
 
@@ -127,16 +122,16 @@ VLM 抽取质量：5000/5000 成功，bad 率 = 0。
 
 空间关系词 unique 数最少（138），但出现率高（on 出现 1287 次），说明 COCO caption 对空间关系描述高度集中。
 
-> 完整数值见 `analysis_outputs/slots/coco_val_5000/overlay_min10/slot_geometry_summary.csv`
+> 完整数值见 `analysis/outputs/slots/coco_val_5000/overlay_min10/slot_geometry_summary.csv`
 
 ---
 
 ## 五、可视化产物
 
-每个 slot 类型 × 每个度量，各生成一张 overlay 图：
+每个 slot 类型 × 每个度量，各生成一张 overlay 图，只保留 `overlay_min10/`：
 
 ```
-overlay_min5/
+overlay_min10/
   slot_overlay_nouns_density.png
   slot_overlay_nouns_curvature.png
   slot_overlay_verbs_density.png
@@ -145,9 +140,9 @@ overlay_min5/
   slot_overlay_adjectives_curvature.png
   slot_overlay_spatial_relations_density.png
   slot_overlay_spatial_relations_curvature.png
+  slot_selected_words.json
+  slot_geometry_summary.csv/json
 ```
-
-`overlay_min10/` 同结构，低频词数据更少但更稳定。
 
 ---
 
@@ -160,9 +155,9 @@ bash analysis/run_slot_vlm.sh
 # 仅生成 overlay（已有 slots.jsonl 的情况下）
 python -m analysis.run \
   --mode overlay_slots \
-  --slots-path analysis_outputs/slots/coco_val_5000/slots.jsonl \
+  --slots-path analysis/outputs/slots/coco_val_5000/slots.jsonl \
   --probe-path <probe.npz> \
-  --output-dir analysis_outputs/slots/coco_val_5000/overlay_min10 \
+  --output-dir analysis/outputs/slots/coco_val_5000/overlay_min10 \
   --min-count 10 \
   --save-geometry-summary
 ```
@@ -171,7 +166,7 @@ python -m analysis.run \
 - `analysis/slots.py` — slot 抽取逻辑
 - `analysis/slot_viz.py` — overlay 可视化
 - `analysis/slot_pipeline.py` — 端到端 pipeline
-- `analysis/run_slot_vlm.sh` — 一键脚本（默认 MIN_COUNT=5）
+- `analysis/run_slot_vlm.sh` — 一键脚本（默认 MIN_COUNT=10，输出 `overlay_min10/`）
 
 ---
 

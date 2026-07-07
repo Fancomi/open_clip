@@ -7,7 +7,6 @@ import numpy as np
 
 from .metrics import compute_knn_curvature, compute_knn_density
 from .slot_viz import (
-    fit_umap_embedding,
     plot_slot_feature_overlay,
     plot_slot_frequency_bars,
     plot_slot_frequency_hist,
@@ -92,12 +91,32 @@ def _metric_summary(values):
     }
 
 
+def _sample_indices(indices, max_points, seed):
+    idx = np.unique(np.asarray(indices, dtype=int))
+    if max_points is None or max_points <= 0 or len(idx) <= max_points:
+        return idx
+    rng = np.random.default_rng(seed)
+    return np.sort(rng.choice(idx, max_points, replace=False))
+
+
+def _sample_with_forced(n, max_points, seed, forced):
+    all_idx = np.arange(n, dtype=int)
+    forced = np.unique(np.asarray(forced, dtype=int))
+    forced = forced[(forced >= 0) & (forced < n)]
+    if max_points is None or max_points <= 0 or n <= max_points:
+        return all_idx
+    if len(forced) >= max_points:
+        return np.sort(forced)
+    rng = np.random.default_rng(seed)
+    pool = np.setdiff1d(all_idx, forced, assume_unique=False)
+    extra = rng.choice(pool, max_points - len(forced), replace=False)
+    return np.sort(np.concatenate([forced, extra]))
+
+
 def _save_geometry_summary(feats, records, paths, selected, out_dir, args):
-    logging.info('[slots] computing geometry summary density/curvature ...')
-    density = compute_knn_density(feats, K=args.k)
-    curvature = compute_knn_curvature(feats, K=args.k)
     rows, summary = [], {}
-    for slot, info in selected['slots'].items():
+    row_specs, forced = [], []
+    for si, (slot, info) in enumerate(selected['slots'].items()):
         word_to_indices, align_stats = build_word_to_indices(
             records,
             paths=paths,
@@ -110,32 +129,70 @@ def _save_geometry_summary(feats, records, paths, selected, out_dir, args):
         summary[slot] = {'alignment': align_stats, 'words': {}}
         groups = {w: 'high' for w in info['high_words']}
         groups.update({w: 'low' for w in info['low_words']})
-        for word in info['high_words'] + info['low_words']:
+        for wi, word in enumerate(info['high_words'] + info['low_words']):
             idx = np.asarray(word_to_indices.get(word, []), dtype=int)
             if len(idx) == 0:
                 continue
-            ds = _metric_summary(density[idx])
-            cs = _metric_summary(curvature[idx])
-            row = {
-                'slot_type': slot,
-                'group': groups[word],
-                'word': word,
-                'n': int(len(idx)),
-                'density_mean': ds['mean'],
-                'density_median': ds['median'],
-                'density_p25': ds['p25'],
-                'density_p75': ds['p75'],
-                'curvature_mean': cs['mean'],
-                'curvature_median': cs['median'],
-                'curvature_p25': cs['p25'],
-                'curvature_p75': cs['p75'],
-            }
-            rows.append(row)
-            summary[slot]['words'][word] = row
+            metric_idx = _sample_indices(
+                idx,
+                args.max_points_per_word,
+                args.seed + 1009 * si + wi,
+            )
+            forced.extend(metric_idx.tolist())
+            row_specs.append((slot, groups[word], word, np.unique(idx), metric_idx))
 
-    if not rows:
+    if not row_specs:
         logging.warning('[slots] skip geometry summary: no selected rows')
         return
+    metric_idx = _sample_with_forced(
+        feats.shape[0],
+        args.metric_max_points,
+        args.seed,
+        forced,
+    )
+    if len(metric_idx) < feats.shape[0]:
+        logging.info(
+            f'[slots] computing geometry summary on subset '
+            f'{len(metric_idx)}/{feats.shape[0]} with selected-word samples forced'
+        )
+    else:
+        logging.info('[slots] computing geometry summary density/curvature ...')
+    k_eff = max(1, min(int(args.k), len(metric_idx) - 1))
+    density = compute_knn_density(feats[metric_idx], K=k_eff)
+    curvature = compute_knn_curvature(feats[metric_idx], K=k_eff)
+    metric_pos = {int(src): i for i, src in enumerate(metric_idx)}
+
+    for slot, group, word, all_idx, sampled_idx in row_specs:
+        pos = np.asarray([metric_pos[int(i)] for i in sampled_idx if int(i) in metric_pos], dtype=int)
+        if len(pos) == 0:
+            continue
+        ds = _metric_summary(density[pos])
+        cs = _metric_summary(curvature[pos])
+        row = {
+            'slot_type': slot,
+            'group': group,
+            'word': word,
+            'n': int(len(all_idx)),
+            'metric_n': int(len(pos)),
+            'density_mean': ds['mean'],
+            'density_median': ds['median'],
+            'density_p25': ds['p25'],
+            'density_p75': ds['p75'],
+            'curvature_mean': cs['mean'],
+            'curvature_median': cs['median'],
+            'curvature_p25': cs['p25'],
+            'curvature_p75': cs['p75'],
+        }
+        rows.append(row)
+        summary[slot]['words'][word] = row
+
+    summary['_metric_basis'] = {
+        'n_features': int(feats.shape[0]),
+        'metric_points': int(len(metric_idx)),
+        'k': int(k_eff),
+        'max_points_per_word': int(args.max_points_per_word),
+        'metric_max_points': int(args.metric_max_points),
+    }
     csv_path = os.path.join(out_dir, 'slot_geometry_summary.csv')
     json_path = os.path.join(out_dir, 'slot_geometry_summary.json')
     with open(csv_path, 'w', encoding='utf-8', newline='') as f:
@@ -156,18 +213,7 @@ def run_overlay_slots(args):
     model_name = args.model_name or f'{os.path.basename(args.probe)}:{feature_key}'
     logging.info(f'[slots] probe={args.probe} feature_key={feature_key} shape={feats.shape}')
 
-    # ── Fit UMAP once on all features, cache to disk ──────────────────────────
-    umap_cache = os.path.join(args.out_dir, 'umap_embedding.npy')
-    embedding_2d, reducer_tag = fit_umap_embedding(
-        feats,
-        n_neighbors=getattr(args, 'umap_n_neighbors', 15),
-        min_dist=getattr(args, 'umap_min_dist', 0.1),
-        seed=args.seed,
-        cache_path=umap_cache,
-    )
-
-    selected = {'read_stats': read_stats, 'probe': args.probe, 'feature_key': feature_key,
-                'reducer': reducer_tag, 'slots': {}}
+    selected = {'read_stats': read_stats, 'probe': args.probe, 'feature_key': feature_key, 'slots': {}}
     for slot in slot_types:
         high, low = select_frequency_words(
             freqs.get(slot, {}), top_k=args.top_k, bottom_k=args.bottom_k,
@@ -210,10 +256,6 @@ def run_overlay_slots(args):
                 metric_max_points=args.metric_max_points,
                 background_max_points=args.background_max_points,
                 seed=args.seed,
-                embedding_2d=embedding_2d,
-                reducer_tag=reducer_tag,
-                high_words=high,
-                low_words=low,
             )
             selected['slots'][slot]['plots'][metric] = plot_stats
 

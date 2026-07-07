@@ -4,10 +4,10 @@
 #   2. Generate PE-Core image feature probe (npz)
 #   3. Run VLM slot extraction on CC3M captions
 #   4. Collect slot frequencies + stats
-#   5. Overlay selected words on feature probe
+#   5. Overlay selected words on feature probe (min_count=10)
 #
 # Usage:
-#   bash analysis/run_cc3m_slot.sh                       # default 5000 samples
+#   bash analysis/run_cc3m_slot.sh                       # default 50000 samples
 #   bash analysis/run_cc3m_slot.sh --limit 1000          # quick test
 #   bash analysis/run_cc3m_slot.sh --no-overlay          # skip overlay
 #   bash analysis/run_cc3m_slot.sh --no-extract          # skip if already extracted
@@ -22,14 +22,14 @@ export PYTHONPATH="$ROOT/src:${PYTHONPATH:-}"
 
 # ── Config ────────────────────────────────────────────────────────────────────
 CC3M_WDS_DIR="${CC3M_WDS_DIR:-$BASE/datas/cc3m-wds}"
-LIMIT="${LIMIT:-5000}"
+LIMIT="${LIMIT:-50000}"
 SEED="${SEED:-42}"
-SAMPLE_DIR="${SAMPLE_DIR:-$BASE/datas/cc3m_slot_sample}"
-TSV_PATH="${TSV_PATH:-$SAMPLE_DIR/cc3m_sample.tsv}"
-PROBE_PATH="${PROBE_PATH:-$SAMPLE_DIR/probe_pe_core.npz}"
+OUT_ROOT="${OUT_ROOT:-}"
+SAMPLE_DIR="${SAMPLE_DIR:-}"
+TSV_PATH="${TSV_PATH:-}"
+PROBE_PATH="${PROBE_PATH:-}"
 PE_CORE_CKPT="${PE_CORE_CKPT:-$BASE/models/timm/PE-Core-B-16/open_clip_model.safetensors}"
 
-OUT_ROOT="${OUT_ROOT:-$ROOT/analysis_outputs/slots/cc3m_${LIMIT}}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-}"
 MODEL="${MODEL:-}"
@@ -44,7 +44,7 @@ RUN_OVERLAY="${RUN_OVERLAY:-1}"
 SLOT_TYPES="${SLOT_TYPES:-nouns,verbs,adjectives,spatial_relations}"
 TOP_K="${TOP_K:-5}"
 BOTTOM_K="${BOTTOM_K:-5}"
-MIN_COUNT="${MIN_COUNT:-5}"
+MIN_COUNT="${MIN_COUNT:-10}"
 METRIC="${METRIC:-both}"
 KNN_K="${KNN_K:-50}"
 MAX_POINTS_PER_WORD="${MAX_POINTS_PER_WORD:-200}"
@@ -53,7 +53,7 @@ BG_MAX_POINTS="${BG_MAX_POINTS:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --limit) LIMIT="$2"; OUT_ROOT="$ROOT/analysis_outputs/slots/cc3m_${LIMIT}"; shift 2 ;;
+    --limit) LIMIT="$2"; shift 2 ;;
     --out-root) OUT_ROOT="$2"; shift 2 ;;
     --no-extract) RUN_EXTRACT=0; shift ;;
     --no-probe) RUN_PROBE=0; shift ;;
@@ -64,6 +64,11 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown: $1" >&2; exit 1 ;;
   esac
 done
+
+OUT_ROOT="${OUT_ROOT:-$ROOT/analysis/outputs/slots/cc3m_${LIMIT}}"
+SAMPLE_DIR="${SAMPLE_DIR:-$OUT_ROOT/sample}"
+TSV_PATH="${TSV_PATH:-$SAMPLE_DIR/cc3m_sample.tsv}"
+PROBE_PATH="${PROBE_PATH:-$SAMPLE_DIR/probe_pe_core.npz}"
 
 mkdir -p "$OUT_ROOT" "$SAMPLE_DIR"
 REQ="$OUT_ROOT/slot_requests.jsonl"
@@ -210,7 +215,18 @@ else
   echo "[cc3m-slot] Skipping probe generation (--no-probe)"
 fi
 
-# ── Step 3: Auto-detect VLM port ─────────────────────────────────────────────
+# ── Step 3: Build VLM request JSONL ──────────────────────────────────────────
+REQ_ROWS_EXPECTED=$((TSV_ROWS - 1))
+if [[ -f "$REQ" ]] && [[ "$(wc -l < "$REQ")" -eq "$REQ_ROWS_EXPECTED" ]]; then
+  echo "[cc3m-slot] Requests already exist with $REQ_ROWS_EXPECTED rows — skipping"
+else
+  python -m analysis.run --mode make_slot_input \
+    --data "$TSV_PATH" \
+    --dataset cc3m \
+    --slot-out "$REQ"
+fi
+
+# ── Step 4: Auto-detect VLM port ─────────────────────────────────────────────
 if [[ -z "$PORT" ]]; then
   ports=()
   for p in $(seq 8001 8008); do
@@ -225,7 +241,7 @@ PY
     fi
   done
   if [[ ${#ports[@]} -eq 0 ]]; then
-    echo "[cc3m-slot] No VLM ports detected on $HOST:8001-8008." >&2
+    echo "[cc3m-slot] No VLM ports detected on $HOST:8001-8008; requests are ready at $REQ." >&2
     exit 1
   fi
   PORT="$(IFS=,; echo "${ports[*]}")"
@@ -248,12 +264,7 @@ fi
 
 echo "[cc3m-slot] PORT=$PORT  WORKERS=$WORKERS  MODEL=$MODEL"
 
-# ── Step 4: VLM slot extraction ───────────────────────────────────────────────
-python -m analysis.run --mode make_slot_input \
-  --data "$TSV_PATH" \
-  --dataset cc3m \
-  --slot-out "$REQ"
-
+# ── Step 5: VLM slot extraction ───────────────────────────────────────────────
 python - "$REQ" "$SLOTS" "$HOST" "$PORT" "$MODEL" "$WORKERS" "$MAX_TOKENS" "$TEMPERATURE" "$THINK" "$SEED" <<'PY'
 import json, os, random, sys, time, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -335,36 +346,34 @@ else:
     print('[slot] no pending rows; reusing existing slots.jsonl')
 PY
 
-# ── Step 5: Collect slot frequencies ─────────────────────────────────────────
+# ── Step 6: Collect slot frequencies ─────────────────────────────────────────
 python -m analysis.run --mode collect_slots \
   --slots "$SLOTS" \
   --out-dir "$STATS_DIR" \
   --top-n 40
 
-# ── Step 6: Overlay (min_count=5 and min_count=10) ───────────────────────────
+# ── Step 7: Overlay (min_count=10) ───────────────────────────────────────────
 if [[ "$RUN_OVERLAY" == "1" ]]; then
   if [[ ! -f "$PROBE_PATH" ]]; then
     echo "[cc3m-slot] Probe not found: $PROBE_PATH — skipping overlay" >&2
   else
-    for mc in 5 10; do
-      OVERLAY_DIR="$OUT_ROOT/overlay_min${mc}"
-      echo "[cc3m-slot] Overlay min_count=$mc -> $OVERLAY_DIR"
-      python -m analysis.run --mode overlay_slots \
-        --probe "$PROBE_PATH" \
-        --slots "$SLOTS" \
-        --out-dir "$OVERLAY_DIR" \
-        --slot-types "$SLOT_TYPES" \
-        --top-k "$TOP_K" \
-        --bottom-k "$BOTTOM_K" \
-        --min-count "$mc" \
-        --metric "$METRIC" \
-        --k "$KNN_K" \
-        --max-points-per-word "$MAX_POINTS_PER_WORD" \
-        --metric-max-points "$METRIC_MAX_POINTS" \
-        --background-max-points "$BG_MAX_POINTS" \
-        --seed "$SEED" \
-        --save-geometry-summary
-    done
+    OVERLAY_DIR="$OUT_ROOT/overlay_min10"
+    echo "[cc3m-slot] Overlay min_count=10 -> $OVERLAY_DIR"
+    python -m analysis.run --mode overlay_slots \
+      --probe "$PROBE_PATH" \
+      --slots "$SLOTS" \
+      --out-dir "$OVERLAY_DIR" \
+      --slot-types "$SLOT_TYPES" \
+      --top-k "$TOP_K" \
+      --bottom-k "$BOTTOM_K" \
+      --min-count "$MIN_COUNT" \
+      --metric "$METRIC" \
+      --k "$KNN_K" \
+      --max-points-per-word "$MAX_POINTS_PER_WORD" \
+      --metric-max-points "$METRIC_MAX_POINTS" \
+      --background-max-points "$BG_MAX_POINTS" \
+      --seed "$SEED" \
+      --save-geometry-summary
   fi
 fi
 
@@ -376,5 +385,5 @@ echo "[cc3m-slot] Requests: $REQ"
 echo "[cc3m-slot] Slots   : $SLOTS"
 echo "[cc3m-slot] Stats   : $STATS_DIR"
 if [[ "$RUN_OVERLAY" == "1" ]]; then
-  echo "[cc3m-slot] Overlay : $OUT_ROOT/overlay_min{5,10}"
+  echo "[cc3m-slot] Overlay : $OUT_ROOT/overlay_min10"
 fi

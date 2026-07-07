@@ -1,10 +1,10 @@
 # Slot Embedding 分析：CC3M 数据的语义词几何分布
 
-> 数据集：CC3M train（随机抽取 5000 条）  
+> 数据集：CC3M train（默认随机抽取 50000 条；历史结果为 5000 条）  
 > 特征来源：PE-Core-B-16 pretrained（`models/timm/PE-Core-B-16/open_clip_model.safetensors`），1024-dim CLIP projection  
-> 样本目录：`/root/paddlejob/workspace/env_run/penghaotian/datas/cc3m_slot_sample/`  
-> 输出目录：`analysis_outputs/slots/cc3m_5000/`  
-> 更新日期：2026-05-24
+> 样本目录：`analysis/outputs/slots/cc3m_50000/sample/`  
+> 输出目录：`analysis/outputs/slots/cc3m_50000/`  
+> 更新日期：2026-05-25
 
 ---
 
@@ -27,25 +27,25 @@
 
 ### 2.1 样本提取
 
-从 CC3M WDS tarballs（576 个 `cc3m-train-*.tar`）随机抽取 5000 对 (JPEG, caption) 到磁盘：
+从 CC3M WDS tarballs 随机抽取 50000 对 (JPEG, caption) 到磁盘：
 
 ```bash
-bash analysis/run_cc3m_slot.sh --limit 5000
+bash analysis/run_cc3m_slot.sh
 ```
 
-图片保存至：`datas/cc3m_slot_sample/images/`  
-TSV 路径：`datas/cc3m_slot_sample/cc3m_sample.tsv`
+图片保存至：`analysis/outputs/slots/cc3m_50000/sample/images/`  
+TSV 路径：`analysis/outputs/slots/cc3m_50000/sample/cc3m_sample.tsv`
 
 ### 2.2 Probe 生成
 
-使用 PE-Core-B-16 pretrained 对 5000 张图像提取特征，保存为 probe.npz：
+使用 PE-Core-B-16 pretrained 对 50000 张图像提取特征，保存为 probe.npz：
 
 ```
-datas/cc3m_slot_sample/probe_pe_core.npz
-  features      (5000, 768)   — backbone CLS
-  proj_features (5000, 1024)  — CLIP projection（overlay 使用此 key）
-  txt_features  (5000, 1024)  — 文本特征
-  paths         (5000,)       — 图片绝对路径
+analysis/outputs/slots/cc3m_50000/sample/probe_pe_core.npz
+  features      (50000, 768)   — backbone CLS
+  proj_features (50000, 1024)  — CLIP projection（overlay 使用此 key）
+  txt_features  (50000, 1024)  — 文本特征
+  paths         (50000,)       — 图片路径
 ```
 
 ### 2.3 VLM Slot 抽取 + Stats + Overlay
@@ -55,6 +55,9 @@ datas/cc3m_slot_sample/probe_pe_core.npz
 ---
 
 ## 三、词频分布
+
+以下为历史 5000 条结果；50k 的 `slots.jsonl`、stats 和 overlay 需等待 VLM
+端口可访问后生成。
 
 | Slot 类型 | 总词次 | unique 词数 | Top-5 |
 |-----------|--------|------------|-------|
@@ -82,24 +85,24 @@ datas/cc3m_slot_sample/probe_pe_core.npz
 | adjectives | white, young, black, red, old | autumn, cold, elderly, flat, huge |
 | spatial_relations | on, in, at, from, over | off, between, in the background, next to, before |
 
-所有 slot 对齐率均为 **1.0**（5000/5000 feature 完全匹配）。
+历史 5000 条结果中，所有 slot 对齐率均为 **1.0**（5000/5000 feature 完全匹配）。
 
 ---
 
 ## 五、可视化产物
 
 ```
-analysis_outputs/slots/cc3m_5000/
-  slot_requests.jsonl               # 5000 lines
-  slots.jsonl                       # 5000 lines
+analysis/outputs/slots/cc3m_50000/
+  slot_requests.jsonl               # 50000 lines
+  slots.jsonl                       # 50000 lines（VLM 完成后生成）
+  sample/
+    cc3m_sample.tsv                 # 50001 lines incl. header
+    probe_pe_core.npz
+    images/
   stats/
     slot_frequencies.json
     slot_summary.json
     *.png (16 张频率图)
-  overlay_min5/                     # min_count=5，推荐展示
-    slot_overlay_{slot}_{density,curvature}.png  (8 张)
-    slot_selected_words.json
-    slot_geometry_summary.csv/json
   overlay_min10/                    # min_count=10，推荐定量
     slot_overlay_{slot}_{density,curvature}.png  (8 张)
     slot_selected_words.json
@@ -111,10 +114,10 @@ analysis_outputs/slots/cc3m_5000/
 ## 六、运行方式
 
 ```bash
-# 全量（5000 条）
+# 全量（50000 条）
 bash analysis/run_cc3m_slot.sh
 
-# 自定义
+# 自定义规模
 bash analysis/run_cc3m_slot.sh --limit 2000 --metric curvature --min-count 10
 
 # 跳过已有 extract/probe
@@ -146,4 +149,5 @@ CC3M_WDS_DIR=... SAMPLE_DIR=... PROBE_PATH=... OUT_ROOT=... \
 
 - [ ] 使用相同的 fine-tuned 模型（需保存 CC3M baseline .pt 权重）重新生成 probe，使 CC3M 和 COCO 几何分析在同一模型空间下可比
 - [ ] 对 CC3M 的 `proper_nouns` 槽位做单独分析（互联网数据特有）
-- [ ] 扩展到更大规模（50K+）验证长尾词的几何分布规律
+- [ ] VLM 端口可访问后完成 50K `slots.jsonl`、stats 和 `overlay_min10`
+- [ ] 扩展到更大规模（100K+）验证长尾词的几何分布规律

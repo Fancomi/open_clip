@@ -16,7 +16,7 @@
 #      matching probe npz or skip overlay.
 #   3. Default VLM ports are auto-detected from 8001-8008. Override with PORT=8001,8002.
 #   4. Outputs are resumable: existing output rows are kept and only missing ids are called.
-#   5. Overlay defaults to MIN_COUNT=5 so low-frequency words still have enough points.
+#   5. Overlay defaults to MIN_COUNT=10 for stable low-frequency words.
 #      Set MIN_COUNT=1 only if you explicitly want singletons.
 #   6. For large feature probes, use METRIC_MAX_POINTS/BG_MAX_POINTS to reduce overlay cost.
 #   7. Temporary tests should use OUT_ROOT under /tmp. For formal experiments, set OUT_ROOT
@@ -44,7 +44,7 @@ RUN_OVERLAY="${RUN_OVERLAY:-1}"
 SLOT_TYPES="${SLOT_TYPES:-nouns,verbs,adjectives,spatial_relations}"
 TOP_K="${TOP_K:-5}"
 BOTTOM_K="${BOTTOM_K:-5}"
-MIN_COUNT="${MIN_COUNT:-5}"              # avoid count=1 noisy low-frequency overlay words
+MIN_COUNT="${MIN_COUNT:-10}"             # avoid low-count noisy overlay words
 METRIC="${METRIC:-density}"           # density | curvature | both
 KNN_K="${KNN_K:-50}"
 MAX_POINTS_PER_WORD="${MAX_POINTS_PER_WORD:-200}"
@@ -72,7 +72,7 @@ Options:
   --metric NAME            density | curvature | both
   --top-k N                High-frequency words per slot
   --bottom-k N             Low-frequency words per slot
-  --min-count N            Minimum count for selected words, default 5
+  --min-count N            Minimum count for selected words, default 10
   --metric-max-points N    Compute density/curvature on subset; 0 means all
   --bg-max-points N        Draw background subset; 0 means all
   --help                   Show this help
@@ -85,7 +85,7 @@ Output layout:
   OUT_ROOT/slots.jsonl                  VLM slot extraction results
   OUT_ROOT/stats/slot_frequencies.json  Frequency dictionary
   OUT_ROOT/stats/*.png                  Frequency plots
-  OUT_ROOT/overlay/*.png                Feature overlay plots
+  OUT_ROOT/overlay_min10/*.png          Feature overlay plots by default
 
 Notes:
   - Use COCO karpathy_1cap.tsv when overlaying on existing 5000-row probe npz.
@@ -122,7 +122,7 @@ mkdir -p "$OUT_ROOT"
 REQ="$OUT_ROOT/slot_requests.jsonl"
 SLOTS="$OUT_ROOT/slots.jsonl"
 STATS_DIR="$OUT_ROOT/stats"
-OVERLAY_DIR="$OUT_ROOT/overlay"
+OVERLAY_DIR="$OUT_ROOT/overlay_min${MIN_COUNT}"
 
 cd "$ROOT"
 
