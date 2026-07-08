@@ -41,15 +41,16 @@ def _parse_custom_headers(raw):
 
 
 def make_teacher(*, temperature=1.0, max_tokens=4096, **kw):
-    """Opus teacher, 走 ~/.claude/settings.json 厂内代理。GEPA reflection + 保真裁判共用。"""
+    """Opus teacher, 走 ~/.claude/settings.json 厂内代理 (anthropic messages 协议)。
+    GEPA reflection + 保真裁判共用。"""
     env = json.load(open(_SETTINGS)).get("env", {})
-    base = env["ANTHROPIC_BASE_URL"].strip().rstrip("/")
+    base = env["ANTHROPIC_BASE_URL"].strip().rstrip("/")   # 不带 /v1, anthropic provider 自动补 /v1/messages
     token = env["ANTHROPIC_AUTH_TOKEN"].strip()
     model = env.get("ANTHROPIC_DEFAULT_OPUS_MODEL", "Opus 4.8").strip()
     headers = _parse_custom_headers(env.get("ANTHROPIC_CUSTOM_HEADERS", ""))
     return dspy.LM(
-        f"openai/{model}",
-        api_base=f"{base}/v1", api_key=token,
+        f"anthropic/{model}",
+        api_base=base, api_key=token,
         temperature=temperature, max_tokens=max_tokens,
         extra_headers=headers or None, **kw,
     )
