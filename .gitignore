@@ -156,3 +156,6 @@ core.*
 analysis/layer_probe_out/
 # Allow
 !src/evaluation/misc/results_dbs/*
+
+caption_rewrite/outputs/
+caption_rewrite/data/
