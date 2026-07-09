@@ -1,5 +1,9 @@
 """逐句评分: 保真优先。teacher(Opus) 判语义保真作硬闸,
 达标后 score = max(0, 稀有词降幅率 − λ·归一化编辑距离)。
+
+保真的口径: 换成完全等义的常见词=保真; 无等义词而保留原稀有词=保真;
+上位词泛化(ramen→food)/删细节/改物体属性数量=不保真(零分)。
+即"只保能安全替换的, 换不了的原样留着不扣分"。
 """
 import logging
 
@@ -38,9 +42,14 @@ def rare_reduction_rate(orig_rare, new_rare):
 
 
 class _Faithful(dspy.Signature):
-    """Judge whether the rewritten caption preserves the EXACT meaning of the
-    original: same objects, attributes, actions, counts, spatial relations.
-    Answer faithful=yes only if nothing was added, removed, or distorted."""
+    """Judge whether the rewritten caption still describes the SAME image as the
+    original. FAITHFUL if every object, attribute, count, action and spatial
+    relation is preserved and nothing is added. These are faithful: swapping a
+    rare word for a common word of the SAME specific meaning; keeping a rare
+    word unchanged because no common word means the same thing. UNFAITHFUL if
+    any object/attribute/count/action/relation is changed, dropped, invented,
+    or made wrong (red->blue, two->three, cat->dog), INCLUDING generalizing a
+    specific detail away (poodle->animal, ramen->food, currant->fruit)."""
     original = dspy.InputField()
     rewritten = dspy.InputField()
     faithful = dspy.OutputField(desc="yes or no")
@@ -75,15 +84,16 @@ def make_metric(teacher, rare_set, lam=0.3, unfaithful_score=0.0):
         if not ok:
             return dspy.Prediction(
                 score=unfaithful_score,
-                feedback=f"语义被改变(零分, 硬闸): {reason}. 只有严格保原意的替换才得分, "
-                         f"改不动就保留原词, 绝不歪曲。")
+                feedback=f"语义被改变(零分, 硬闸): {reason}. 只有意思完全相同的替换才得分。"
+                         f"没有完全等义的常见词时保留原词(不扣分), 绝不用上位词泛化或删细节。")
         o_rare, n_rare = _count_rare(orig), _count_rare(new)
         red = rare_reduction_rate(o_rare, n_rare)
         edit = norm_levenshtein(orig, new)
         score = max(0.0, red - lam * edit)
         fb = f"保真通过。稀有token {o_rare}->{n_rare} (降幅率{red:.2f}), 编辑距离{edit:.2f}。"
         if n_rare > 0:
-            fb += f" 仍有 {n_rare} 个稀有token未替换, 用更常见的同义词替代(前提不改变原意)。"
+            fb += (f" 仍有 {n_rare} 个稀有token: 若存在意思完全相同的常见词就替换, "
+                   f"没有则保留原词(保留不扣分, 泛化/歪曲才零分)。")
         if edit > 0.5:
             fb += " 改动过大, 尽量少改词。"
         return dspy.Prediction(score=score, feedback=fb)
