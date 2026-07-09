@@ -59,8 +59,9 @@ def main():
         raise SystemExit('[optimize] --apply 全量重写为后续阶段, 本模块未实现。')
 
     smoke = os.environ.get('SMOKE') == '1'
-    n = json.load(open(args.config))['rare_threshold_n']
-    rare = bpe_freq.rare_ids(bpe_freq.load_freq(args.freq), n)
+    cfg = json.load(open(args.config))
+    n = cfg['rare_threshold_n']
+    rare = bpe_freq.rare_ids(bpe_freq.load_freq(args.freq), n, mode=cfg.get('freq_mode', 'word'))
 
     trainset = load_examples(os.path.join(args.data_dir, 'train.jsonl'))
     valset = load_examples(os.path.join(args.data_dir, 'val.jsonl'))

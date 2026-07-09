@@ -46,9 +46,11 @@ def main():
     p.add_argument('--seed', type=int, default=0)
     args = p.parse_args()
 
-    n = json.load(open(args.config))['rare_threshold_n']
-    rare = bpe_freq.rare_ids(bpe_freq.load_freq(args.freq), n)
-    log.info(f'[sample] N={n}, rare token 数={len(rare)}')
+    cfg = json.load(open(args.config))
+    n = cfg['rare_threshold_n']
+    mode = cfg.get('freq_mode', 'word')
+    rare = bpe_freq.rare_ids(bpe_freq.load_freq(args.freq), n, mode=mode)
+    log.info(f'[sample] N={n}, mode={mode}, rare token 数={len(rare)}')
 
     tars = sorted(glob.glob(args.tars))
     pool = []

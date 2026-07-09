@@ -1,4 +1,4 @@
 {
   "rare_threshold_n": 100,
-  "freq_mode": "word"
+  "freq_mode": "token"
 }

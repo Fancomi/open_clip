@@ -61,8 +61,28 @@ def load_freq(path):
     return {int(k): int(v['count'] if isinstance(v, dict) else v) for k, v in raw.items()}
 
 
-def rare_ids(freq, n):
-    return {int(tid) for tid, c in freq.items() if int(c) < int(n)}
+def rare_ids(freq, n, mode='word'):
+    """频次 < n 的稀有 token-id 集合。
+
+    CLIP BPE 把同一词面按"带尾空格/不带尾空格"编成不同 token-id
+    (如 'second '=14290 vs 'second'=64), 裸 token 口径会把句末常用词误判为稀有。
+
+    mode='word' (默认, v2): 先按词面(decode 后 strip)聚合所有变体频次, 再判稀有。
+                            词面总频次 >= n 的所有变体都不算稀有。
+    mode='token' (v1): 旧口径, 按裸 token-id 频次直接判 (保留复现)。
+    """
+    n = int(n)
+    if mode == 'token':
+        return {int(tid) for tid, c in freq.items() if int(c) < n}
+    if mode != 'word':
+        raise ValueError(f"mode must be 'word' or 'token', got {mode!r}")
+    tok = get_tokenizer()
+    word_freq, tid_word = {}, {}
+    for tid, c in freq.items():
+        w = tok.decode([int(tid)]).strip()
+        tid_word[int(tid)] = w
+        word_freq[w] = word_freq.get(w, 0) + int(c)
+    return {tid for tid, w in tid_word.items() if word_freq[w] < n}
 
 
 def count_rare(caption, rare_set):
