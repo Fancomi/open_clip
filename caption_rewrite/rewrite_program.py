@@ -7,19 +7,22 @@ import dspy
 
 
 class RewriteCaption(dspy.Signature):
-    """Rewrite an image caption to use more common, everyday vocabulary.
+    """Rewrite an image caption to use more common, everyday vocabulary, so a
+    dataset of captions shares more common words and connects better.
 
-    Replace a rare or unusual word ONLY when a common word means EXACTLY the
-    same thing. Preserving meaning always beats replacing a word: if no common
-    word carries the same specific meaning (e.g. specific foods, materials,
-    breeds, tools, place types like 'ramen', 'currant', 'motel'), KEEP the
-    original word unchanged. Never generalize, drop, add, or distort any
-    object, attribute, count, action, or spatial relation just to remove a
-    rare word. Change as few words as possible; keeping a rare word is fine
-    when no exact synonym exists. Output lowercase, no quotes, no explanation."""
+    Replace a rare or unusual word with a more common word that is still TRUE
+    of the same image. Two safe moves: (1) an exact common synonym
+    (purchase->buy); (2) generalizing a specific term UP to a correct, more
+    common category that the image still satisfies (currant->berry,
+    poodle->dog, 'pied kingfisher'->'water bird', ramen->noodles). Prefer the
+    most common word that stays true. NEVER change a word to something FALSE
+    or not shown (cat->dog, red->blue, two->three), never invent details, and
+    never drop a whole object or entity from the caption. If a rare word has
+    no truer common replacement, keep it. Output lowercase, no quotes, no
+    explanation."""
 
     caption = dspy.InputField(desc="original image caption")
-    rewritten_caption = dspy.OutputField(desc="caption with only safely-replaceable rare words swapped for exact common synonyms, meaning fully preserved")
+    rewritten_caption = dspy.OutputField(desc="caption with rare words replaced by common words or true broader categories, image still described correctly")
 
 
 class Rewriter(dspy.Module):

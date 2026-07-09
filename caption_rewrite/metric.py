@@ -1,9 +1,9 @@
-"""逐句评分: 保真优先。teacher(Opus) 判语义保真作硬闸,
+"""逐句评分: 保真优先。teacher(Opus) 判"图文仍匹配"作硬闸,
 达标后 score = max(0, 稀有词降幅率 − λ·归一化编辑距离)。
 
-保真的口径: 换成完全等义的常见词=保真; 无等义词而保留原稀有词=保真;
-上位词泛化(ramen→food)/删细节/改物体属性数量=不保真(零分)。
-即"只保能安全替换的, 换不了的原样留着不扣分"。
+数据集是闭集, 优化目标是数据间互连而非绝对真实度, 故允许"向上抽象":
+把具体词换成图片仍满足的更常见上位类别 (某种鸟名→水生鸟, currant→berry,
+poodle→dog) 算保真; 换成图里没有的东西/改属性数量/删整个物体=不保真(零分)。
 """
 import logging
 
@@ -42,18 +42,24 @@ def rare_reduction_rate(orig_rare, new_rare):
 
 
 class _Faithful(dspy.Signature):
-    """Judge whether the rewritten caption still describes the SAME image as the
-    original. FAITHFUL if every object, attribute, count, action and spatial
-    relation is preserved and nothing is added. These are faithful: swapping a
-    rare word for a common word of the SAME specific meaning; keeping a rare
-    word unchanged because no common word means the same thing. UNFAITHFUL if
-    any object/attribute/count/action/relation is changed, dropped, invented,
-    or made wrong (red->blue, two->three, cat->dog), INCLUDING generalizing a
-    specific detail away (poodle->animal, ramen->food, currant->fruit)."""
+    """Judge whether the rewritten caption is still TRUE of the same image as
+    the original. This is for a closed dataset: broadening a word to a more
+    general category is allowed, only falsehood is not.
+
+    FAITHFUL (yes): exact synonym (purchase->buy); OR generalizing a specific
+    term UP to a broader category the image still satisfies (currant->berry,
+    poodle->dog, 'pied kingfisher'->'water bird', ramen->noodles); OR keeping a
+    rare word unchanged. The rewrite may be less specific than the original.
+
+    UNFAITHFUL (no) ONLY IF it states something FALSE of the image: a changed
+    object/attribute/count/action/relation (cat->dog, red->blue, two->three,
+    'on'->'under'), an invented detail not in the original, or a whole object/
+    entity dropped from the caption. Going more general is NOT unfaithful;
+    going to something wrong or absent IS."""
     original = dspy.InputField()
     rewritten = dspy.InputField()
     faithful = dspy.OutputField(desc="yes or no")
-    reason = dspy.OutputField(desc="short reason, name any distortion")
+    reason = dspy.OutputField(desc="short reason, name any falsehood/dropped entity")
 
 
 def judge_faithful(teacher, original, rewritten):
@@ -84,16 +90,17 @@ def make_metric(teacher, rare_set, lam=0.3, unfaithful_score=0.0):
         if not ok:
             return dspy.Prediction(
                 score=unfaithful_score,
-                feedback=f"语义被改变(零分, 硬闸): {reason}. 只有意思完全相同的替换才得分。"
-                         f"没有完全等义的常见词时保留原词(不扣分), 绝不用上位词泛化或删细节。")
+                feedback=f"改成了图里没有的东西(零分, 硬闸): {reason}. 可以把具体词抽象成"
+                         f"图片仍满足的更常见上位类别(某种鸟→水生鸟, currant→berry), "
+                         f"但绝不能改成错误/不存在的物体属性数量, 也不能删掉整个物体。")
         o_rare, n_rare = _count_rare(orig), _count_rare(new)
         red = rare_reduction_rate(o_rare, n_rare)
         edit = norm_levenshtein(orig, new)
         score = max(0.0, red - lam * edit)
         fb = f"保真通过。稀有token {o_rare}->{n_rare} (降幅率{red:.2f}), 编辑距离{edit:.2f}。"
         if n_rare > 0:
-            fb += (f" 仍有 {n_rare} 个稀有token: 若存在意思完全相同的常见词就替换, "
-                   f"没有则保留原词(保留不扣分, 泛化/歪曲才零分)。")
+            fb += (f" 仍有 {n_rare} 个稀有token: 换成更常见的同义词或图片仍满足的上位类别"
+                   f"(某种鸟→水生鸟), 别改成错误的东西。")
         if edit > 0.5:
             fb += " 改动过大, 尽量少改词。"
         return dspy.Prediction(score=score, feedback=fb)
