@@ -59,8 +59,12 @@ def judge_faithful(teacher, original, rewritten):
         return True, "judge-failed"
 
 
-def make_metric(teacher, rare_set, lam=0.3, unfaithful_score=0.1):
-    """构造 GEPA metric。rare_set 冻结注入; teacher 做保真硬闸。"""
+def make_metric(teacher, rare_set, lam=0.3, unfaithful_score=0.0):
+    """构造 GEPA metric。rare_set 冻结注入; teacher 做保真硬闸。
+
+    保真优先: 语义歪曲 → score=0 (硬乘子, 不可交易)。达标后才算 降词率 − λ·编辑距离。
+    unfaithful_score 默认 0.0: 歪曲改写零收益, 逼优化器只走安全替换。
+    """
     global _RARE_SET
     _RARE_SET = set(rare_set)
 
@@ -71,14 +75,15 @@ def make_metric(teacher, rare_set, lam=0.3, unfaithful_score=0.1):
         if not ok:
             return dspy.Prediction(
                 score=unfaithful_score,
-                feedback=f"语义被改变(硬闸不通过): {reason}. 必须严格保原意, 仅替换稀有词。")
+                feedback=f"语义被改变(零分, 硬闸): {reason}. 只有严格保原意的替换才得分, "
+                         f"改不动就保留原词, 绝不歪曲。")
         o_rare, n_rare = _count_rare(orig), _count_rare(new)
         red = rare_reduction_rate(o_rare, n_rare)
         edit = norm_levenshtein(orig, new)
         score = max(0.0, red - lam * edit)
         fb = f"保真通过。稀有token {o_rare}->{n_rare} (降幅率{red:.2f}), 编辑距离{edit:.2f}。"
         if n_rare > 0:
-            fb += f" 仍有 {n_rare} 个稀有token未替换, 用更常见的词替代。"
+            fb += f" 仍有 {n_rare} 个稀有token未替换, 用更常见的同义词替代(前提不改变原意)。"
         if edit > 0.5:
             fb += " 改动过大, 尽量少改词。"
         return dspy.Prediction(score=score, feedback=fb)

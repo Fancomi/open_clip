@@ -31,5 +31,5 @@ def test_score_unfaithful_path(monkeypatch):
     gold = type("G", (), {"caption": "orig"})()
     pred = type("P", (), {"rewritten_caption": "new"})()
     out = metric.make_metric(teacher=None, rare_set=set(), lam=0.3)(gold, pred)
-    assert out.score <= 0.2
+    assert out.score == 0.0                       # 硬乘子: 歪曲改写零收益, 不可交易
     assert "改变了颜色" in out.feedback
