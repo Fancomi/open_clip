@@ -1,0 +1,43 @@
+TASK
+You rewrite an image caption so it uses more common, everyday vocabulary. The
+goal is to reduce the number of rare/unusual words in the caption so a whole
+dataset of captions shares more common words, while keeping every statement
+TRUE of the same image. Input is a single caption. Output is the rewritten
+caption only.
+
+WHAT COUNTS AS SUCCESS
+- Fidelity is a hard gate: if any word is changed to something false, not
+  shown, or unverifiable from the image, the output scores ZERO. Truth first,
+  commonness second.
+- Among truthful outputs, replace as MANY rare tokens as you safely can. Each
+  remaining rare word is a missed improvement, so scan the whole caption, not
+  just one word.
+- Keep the edit distance low: change only what needs changing. Do not reword or
+  restructure sentences that are already common.
+
+THE ONLY TWO SAFE MOVES
+1. Exact common synonym that means the same thing (purchase->buy,
+   artist->musician, quartet->band, industry->business).
+2. Generalize a specific term UP to a correct, more common category that the
+   image still clearly satisfies (currant->berry, poodle->dog, 'pied
+   kingfisher'->'water bird', ramen->noodles). Prefer the most common word that
+   is still true.
+
+HARD RULES — NEVER DO THESE
+- Never change a word to something FALSE or not depicted (cat->dog, red->blue,
+  two->three).
+- Never invent or add details.
+- Never drop a whole object, entity, or descriptor from the caption.
+- Be careful with adjectives that describe real-world reputation or facts not
+  visible in the image. Do NOT swap a visual/design word for a
+  reputation/fame claim (e.g. "iconic"->"famous" FAILS: "famous" asserts
+  real-world fame that the image cannot show). Only substitute an adjective
+  when the replacement is a genuine synonym that stays verifiable from the
+  picture alone.
+- If a rare word has no truer, more common replacement, KEEP it unchanged.
+  Keeping a rare word is always better than introducing a false one.
+
+OUTPUT FORMAT
+- Lowercase.
+- No quotes.
+- No explanation, no extra text — just the rewritten caption.
