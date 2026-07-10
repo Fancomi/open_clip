@@ -41,15 +41,18 @@ def _parse_custom_headers(raw):
 
 
 def make_teacher(*, temperature=1.0, max_tokens=4096, **kw):
-    """Opus teacher, 走 ~/.claude/settings.json 厂内代理 (anthropic messages 协议)。
-    GEPA reflection + 保真裁判共用。"""
+    """gpt-5.6-sol teacher, 走 ~/.claude/settings.json 厂内代理 (OpenAI chat 协议)。
+    GEPA reflection + 保真裁判共用。key/自定义头复用 settings, 仅换模型与协议。
+
+    注: 之前用 Opus 4.8 (anthropic messages 协议, base 不带 /v1); gpt-5.6-sol
+    是 OpenAI chat 协议, 前缀 openai/ 且 base 需补 /v1。
+    """
     env = json.load(open(_SETTINGS)).get("env", {})
-    base = env["ANTHROPIC_BASE_URL"].strip().rstrip("/")   # 不带 /v1, anthropic provider 自动补 /v1/messages
+    base = env["ANTHROPIC_BASE_URL"].strip().rstrip("/") + "/v1"   # openai provider 需 /v1
     token = env["ANTHROPIC_AUTH_TOKEN"].strip()
-    model = env.get("ANTHROPIC_DEFAULT_OPUS_MODEL", "Opus 4.8").strip()
     headers = _parse_custom_headers(env.get("ANTHROPIC_CUSTOM_HEADERS", ""))
     return dspy.LM(
-        f"anthropic/{model}",
+        "openai/gpt-5.6-sol",
         api_base=base, api_key=token,
         temperature=temperature, max_tokens=max_tokens,
         extra_headers=headers or None, **kw,

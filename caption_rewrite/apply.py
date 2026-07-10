@@ -132,6 +132,7 @@ def main():
     p.add_argument('--config', default='caption_rewrite/outputs/config.json')
     p.add_argument('--out-dir', default='caption_rewrite/outputs/rewritten')
     p.add_argument('--num-threads', type=int, default=8)
+    p.add_argument('--ports', default='', help='逗号分隔端口, 覆盖默认 (多卡并发时用全部端口)')
     p.add_argument('--merge', action='store_true', help='合并已有分片为 all.jsonl 后退出')
     args = p.parse_args()
 
@@ -147,6 +148,8 @@ def main():
                              cfg['rare_threshold_n'], mode=cfg.get('freq_mode', 'word'))
     prompt = load_prompt(args.prompt)
     _, ports = lab_lm.MODELS[args.student]
+    if args.ports:
+        ports = [int(x) for x in args.ports.split(',') if x.strip()]
 
     tars = sorted(glob.glob(args.tars))
     limit = int(os.environ.get('SHARD_LIMIT', 0))
