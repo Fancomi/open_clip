@@ -125,7 +125,7 @@ def merge_shards(shard_dir, out_path):
 
 def main():
     p = argparse.ArgumentParser(description='全量 CC3M caption 改写落盘')
-    p.add_argument('--tars', default='/root/paddlejob/workspace/env_run/penghaotian/datas/cc3m-wds/*.tar')
+    p.add_argument('--tars', default='/root/paddlejob/gpfsspace/cc3m-wds/*.tar')
     p.add_argument('--student', choices=['qwen', 'gemma'], default='gemma')
     p.add_argument('--prompt', default='caption_rewrite/outputs/optimized_prompt_gemma.txt')
     p.add_argument('--freq', default='caption_rewrite/outputs/bpe_freq.json')
