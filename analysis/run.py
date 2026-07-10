@@ -77,6 +77,7 @@ def main():
     p.add_argument('--slot-types',   default=None)
     p.add_argument('--top-n',        type=int, default=50)
     p.add_argument('--hist-bins',    type=int, default=50)
+    p.add_argument('--no-hist',      action='store_true', help='collect_slots 跳过频次分布直方图')
     p.add_argument('--top-k',        type=int, default=5)
     p.add_argument('--bottom-k',     type=int, default=5)
     p.add_argument('--min-count',    type=int, default=1)

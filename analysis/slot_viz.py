@@ -20,12 +20,20 @@ def _sanitize_name(name):
     return ''.join(keep).strip('_') or 'empty'
 
 
-def plot_slot_frequency_bars(freqs, save_dir, top_n=50):
-    """Plot one Top-N bar chart per slot type."""
+def plot_slot_frequency_bars(freqs, save_dir, top_n=50, order='top', min_count=1):
+    """Plot one Top-N (order='top') or Bottom-N (order='bottom') bar chart per slot type."""
+    if order not in ('top', 'bottom'):
+        raise ValueError(f"order must be 'top' or 'bottom', got {order!r}")
     _ensure_dir(save_dir)
     paths = []
     for slot, freq in freqs.items():
-        items = list(freq.items())[:top_n]
+        pool = [(w, int(c)) for w, c in freq.items() if int(c) >= min_count]
+        if order == 'bottom':
+            items = sorted(pool, key=lambda x: (x[1], x[0]))[:top_n]
+            label = f'Bottom {len(items)}'
+        else:
+            items = sorted(pool, key=lambda x: (-x[1], x[0]))[:top_n]
+            label = f'Top {len(items)}'
         if not items:
             logging.warning(f'[slots] skip empty frequency bar: {slot}')
             continue
@@ -33,17 +41,17 @@ def plot_slot_frequency_bars(freqs, save_dir, top_n=50):
         fig_h = max(4, 0.22 * len(words) + 1.5)
         fig, ax = plt.subplots(figsize=(10, fig_h))
         y = np.arange(len(words))
-        ax.barh(y, counts, color='#4C78A8')
+        ax.barh(y, counts, color='#E45756' if order == 'bottom' else '#4C78A8')
         ax.set_yticks(y)
         ax.set_yticklabels(words, fontsize=8)
         ax.invert_yaxis()
         ax.set_xlabel('Frequency')
         ax.set_ylabel('Words')
-        ax.set_title(f'Top {len(words)} {slot} by frequency')
+        ax.set_title(f'{label} {slot} by frequency (min_count={min_count})')
         for yi, count in zip(y, counts):
             ax.text(count, yi, f' {count}', va='center', fontsize=7)
         fig.tight_layout()
-        out = os.path.join(save_dir, f'slot_freq_top_{_sanitize_name(slot)}.png')
+        out = os.path.join(save_dir, f'slot_freq_{order}_{_sanitize_name(slot)}.png')
         fig.savefig(out, dpi=160, bbox_inches='tight')
         plt.close(fig)
         logging.info(f'[slots] wrote {out}')

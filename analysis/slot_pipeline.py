@@ -41,19 +41,31 @@ def run_collect_slots(args):
     records, read_stats = read_slot_jsonl(args.slots, strict=not args.non_strict_slots)
     slot_types = parse_slot_types(args.slot_types)
     freqs = collect_slot_frequencies(records, slot_types)
+    # 合并全部词类为 all_words 总表 (跨类同词相加), 与分类版一次性全出
+    total = {}
+    for freq in freqs.values():
+        for w, c in freq.items():
+            total[w] = total.get(w, 0) + c
+    freqs['all_words'] = dict(sorted(total.items(), key=lambda x: (-x[1], x[0])))
+
     freq_path = os.path.join(args.out_dir, 'slot_frequencies.json')
     save_frequencies(freqs, freq_path)
-    plot_slot_frequency_bars(freqs, args.out_dir, top_n=args.top_n)
-    plot_slot_frequency_hist(freqs, args.out_dir, bins=args.hist_bins)
+    plot_slot_frequency_bars(freqs, args.out_dir, top_n=args.top_n, order='top')
+    plot_slot_frequency_bars(freqs, args.out_dir, top_n=args.top_n, order='bottom',
+                             min_count=args.min_count)
+    if not args.no_hist:
+        plot_slot_frequency_hist(freqs, args.out_dir, bins=args.hist_bins)
 
     rows = []
     for slot, freq in freqs.items():
-        total = sum(freq.values())
+        total_occ = sum(freq.values())
+        items = sorted(freq.items(), key=lambda x: (-x[1], x[0]))
         rows.append({
             'slot_type': slot,
             'unique_words': len(freq),
-            'total_occurrences': total,
-            'top_words': list(freq.items())[:10],
+            'total_occurrences': total_occ,
+            'top_words': items[:10],
+            'bottom_words': items[-10:][::-1],
         })
     save_json({'read_stats': read_stats, 'summary': rows}, os.path.join(args.out_dir, 'slot_summary.json'))
     logging.info(f'[slots] wrote frequencies to {freq_path}')
