@@ -652,6 +652,35 @@ def parse_args(args):
         default=256,
         help='Number of random slices for the SIGReg estimator.'
     )
+    parser.add_argument(
+        "--reg-method",
+        default="sigreg",
+        choices=["sigreg", "visreg"],
+        help=(
+            'Which regularizer to use at the sigreg-target position. '
+            '"sigreg" (default): Sketched Isotropic Gaussian Regularization (LeJEPA, 2511.08544). '
+            '"visreg": Variance-Invariance-Sketching Regularization (2606.02572) — scale+shape(SWD)+center. '
+            'VISReg is batch-invariant, so --sigreg-weight must be re-calibrated (much larger).'
+        )
+    )
+    parser.add_argument(
+        "--visreg-lambda-scale",
+        type=float,
+        default=1.0,
+        help='VISReg variance (scale) term weight. 0 disables it.'
+    )
+    parser.add_argument(
+        "--visreg-lambda-shape",
+        type=float,
+        default=1.0,
+        help='VISReg Sliced-Wasserstein (shape) term weight. 0 disables it.'
+    )
+    parser.add_argument(
+        "--visreg-lambda-center",
+        type=float,
+        default=1.0,
+        help='VISReg centering term weight. 0 disables it.'
+    )
 
     # ============ Modality Gap ============
     parser.add_argument(

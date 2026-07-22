@@ -844,6 +844,10 @@ def create_loss(args):
             neg_alpha=neg_alpha,
             pos_only=getattr(args, 'pos_only', 'none'),
             sigreg_joint=getattr(args, 'sigreg_joint', False),
+            reg_method=getattr(args, 'reg_method', 'sigreg'),
+            visreg_lambda_scale=getattr(args, 'visreg_lambda_scale', 1.0),
+            visreg_lambda_shape=getattr(args, 'visreg_lambda_shape', 1.0),
+            visreg_lambda_center=getattr(args, 'visreg_lambda_center', 1.0),
         )
     elif getattr(args, 'dinov3', False):
         # CLIPWithDINOLoss：需要从 model 中读取 embed_dim，由 main.py 传入
@@ -866,6 +870,10 @@ def create_loss(args):
             n_global_crops=getattr(args, 'dino_n_global_crops', 2),
             neg_mode=neg_mode,
             neg_alpha=neg_alpha,
+            reg_method=getattr(args, 'reg_method', 'sigreg'),
+            visreg_lambda_scale=getattr(args, 'visreg_lambda_scale', 1.0),
+            visreg_lambda_shape=getattr(args, 'visreg_lambda_shape', 1.0),
+            visreg_lambda_center=getattr(args, 'visreg_lambda_center', 1.0),
         )
     elif getattr(args, 'multi_teacher', False):
         weights = None

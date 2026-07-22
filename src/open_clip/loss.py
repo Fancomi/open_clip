@@ -624,6 +624,110 @@ class SIGReg(nn.Module):
         return (err @ weights).mean() * N * world_size
 
 
+class VISReg(nn.Module):
+    """Variance-Invariance-Sketching Regularization (https://arxiv.org/abs/2606.02572)
+
+    移植自官方实现 https://github.com/HaiyuWu/visreg（visreg/losses/visreg.py）。
+    在 open_clip 中作为 SIGReg 的**替代正则器**：入口一致（unnorm 特征 [N, D]），
+    输出标量正则损失。三项解耦：
+      - scale : mean((std_j - 1)²)             控制每维尺度（VICReg variance 项）
+      - shape : Sliced-Wasserstein，sort 后 L2² 对齐标准高斯分位数（替代 covariance）
+      - center: ‖mean(z)‖²                     约束批均值
+
+    与 SIGReg 的关键差异：
+      1. shape 项含 sort，无法对跨卡均值做 all-reduce ⇒ 采用官方做法：
+         grad-aware all-gather 到全局 batch，每卡用**各自独立**随机切片，DDP 平均梯度
+         等价 K×world_size 切片（论文 §3.2）。
+      2. VISReg batch-invariant（不乘 N×world_size），裸损失量级远小于 SIGReg，
+         外层 weight 需重新标定。
+    """
+
+    def __init__(
+        self,
+        num_slices: int = 256,
+        lambda_scale: float = 1.0,
+        lambda_shape: float = 1.0,
+        lambda_center: float = 1.0,
+        gather: bool = True,
+        eps: float = 1e-6,
+    ):
+        super().__init__()
+        self.K = int(num_slices)
+        self.lambda_scale = float(lambda_scale)
+        self.lambda_shape = float(lambda_shape)
+        self.lambda_center = float(lambda_center)
+        self.gather = bool(gather)
+        self.eps = float(eps)
+        # 标准高斯分位数目标缓存（按全局 N 生成）
+        self._cached_N = -1
+        self.register_buffer("_target", torch.zeros(0), persistent=False)
+
+    def _get_target(self, N: int, device, dtype) -> torch.Tensor:
+        if self._cached_N != N or self._target.numel() != N:
+            q = torch.linspace(1, N, N, device=device, dtype=torch.float32) / (N + 1)
+            tgt = torch.erfinv(2 * q - 1).mul_(math.sqrt(2.0))
+            self._target = tgt
+            self._cached_N = N
+        return self._target.to(device=device, dtype=dtype)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: [N, D]，unnormalized 特征
+        Returns:
+            VISReg 正则损失（标量）
+        """
+        # grad-aware all-gather 到全局 batch（官方做法：每卡独立切片，DDP 平均梯度）
+        if self.gather and has_distributed and dist.is_available() and dist.is_initialized() \
+                and dist.get_world_size() > 1:
+            z = torch.cat(torch.distributed.nn.all_gather(x.contiguous()), dim=0)
+        else:
+            z = x
+        N, D = z.shape
+
+        mu = z.mean(dim=0, keepdim=True)                         # [1, D]
+        center_loss = mu.pow(2).mean()
+
+        z_c = z - mu
+        # eps 放进 sqrt 内：保证坍缩(方差→0)时梯度有限而非 NaN，
+        # 同时提供论文所述"坍缩时的强校正梯度"。
+        std = (z_c.pow(2).mean(dim=0) + self.eps).sqrt()        # [D]  (biased std)
+        scale_loss = (std - 1.0).pow(2).mean()
+
+        z_norm = z_c / std.detach().unsqueeze(0)                 # stop-grad 解耦 shape/scale
+        W = torch.randn(D, self.K, device=z.device, dtype=z.dtype)
+        W = W / (W.norm(p=2, dim=0, keepdim=True) + 1e-12)
+        p_sorted = (z_norm @ W).sort(dim=0).values               # [N, K]
+        target = self._get_target(N, z.device, z.dtype).unsqueeze(1)  # [N, 1]
+        shape_loss = (p_sorted - target).pow(2).mean()
+
+        return (
+            self.lambda_scale * scale_loss
+            + self.lambda_shape * shape_loss
+            + self.lambda_center * center_loss
+        )
+
+
+def _build_reg(
+    reg_method: str,
+    sigreg_knots: int,
+    num_slices: int,
+    visreg_lambda_scale: float = 1.0,
+    visreg_lambda_shape: float = 1.0,
+    visreg_lambda_center: float = 1.0,
+) -> nn.Module:
+    """按 reg_method 构造正则器（SIGReg 或 VISReg），二者入口/出口一致。"""
+    if reg_method == 'sigreg':
+        return SIGReg(knots=sigreg_knots, num_slices=num_slices)
+    elif reg_method == 'visreg':
+        return VISReg(
+            num_slices=num_slices,
+            lambda_scale=visreg_lambda_scale,
+            lambda_shape=visreg_lambda_shape,
+            lambda_center=visreg_lambda_center,
+        )
+    raise ValueError(f"Unknown reg_method={reg_method!r}, expected 'sigreg' or 'visreg'")
+
 
 # ============================================================
 # DINOv3 Self-distillation Losses
@@ -1047,6 +1151,10 @@ class SIGRegContrastiveLoss(nn.Module):
             neg_alpha: float = 1.0,
             pos_only: str = 'none',
             sigreg_joint: bool = False,
+            reg_method: str = 'sigreg',
+            visreg_lambda_scale: float = 1.0,
+            visreg_lambda_shape: float = 1.0,
+            visreg_lambda_center: float = 1.0,
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
@@ -1073,7 +1181,10 @@ class SIGRegContrastiveLoss(nn.Module):
                 cache_labels=cache_labels, rank=rank, world_size=world_size, use_horovod=use_horovod,
                 neg_mode=neg_mode,
             )
-        self.sigreg = SIGReg(knots=sigreg_knots, num_slices=sigreg_num_slices)
+        self.sigreg = _build_reg(
+            reg_method, sigreg_knots, sigreg_num_slices,
+            visreg_lambda_scale, visreg_lambda_shape, visreg_lambda_center,
+        )
 
         # Representation uniformity losses
         self.uniformity_weight = uniformity_weight
@@ -1323,6 +1434,10 @@ class CLIPWithDINOLoss(nn.Module):
         n_global_crops: int = 2,
         neg_mode: str = 'standard',
         neg_alpha: float = 1.0,
+        reg_method: str = 'sigreg',
+        visreg_lambda_scale: float = 1.0,
+        visreg_lambda_shape: float = 1.0,
+        visreg_lambda_center: float = 1.0,
     ):
         super().__init__()
         self.dino_loss_weight = dino_loss_weight
@@ -1354,7 +1469,10 @@ class CLIPWithDINOLoss(nn.Module):
         self.koleo_loss = KoLeoLoss()
 
         if sigreg_weight > 0:
-            self.sigreg = SIGReg(num_slices=sigreg_num_slices)
+            self.sigreg = _build_reg(
+                reg_method, 17, sigreg_num_slices,
+                visreg_lambda_scale, visreg_lambda_shape, visreg_lambda_center,
+            )
         else:
             self.sigreg = None
 
