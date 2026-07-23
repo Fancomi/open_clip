@@ -27,7 +27,7 @@ VISREG_W="${VISREG_W:-1.83e-4}"
 BASE="--precision amp_bf16 --workers 8 --batch-size ${PreGpuBS} \
     --lr ${LR} --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 \
     --grad-checkpointing --log-every-n-steps 1 --val-frequency 1 --epochs 1 --warmup 2 \
-    --dataset-type csv --csv-separator $'\t' --train-num-samples ${SMOKE_N} \
+    --dataset-type csv --train-num-samples ${SMOKE_N} \
     --csv-img-key filepath --csv-caption-key caption --val-num-captions-per-image 5"
 
 CHAMPION="--siglip --neg-mode projective --init-logit-scale ${INIT_LS} \

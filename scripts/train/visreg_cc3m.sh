@@ -47,9 +47,10 @@ BASE="--precision amp_bf16 --workers 32 --batch-size ${PreGpuBS} \
     --lr ${LR} --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 \
     --save-frequency 1 --grad-checkpointing --log-every-n-steps 1 --val-frequency 1"
 
-# csv loader：制表符分隔，filepath 为绝对路径
+# csv loader：制表符分隔（params 默认即 \t，不显式传 --csv-separator——
+# 在双引号变量里 $'\t' 不会被解释为制表符，会当成字面量导致列名解析失败）
 COMMON="--warmup 512 ${BASE} --epochs 10 \
-    --dataset-type csv --csv-separator $'\t' --train-num-samples ${CC3M_N_TRAIN} \
+    --dataset-type csv --train-num-samples ${CC3M_N_TRAIN} \
     --csv-img-key filepath --csv-caption-key caption \
     --val-num-captions-per-image 5"
 
