@@ -797,6 +797,14 @@ class CLIPLeJEPA(nn.Module):
             clip_raw = self.clip_model.encode_image(image, normalize=False)
             return clip_raw, clip_raw
 
+    def encode_image(self, image, normalize: bool = False):
+        """Delegate to wrapped CLIP (used by zero-shot eval / inference)."""
+        return self.clip_model.encode_image(image, normalize=normalize)
+
+    def encode_text(self, text, normalize: bool = False):
+        """Delegate to wrapped CLIP (build_zero_shot_classifier needs this)."""
+        return self.clip_model.encode_text(text, normalize=normalize)
+
     def forward(self, image: Optional[torch.Tensor] = None, text: Optional[torch.Tensor] = None):
         image_proj = None
         text_proj = None
