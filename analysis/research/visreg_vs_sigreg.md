@@ -259,43 +259,75 @@ w_visreg = w_sigreg · ‖∂L_sigreg/∂z‖ / ‖∂L_visreg/∂z‖
 
 ## 七、实测结果（cc3m-tsv，冠军配方，只换正则项）
 
-COCO Karpathy 5k 图文互检，i2t R@1 峰值：
+COCO Karpathy 5k 图文互检 + ImageNet-1k zero-shot（IMAGENET_CLASSNAMES + OpenAI 模板），
+各组峰值：
 
-| 组 | 正则 | 峰值 i2t R@1 | vs SIGReg |
-|----|------|-------------|-----------|
-| A | SIGReg 1e-4（锚点）| 22.84% (ep7) | — |
-| B | VISReg 全项（scale+shape+center）| 23.74% (ep7) | **+0.90** |
-| C | VISReg scale-only | 23.88% (ep8) | **+1.04** |
-| D | VISReg shape-only | 训练中 | — |
-| E | VISReg no-center | 排队 | — |
+### 7.1 组件消融（A–E，10 epoch）
 
-（注：D/E 完成后补齐；ImageNet-1k zero-shot top1/top5 数据就绪后追加一列。）
+| 组 | 正则配置 | COCO i2t R@1 | IN-1k top1 | top5 |
+|----|---------|-------------|-----------|------|
+| A | SIGReg 1e-4（锚点）| 22.84 | 21.23 | 40.71 |
+| B | VISReg 全项 scale+shape+center | 23.74 | 21.48 | 41.18 |
+| C | VISReg scale-only | 23.88 | 22.60 | 42.10 |
+| D | VISReg shape-only | **24.64** | 21.59 | 40.94 |
+| **E** | **VISReg scale+shape, no-center** | 24.06 | **23.26** | **42.27** |
 
-**观察**：
-1. VISReg（B/C）全面高于 SIGReg 锚点 ~1pt，且反超历史 cc3m-wds 上 SIGReg 的 23.44
-   （尽管本次是更劣的 tsv 顺序遍历管线）。**替代方向为正**。
-2. **C（scale-only）微超 B（全项）**——暗示在本场景（CLIP+SigLIP 对比学习）收益
-   主力是 **scale 方差项**，shape(SWD) 贡献有限甚至略拖累。
+### 7.2 权重面 sweep（E 基础上扫 scale:shape，均 no-center）
 
-## 八、场景差异：为何我们的结论与论文侧重不同
+| run | scale:shape | COCO i2t | IN-1k top1 |
+|-----|-------------|----------|-----------|
+| E    | 1:1 | 24.06 | 23.26 |
+| s2sh1 | 2:1 | 23.32 | 23.29 |
+| s1sh2 | 1:2 | 23.66 | 23.38 |
 
-论文强调 shape(SWD) 是核心创新（它给纯 JEPA 自监督用，嵌入完全自由、易坍缩，需要
-shape 强约束整个分布形状）。但在**我们的 CLIP+SigLIP 场景**下，backbone 已被对比损失
-强力约束——图文对齐本身就在拉开表征、抑制坍缩，坍缩风险低。此时正则主要缺的只是
-"尺度别塌"，**方差项（scale）就足够**，全分布形状对齐（shape）边际收益小。
+### 7.3 正则强度 sweep（固定 E 配方，扫 --sigreg-weight）
 
-这解释了为何 C（scale-only）不输甚至微超 B（全项）。若 D（shape-only）明显低于 A/C，
-则坐实这一判断——本身是有价值的结论：**VISReg 在 CLIP 场景可简化为轻量方差正则，
-无需 SWD 排序开销**。反之若 D 也强，则说明 shape 项独立有效。以 D/E 实测为准。
+| run | weight | COCO i2t | IN-1k top1 |
+|-----|--------|----------|-----------|
+| w0.5× | 9.15e-5 | 23.88 | 23.23 |
+| E (1×) | 1.83e-4 | 24.06 | 23.26 |
+| w2×   | 3.66e-4 | 23.84 | 23.31 |
 
-## 九、结论
+**最优配方 = E：VISReg，scale+shape 等权，去掉 center，weight=1.83e-4。**
+相比 SIGReg 锚点：**COCO i2t +1.22，IN-1k top1 +2.03，top5 +1.56**。
+
+## 八、三个旋钮的作用排序（本场景）
+
+三个可调维度全部实测，重要性排序：
+
+1. **center 去留（最大收益）**：B(含center) → E(去center) 同为 1:1，仅去掉 center 项，
+   COCO 23.74→24.06、**IN-1k 21.48→23.26（+1.78）**。center 项在 CLIP 场景有害。
+   原因：backbone 已被对比损失约束，batch 均值本不飘，center 反而干扰。
+2. **scale:shape 配比（1:1 最优，偏置伤检索）**：2:1 / 1:2 的 IN-1k 与 1:1 几乎无差
+   （23.26/23.29/23.38，噪声级），但 COCO 明显更低（23.3/23.7 vs 24.06）。等权即最优。
+3. **正则总强度（不敏感）**：0.5×–2× 区间 COCO 24.06→23.84/23.88、IN-1k 全在 23.2–23.3。
+   落在平坦最优区——**梯度匹配标定法（第六节）选对了量级**。
+
+## 九、场景洞见：与论文侧重的差异
+
+论文强调 shape(SWD) 是核心创新（给纯 JEPA 自监督用，嵌入自由、易坍缩，需 shape
+强约束整个分布形状）。我们的 CLIP+SigLIP 场景不同：backbone 已被对比损失约束，坍缩
+风险低。实测揭示两个指标各有偏好：
+
+- **shape(SWD) 项 → 检索**：D(shape-only) COCO 最高 24.64（拉开分布、对齐几何利于跨模态检索）
+- **scale(方差) 项 → 分类**：C(scale-only) IN-1k 最高 22.60（各向同性/判别性利于线性可分）
+- 二者优化方向不同，**等权相加(B/E) 取平衡**；去掉 center 后 E 同时逼近两者峰值，成为
+  最佳综合配方。
+
+结论修正：早期"scale 是唯一主力、shape 拖累"的猜测被 D 推翻——**shape 项独立有效**
+（检索最强），只是与 scale 侧重不同任务。VISReg 三项中 **center 才是该去掉的那个**。
+
+## 十、结论
 
 - **理论优势**：VISReg 用"解耦的方差 + Sliced-Wasserstein 形状"替代 SIGReg 的单一
-  频域检验，核心红利是**坍缩时梯度不消失**（scale 项常数恢复力），以及 scale/shape
-  可分调的灵活性；复杂度线性、跨卡切片免费扩展。
-- **实测优势**：cc3m-tsv 冠军配方下比 SIGReg 高约 1pt（i2t R@1 22.84→23.88）。
-- **场景洞见**：CLIP 场景收益主要来自方差项；SWD 形状项在已被对比损失约束的表征上
-  边际收益有限（待 D/E 确认）。
+  频域检验，核心红利是**坍缩时梯度不消失**（scale 项常数恢复力）+ scale/shape 可分调；
+  复杂度线性、跨卡切片免费扩展。
+- **实测优势（最优配方 E）**：cc3m-tsv 冠军配方下全面胜 SIGReg——
+  **COCO i2t 22.84→24.06（+1.22），IN-1k top1 21.23→23.26（+2.03），top5 +1.56**。
+  且 24.06 反超历史 cc3m-wds 上 SIGReg 的 23.44（尽管本次用更劣的 tsv 顺序遍历管线）。
+- **工程建议**：CLIP 训练用 VISReg 替代 SIGReg 时，采用 **scale+shape 等权 + 去 center**；
+  weight 用梯度匹配标定（~1.83e-4），无需再扫强度。
+- **待验证方向**：把 E 配方搬回 cc3m-wds+resampled 强数据管线，看能否把 24.06 再顶高。
 
 ## 相关
 
