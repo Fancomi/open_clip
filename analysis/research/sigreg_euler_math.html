@@ -298,7 +298,49 @@ svg{display:block;max-width:100%;height:auto;background:var(--surface);
   下排：只有偏斜的 sin 潜到 −0.4，其余三条全在 0 线上。</figcaption>
 </figure>
 
-<h2><b>4</b>为什么要 mean</h2>
+<h2><b>4</b>t 是什么：量特征分布的尺子</h2>
+<p class="sub">θ 拆成 t·x —— x 是数据，t 是我们主动选的扫描参数。t 越大，尺子越细。</p>
+
+<p>欧拉公式里 θ 是任意实数，所以可以是任何东西。特征函数把它拆成 <span class="m" style="font-size:16px"><i>t</i>·<i>x</i></span> 是因为：
+<strong>x 是数据</strong>（每个样本的投影值，改不了），<strong>t 是我们选的</strong>。同一批数据代入不同 t，就能看到不同的东西。不拆的话 θ 只是一个数，没法「扫」。</p>
+
+<p>t 的物理含义是<strong>尺度的倒数</strong>：<span class="m" style="font-size:16px">cos(<i>t</i>·<i>x</i>)</span> 在 x 轴上的振荡周期是 <span class="m" style="font-size:16px">2π/<i>t</i></span>。
+而 x 已标准化，单位是标准差 σ。所以：</p>
+
+<table>
+  <thead><tr><th>t</th><th class="n">空间周期 2π/t</th><th>相当于多粗的尺子</th><th>能看出什么</th></tr></thead>
+  <tbody>
+    <tr><td>0.19（最小）</td><td class="n">33.5 σ</td><td>极粗</td><td>只看出整体多宽 ≈ 方差</td></tr>
+    <tr><td>1.5（中间）</td><td class="n">4.2 σ</td><td>中等</td><td>主体形状、是否双峰</td></tr>
+    <tr><td>3.0（最大）</td><td class="n">2.1 σ</td><td>细</td><td>更细的结构、多峰、离散团块</td></tr>
+  </tbody>
+</table>
+
+<p><strong>扫 t 从 0 到 3 = 从粗到细，依次检查每个尺度上的结构。</strong>
+一个分布可能在粗尺度上像高斯（方差对），细尺度上却藏着两个峰——只有扫到足够大的 t 才暴露。</p>
+
+<div class="card">
+  <p style="margin:0 0 8px"><strong>实测验证</strong>：前面那个双峰分布，标准化后两峰在 ±0.917σ。</p>
+  <p style="margin:0 0 6px">理论预测：cos 项应该在 <span class="m" style="font-size:16px"><i>t</i> = π/(2×0.917) = 1.714</span> 附近开始「反相」（两峰的贡献从相加转为相减）。</p>
+  <p style="margin:0">实测：cos_mean 的零穿越在 <strong>t = 1.720</strong>。几乎完全吻合——<strong>t 确实在探测特定空间尺度上的结构</strong>。
+  双峰间距 1.83σ，对应频率就落在 t≈1.7，SIGReg 正是在这里「发现」它不是高斯。</p>
+</div>
+
+<h3>顺带解释了 [0, 3] 和 17 个点</h3>
+<table>
+  <thead><tr><th style="width:24%">这个设定</th><th>原因</th></tr></thead>
+  <tbody>
+    <tr><td>t → 0 那几个点</td><td>泰勒展开 <span class="m" style="font-size:15px">φ(<i>t</i>) ≈ 1 − <i>t</i>²σ²/2</span>，只含方差信息——在查「方差对不对」，相当于 VISReg 的 scale 项</td></tr>
+    <tr><td>上界取 t = 3</td><td>高斯窗权重 <span class="m" style="font-size:15px">e<sup>−3²/2</sup> = 0.011</span>，已衰减到 1% 以下；且更细的尺子在有限样本下会开始拟合采样噪声</td></tr>
+    <tr><td>取 17 个点</td><td>[0,3] 上梯形积分够密的经验值——纯工程选择（见第 8 节归属表）</td></tr>
+  </tbody>
+</table>
+
+<p><strong>类比</strong>：把特征分布想成一段声音，SIGReg 在用 17 个不同频率的音叉去敲它，
+听每个频率的响应，和「标准高斯那段声音」的频谱逐一比对。t 就是音叉频率——低频听整体厚度（方差），高频听有没有尖峰杂音（细结构）。
+<strong>VISReg 完全不做这件事</strong>，它不扫频率，直接把数值排队比位置，所以里面没有 t，也没有「频率」这个概念。</p>
+
+<h2><b>5</b>为什么要 mean</h2>
 <p class="sub">因为特征函数的定义就是期望，而期望在有限样本上就是求平均。</p>
 
 <div class="eq">
@@ -369,7 +411,166 @@ svg{display:block;max-width:100%;height:auto;background:var(--surface);
   VISReg 的 shape 含 <code>sort</code>——「排好序的第 3 名」跨卡求均值毫无意义，只能 all-gather 整个 batch。这是 SIGReg 的一个真实优势。</div>
 </div>
 
-<h2><b>5</b>loss 怎么组装</h2>
+<h2><b>6</b>频域约束怎么变成形状变化</h2>
+<p class="sub">核心问题：SIGReg 从不「看」整体形状，只给每个样本一个「往左还是往右挪」的指令。这些指令合起来就是形状约束。</p>
+
+<p>关键在于<strong>梯度回传到每个样本身上，变成一个力场</strong>。我实算了这个力场（对每个位置求负梯度），四种情形一看就明白：</p>
+
+<figure>
+  <div class="ft">力场：每个位置的样本收到的位移指令</div>
+  <div class="fs">箭头向右 = 该位置的样本被往外推 · 向左 = 被往内拉 · 长度 = 力的大小</div>
+  <svg viewBox="0 0 840 560" role="img" aria-label="SIGReg 在四种分布下作用于各位置样本的力场">
+    <!-- ============ helper: x from -3.5..3.5 -> 120..760 ============ -->
+    <!-- ROW 1: collapse -->
+    <text x="20" y="26" class="dl" fill="var(--c2)">坍缩 σ=0.3　L=0.288</text>
+    <text x="200" y="26" class="axl">中心密集处的样本被往外推 → 分布撑开</text>
+    <line x1="120" y1="60" x2="760" y2="60" stroke="var(--base)" stroke-width="1"/>
+    <line x1="440" y1="42" x2="440" y2="78" stroke="var(--grid)" stroke-width="1"/>
+    <!-- density hint -->
+    <path d="M400 60 L400 44 L480 44 L480 60" fill="none" stroke="var(--c2)" stroke-width="1.5" opacity=".35"/>
+    <!-- force arrows: (x,f) pairs scaled -->
+    <g stroke="var(--c2)" stroke-width="2.5" fill="none">
+      <path d="M120 60 l5 0"/><path d="M166 60 l9 0"/><path d="M212 60 l8 0"/>
+      <path d="M303 60 l-22 0"/><path d="M349 60 l-35 0"/><path d="M394 60 l-27 0"/>
+      <path d="M486 60 l28 0"/><path d="M531 60 l35 0"/><path d="M577 60 l21 0"/>
+      <path d="M623 60 l2 0"/><path d="M669 60 l-8 0"/><path d="M714 60 l-9 0"/><path d="M760 60 l-5 0"/>
+    </g>
+    <g fill="var(--c2)">
+      <path d="M125 60 l-4 -3 v6 z"/><path d="M175 60 l-4 -3 v6 z"/><path d="M220 60 l-4 -3 v6 z"/>
+      <path d="M281 60 l4 -3 v6 z"/><path d="M314 60 l4 -3 v6 z"/><path d="M367 60 l4 -3 v6 z"/>
+      <path d="M514 60 l-4 -3 v6 z"/><path d="M566 60 l-4 -3 v6 z"/><path d="M598 60 l-4 -3 v6 z"/>
+      <path d="M661 60 l4 -3 v6 z"/><path d="M705 60 l4 -3 v6 z"/><path d="M755 60 l4 -3 v6 z"/>
+    </g>
+    <text x="352" y="94" class="axl">↑ 全挤在这</text>
+
+    <!-- ROW 2: too wide -->
+    <text x="20" y="150" class="dl" fill="var(--c1)">过宽 σ=2　L=0.218</text>
+    <text x="200" y="150" class="axl">两侧远处的样本被往内拉 → 分布收拢</text>
+    <line x1="120" y1="184" x2="760" y2="184" stroke="var(--base)" stroke-width="1"/>
+    <line x1="440" y1="166" x2="440" y2="202" stroke="var(--grid)" stroke-width="1"/>
+    <path d="M140 184 Q 290 156 440 152 Q 590 156 740 184" fill="none" stroke="var(--c1)" stroke-width="1.5" opacity=".3"/>
+    <g stroke="var(--c1)" stroke-width="2.5" fill="none">
+      <path d="M120 184 l-4 0"/><path d="M166 184 l1 0"/><path d="M212 184 l8 0"/>
+      <path d="M257 184 l17 0"/><path d="M303 184 l23 0"/><path d="M349 184 l23 0"/><path d="M394 184 l14 0"/>
+      <path d="M486 184 l-14 0"/><path d="M531 184 l-23 0"/><path d="M577 184 l-24 0"/>
+      <path d="M623 184 l-17 0"/><path d="M669 184 l-8 0"/><path d="M714 184 l-1 0"/><path d="M760 184 l4 0"/>
+    </g>
+    <g fill="var(--c1)">
+      <path d="M220 184 l-4 -3 v6 z"/><path d="M274 184 l-4 -3 v6 z"/><path d="M326 184 l-4 -3 v6 z"/>
+      <path d="M372 184 l-4 -3 v6 z"/><path d="M408 184 l-4 -3 v6 z"/>
+      <path d="M472 184 l4 -3 v6 z"/><path d="M508 184 l4 -3 v6 z"/><path d="M553 184 l4 -3 v6 z"/>
+      <path d="M606 184 l4 -3 v6 z"/><path d="M661 184 l4 -3 v6 z"/>
+    </g>
+
+    <!-- ROW 3: bimodal -->
+    <text x="20" y="274" class="dl" fill="var(--c1)">双峰 ±1.5　L=0.361</text>
+    <text x="200" y="274" class="axl">两个峰所在位置受向内的力 → 挤向中间填平谷底</text>
+    <line x1="120" y1="308" x2="760" y2="308" stroke="var(--base)" stroke-width="1"/>
+    <line x1="440" y1="290" x2="440" y2="326" stroke="var(--grid)" stroke-width="1"/>
+    <path d="M240 308 Q 290 268 340 288 Q 390 306 440 306 Q 490 306 540 288 Q 590 268 640 308"
+          fill="none" stroke="var(--c1)" stroke-width="1.5" opacity=".3"/>
+    <g stroke="var(--c1)" stroke-width="2.5" fill="none">
+      <path d="M120 308 l-9 0"/><path d="M166 308 l-6 0"/><path d="M212 308 l4 0"/>
+      <path d="M257 308 l19 0"/><path d="M303 308 l32 0"/><path d="M349 308 l34 0"/><path d="M394 308 l22 0"/>
+      <path d="M486 308 l-23 0"/><path d="M531 308 l-34 0"/><path d="M577 308 l-32 0"/>
+      <path d="M623 308 l-19 0"/><path d="M669 308 l-4 0"/><path d="M714 308 l6 0"/><path d="M760 308 l10 0"/>
+    </g>
+    <g fill="var(--c1)">
+      <path d="M111 308 l4 -3 v6 z"/><path d="M160 308 l4 -3 v6 z"/>
+      <path d="M276 308 l-4 -3 v6 z"/><path d="M335 308 l-4 -3 v6 z"/><path d="M383 308 l-4 -3 v6 z"/><path d="M416 308 l-4 -3 v6 z"/>
+      <path d="M463 308 l4 -3 v6 z"/><path d="M497 308 l4 -3 v6 z"/><path d="M545 308 l4 -3 v6 z"/><path d="M604 308 l4 -3 v6 z"/>
+      <path d="M770 308 l-4 -3 v6 z"/>
+    </g>
+    <text x="286" y="342" class="axl">峰</text><text x="578" y="342" class="axl">峰</text>
+    <text x="424" y="342" class="axl">谷</text>
+
+    <!-- ROW 4: gaussian -->
+    <text x="20" y="398" class="dl" fill="var(--good)">已是高斯 σ=1　L=0.0003</text>
+    <text x="230" y="398" class="axl">力几乎全为 0 → 稳定不动</text>
+    <line x1="120" y1="432" x2="760" y2="432" stroke="var(--base)" stroke-width="1"/>
+    <line x1="440" y1="414" x2="440" y2="450" stroke="var(--grid)" stroke-width="1"/>
+    <path d="M160 432 Q 300 428 380 404 Q 420 392 440 390 Q 460 392 500 404 Q 580 428 720 432"
+          fill="none" stroke="var(--muted)" stroke-width="1.5" opacity=".4"/>
+    <g fill="var(--good)">
+      <circle cx="166" cy="432" r="2"/><circle cx="212" cy="432" r="2"/><circle cx="257" cy="432" r="2"/>
+      <circle cx="303" cy="432" r="2"/><circle cx="349" cy="432" r="2"/><circle cx="394" cy="432" r="2"/>
+      <circle cx="440" cy="432" r="2"/><circle cx="486" cy="432" r="2"/><circle cx="531" cy="432" r="2"/>
+      <circle cx="577" cy="432" r="2"/><circle cx="623" cy="432" r="2"/><circle cx="669" cy="432" r="2"/>
+      <circle cx="714" cy="432" r="2"/>
+    </g>
+
+    <!-- axis ticks -->
+    <line x1="120" y1="486" x2="760" y2="486" stroke="var(--grid)" stroke-width="1"/>
+    <text x="112" y="504" class="axl tn">−3.5</text>
+    <text x="272" y="504" class="axl tn">−1.5</text>
+    <text x="434" y="504" class="axl tn">0</text>
+    <text x="565" y="504" class="axl tn">+1.5</text>
+    <text x="740" y="504" class="axl tn">+3.5</text>
+    <text x="384" y="532" class="axl">样本位置 x（单位：σ）</text>
+  </svg>
+  <figcaption>看懂这四行就懂了：<strong>SIGReg 从来不「知道」整体形状，它只给每个样本一个位移方向。
+  但这些方向合起来的净效果，就是把分布往高斯揉。</strong>
+  已经是高斯时（第 4 行）力全部归零，说明高斯正是这个力场的平衡点。</figcaption>
+</figure>
+
+<h3>力从哪来：全局误差 × 样本自己的相位</h3>
+
+<div class="eq">
+  <div class="m" style="font-size:17px">∂L/∂<i>x<sub>n</sub></i> = (2/<i>N</i>) Σ<sub><i>j</i></sub> <i>w<sub>j</sub></i>·<i>t<sub>j</sub></i> · [ −(<span class="cc">cos_mean<sub><i>j</i></sub></span>−φ<sub><i>j</i></sub>)·sin(<i>t<sub>j</sub>x<sub>n</sub></i>) + <span class="ss">sin_mean<sub><i>j</i></sub></span>·cos(<i>t<sub>j</sub>x<sub>n</sub></i>) ]</div>
+  <div class="cm">拆成两部分看：</div>
+</div>
+
+<table>
+  <thead><tr><th style="width:30%">这一块</th><th style="width:20%">是什么</th><th>作用</th></tr></thead>
+  <tbody>
+    <tr><td><span class="m" style="font-size:15px">(<span class="cc">cos_mean<sub>j</sub></span>−φ<sub>j</sub>)</span> 和 <span class="m" style="font-size:15px"><span class="ss">sin_mean<sub>j</sub></span></span></td>
+        <td><strong>全局误差</strong><br>（标量，所有样本共享）</td>
+        <td>告诉「<strong>哪个尺度上不对、错多少</strong>」</td></tr>
+    <tr><td><span class="m" style="font-size:15px">sin(<i>t<sub>j</sub>x<sub>n</sub></i>)</span> 和 <span class="m" style="font-size:15px">cos(<i>t<sub>j</sub>x<sub>n</sub></i>)</span></td>
+        <td><strong>该样本的相位</strong><br>（每个样本各不同）</td>
+        <td>告诉「<strong>在这个尺度上我该往哪挪</strong>」</td></tr>
+  </tbody>
+</table>
+
+<p>两者相乘、对 17 个频率求和，就得到<strong>每个样本的专属位移指令</strong>。
+17 个尺度的指令叠加起来，形成上图那种符号交替的力场。</p>
+
+<h3>为什么这真能等价于约束形状</h3>
+<p>单看一个频率不足以定形状，但两条依据保证扫全 t 就够：</p>
+
+<div class="card">
+  <p style="margin:0 0 8px"><strong>1. Lévy 唯一性定理</strong>：特征函数唯一决定分布。所以「把所有 t 上的误差压到 0」和「把分布变成标准高斯」是<strong>等价的</strong>，不是近似。</p>
+  <p style="margin:0"><strong>2. 不同 t 管不同尺度</strong>（第 4 节）：小 t 管方差、大 t 管细结构。17 个点覆盖 [0,3]，等于在从粗到细各个尺度上同时施压。</p>
+</div>
+
+<p>所以 SIGReg 是<strong>间接但完备</strong>的：它不看形状，但在足够多的频率上施压，而这些约束的<strong>唯一共同解就是高斯</strong>。</p>
+
+<h3>和 VISReg 比：间接推导 vs 直接报位置</h3>
+
+<table>
+  <thead><tr><th>&nbsp;</th><th>SIGReg</th><th>VISReg shape</th></tr></thead>
+  <tbody>
+    <tr><td>怎么知道错了</td><td>频域误差：17 个频率上的响应偏差</td><td>空域误差：每个样本的排名位置偏差</td></tr>
+    <tr><td>给样本什么指令</td><td>三角函数叠加出的力场（间接推导）</td><td><strong>直接指定目标位置</strong>：第 i 名该在 q<sub>i</sub></td></tr>
+    <tr><td>力的来源</td><td>全局误差 × 该样本的振荡相位</td><td><span class="m" style="font-size:15px">p<sub>(i)</sub> − q<sub>i</sub></span>，就是「离该去的地方多远」</td></tr>
+    <tr><td>类比</td><td>敲音叉听频谱，据此微调</td><td>排队报数，各就各位</td></tr>
+  </tbody>
+</table>
+
+<p><strong>VISReg 更直接的原因</strong>：排序后每个样本被明确告知「你该在 −1.2 这个位置」，力就是当前位置减目标位置，一步到位。
+SIGReg 得靠 17 个频率的响应<em>反推</em>每个样本该往哪动。</p>
+
+<p><strong>这也解释了坍缩时的差异</strong>：坍缩时所有样本挤在一起，它们的 <span class="m" style="font-size:15px">sin(<i>t·x<sub>n</sub></i>)</span> 相位几乎相同
+→ 力场变得几乎均匀 → 净效果趋于 0（第 5 节那张箭头图）。
+而 VISReg 的 scale 项直接盯着 σ，σ 小就拉，完全不依赖样本相位分布。</p>
+
+<div class="card">
+  <p style="margin:0"><strong>一句话</strong>：cos/sin 不是形状约束本身，是形状约束的<strong>传导机制</strong>——
+  全局频域误差通过三角函数的相位，翻译成每个样本的位移指令。Lévy 定理保证这套间接指令的唯一收敛点就是高斯。
+  它有效，只是比 VISReg 的「直接报位置」多绕了一层，代价就是坍缩时这层传导会失灵。</p>
+</div>
+
+<h2><b>7</b>loss 怎么组装</h2>
 
 <p>要比两个复数（算出来的 φ̂ 和目标 φ），用<strong>差的模长平方</strong> = 实部差² + 虚部差²。
 高斯的 φ 是<strong>纯实数</strong>（虚部为 0，因为高斯对称），所以虚部差就是 sin_mean 本身：</p>
@@ -396,7 +597,7 @@ err      = (<span class="cc">cos_mean</span> - phi)**2 + <span class="ss">sin_me
 loss     = (err @ weights).mean() * N * world_size</div>
 </div>
 
-<h2><b>6</b>哪些是数学，哪些是人为设计</h2>
+<h2><b>8</b>哪些是数学，哪些是人为设计</h2>
 <p class="sub">你问的核心。答案是分层的：底层全是数学，上层才是设计。</p>
 
 <table>
@@ -423,7 +624,7 @@ loss     = (err @ weights).mean() * N * world_size</div>
   SIGReg 的贡献在这一层。</p>
 </div>
 
-<h2><b>7</b>和 VISReg 的分野</h2>
+<h2><b>9</b>和 VISReg 的分野</h2>
 
 <table>
   <thead><tr><th>&nbsp;</th><th>SIGReg</th><th>VISReg 的 shape 项</th></tr></thead>
