@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>从欧拉公式到 SIGReg</title>
+<style>
+:root{
+  color-scheme:light;
+  --surface:#fcfcfb; --page:#f9f9f7;
+  --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --base:#c3c2b7; --border:rgba(11,11,11,.10);
+  --c1:#2a78d6; --c2:#eb6834; --good:#006300;
+}
+@media (prefers-color-scheme:dark){:root:where(:not([data-theme="light"])){
+  color-scheme:dark; --surface:#1a1a19; --page:#0d0d0d;
+  --ink:#fff; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --base:#383835; --border:rgba(255,255,255,.10);
+  --c1:#3987e5; --c2:#d95926; --good:#0ca30c;}}
+:root[data-theme="dark"]{
+  color-scheme:dark; --surface:#1a1a19; --page:#0d0d0d;
+  --ink:#fff; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --base:#383835; --border:rgba(255,255,255,.10);
+  --c1:#3987e5; --c2:#d95926; --good:#0ca30c;}
+*{box-sizing:border-box}
+body{margin:0;padding:0 20px 72px;background:var(--page);color:var(--ink);
+  font:15px/1.7 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:860px;margin:0 auto}
+h1{font-size:28px;line-height:1.3;margin:44px 0 10px}
+h2{font-size:20px;margin:48px 0 6px}
+h2 b{color:var(--muted);margin-right:9px}
+h3{font-size:15.5px;margin:26px 0 4px}
+p{margin:10px 0}
+.sub{color:var(--ink2);font-size:14px;margin:2px 0 14px}
+code{font:0.88em ui-monospace,Menlo,monospace;background:var(--surface);
+  border:1px solid var(--border);border-radius:4px;padding:1px 5px}
+/* 公式 */
+.m{font-family:"Cambria Math","Latin Modern Math",Georgia,serif;font-size:19px;line-height:1.9}
+.m i{font-style:italic}
+.m sup{font-size:.7em;vertical-align:.5em}
+.m sub{font-size:.7em}
+.eq{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:14px 18px;margin:16px 0;overflow-x:auto}
+.eq .cm{font:13px/1.6 system-ui,sans-serif;color:var(--ink2);margin-top:7px}
+.cc{color:var(--c1);font-weight:650}
+.ss{color:var(--c2);font-weight:650}
+/* 卡片 / 表格 / 图 */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:16px 20px;margin:18px 0}
+table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--grid);vertical-align:top}
+th{color:var(--ink2);font-weight:650;font-size:13px}
+tbody tr:last-child td{border-bottom:none}
+td.n{font-variant-numeric:tabular-nums;text-align:right}
+figure{margin:22px 0}
+figcaption{color:var(--ink2);font-size:13px;margin-top:9px;line-height:1.6}
+.ft{font-size:14px;font-weight:650;margin-bottom:2px}
+.fs{color:var(--ink2);font-size:13px;margin-bottom:9px}
+svg{display:block;max-width:100%;height:auto;background:var(--surface);
+  border:1px solid var(--border);border-radius:10px}
+.lg{display:flex;flex-wrap:wrap;gap:16px;margin-top:9px;font-size:13px;color:var(--ink2)}
+.lg span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:11px;height:11px;border-radius:3px}
+.axl{fill:var(--muted);font:11px system-ui,sans-serif}
+.tn{font-variant-numeric:tabular-nums}
+.dl{font:11.5px system-ui,sans-serif;font-weight:650}
+.fm{font-family:"Cambria Math",Georgia,serif;font-size:14px;font-style:italic}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>从欧拉公式到 SIGReg</h1>
+<p class="sub">四个问题：欧拉和傅里叶谁是谁的基础？为什么 cos 管形状、sin 管对称？为什么要 mean？哪些是数学，哪些是人为设计？</p>
+
+<h2><b>1</b>欧拉和傅里叶：一个是零件，一个是机器</h2>
+
+<p>不等价。<strong>欧拉公式是傅里叶变换的基础</strong>，反过来不成立。</p>
+
+<p>三个公式串起来看，一眼就明白：</p>
+
+<figure>
+  <div class="ft">同一个复指数，在三层里扮演的角色</div>
+  <div class="fs">每层左边是公式，右边是这一层新增的东西。上层的公式里都含有下层的产物。</div>
+  <svg viewBox="0 0 840 340" role="img" aria-label="欧拉公式、傅里叶变换、特征函数三层依赖">
+    <!-- L3 特征函数 -->
+    <rect x="20" y="24" width="800" height="76" rx="9" fill="none" stroke="var(--c2)" stroke-width="2"/>
+    <text x="40" y="48" class="dl" fill="var(--c2)">第 3 层　特征函数</text>
+    <text x="40" y="78" class="fm" fill="var(--ink)">φ(t) = E[ e</text>
+    <text x="132" y="70" class="fm" fill="var(--ink)" font-size="11">i t x</text>
+    <text x="158" y="78" class="fm" fill="var(--ink)">]</text>
+    <text x="200" y="78" class="axl">把上一层的 f(x) 换成概率密度，积分就成了「求期望 E」</text>
+    <text x="200" y="60" class="axl" fill="var(--c2)">SIGReg 用的就是这个</text>
+
+    <!-- arrow up -->
+    <path d="M110 150 L110 104" stroke="var(--base)" stroke-width="2"/>
+    <path d="M110 100 l-5 8 h10 z" fill="var(--base)"/>
+    <text x="124" y="132" class="axl">↑ 特例化：f 是概率密度时，∫ f(x)·(…) dx 就是 E[…]</text>
+
+    <!-- L2 傅里叶 -->
+    <rect x="20" y="152" width="800" height="76" rx="9" fill="none" stroke="var(--c1)" stroke-width="2"/>
+    <text x="40" y="176" class="dl" fill="var(--c1)">第 2 层　傅里叶变换</text>
+    <text x="40" y="206" class="fm" fill="var(--ink)">F(t) = ∫ f(x) · e</text>
+    <text x="168" y="198" class="fm" fill="var(--ink)" font-size="11">i t x</text>
+    <text x="194" y="206" class="fm" fill="var(--ink)">dx</text>
+    <text x="240" y="206" class="axl">新增「对 x 积分」，把函数分解到频率轴 t 上</text>
+    <text x="240" y="188" class="axl" fill="var(--c1)">复指数在这里当「核」</text>
+
+    <path d="M110 278 L110 232" stroke="var(--base)" stroke-width="2"/>
+    <path d="M110 228 l-5 8 h10 z" fill="var(--base)"/>
+    <text x="124" y="260" class="axl">↑ 提供零件：核 e^(itx) 是什么？就是下面这对三角函数</text>
+
+    <!-- L1 欧拉 -->
+    <rect x="20" y="280" width="800" height="44" rx="9" fill="none" stroke="var(--base)" stroke-width="2"/>
+    <text x="40" y="308" class="dl" fill="var(--ink)">第 1 层　欧拉公式</text>
+    <text x="200" y="308" class="fm" fill="var(--ink)">e</text>
+    <text x="209" y="300" class="fm" fill="var(--ink)" font-size="11">i θ</text>
+    <text x="224" y="308" class="fm" fill="var(--ink)">=</text>
+    <text x="244" y="308" class="fm" fill="var(--c1)" font-style="normal" font-weight="650">cos θ</text>
+    <text x="292" y="308" class="fm" fill="var(--ink)">+ i ·</text>
+    <text x="330" y="308" class="fm" fill="var(--c2)" font-style="normal" font-weight="650">sin θ</text>
+    <text x="400" y="308" class="axl">无条件成立的恒等式，没有积分、没有期望</text>
+  </svg>
+  <figcaption><strong>连线关系</strong>：第 2 层公式里的 <span class="fm">e<sup style="font-size:.7em">itx</sup></span>，就是第 1 层告诉你「它等于 cos+i·sin」的那个东西。
+  第 3 层公式里的 <span class="fm">E[…]</span>，就是第 2 层的 <span class="fm">∫ f(x)·(…) dx</span> 在 f 是概率密度时的写法。
+  所以：<strong>欧拉给零件 → 傅里叶造机器 → 特征函数是机器用在概率上</strong>。欧拉不需要傅里叶，傅里叶离不开欧拉。</figcaption>
+</figure>
+
+<div class="card">
+  <p style="margin:0"><strong>一句话</strong>：欧拉说「一个复指数 = 一对三角函数」；傅里叶说「拿这个复指数去和函数做积分，就能看出函数含哪些频率」。
+  前者是后者的原料。</p>
+</div>
+
+<h2><b>2</b>为什么要用复数</h2>
+<p class="sub">特征全是实数。复数只是记账工具。</p>
+
+<p>先破一个误解：<strong>复数不在你的特征里</strong>。投影值 <code>x = Z·w</code> 是实数，backbone 每个输出都是实数。</p>
+
+<p>那复数从哪来？因为要描述频率 <i>t</i> 上的一个振荡，需要<strong>两个数</strong>：一个记「和 cos 对齐的成分」，一个记「和 sin 对齐的成分」。
+这两个数正交、谁也代替不了谁。复数正好是「一对有序实数」的容器：</p>
+
+<div class="eq">
+  <div class="m">e<sup><i>itx</i></sup> = <span class="cc">cos(<i>tx</i>)</span> + <i>i</i> · <span class="ss">sin(<i>tx</i>)</span></div>
+  <div class="cm">实部装一个分量，虚部装另一个。用一个复数代替两个分开的数，代数上更省事——这就是全部理由。</div>
+</div>
+
+<h3>唯一真正的前提</h3>
+<p>「能不能用欧拉公式」没有前提，只要看到 <code>e^(i·实数)</code> 就一定能拆。真正的前提在上一步：期望 <span class="m" style="font-size:16px">E[e<sup><i>itx</i></sup>]</span> 得存在。而这条无条件满足：</p>
+
+<div class="eq">
+  <div class="m">| e<sup><i>itx</i></sup> | = √( <span class="cc">cos²</span> + <span class="ss">sin²</span> ) = 1</div>
+  <div class="cm">模长恒等于 1 ⟹ 被积的东西有界 ⟹ 期望对<strong>任何</strong>分布都收敛。
+  这就是特征函数比 <span class="m" style="font-size:15px">E[e<sup><i>tx</i></sup>]</span>（可能发散）好用的根本原因：它永远存在。</div>
+</div>
+
+<h2><b>3</b>cos 管形状，sin 管对称</h2>
+<p class="sub">因为 cos 是偶函数、sin 是奇函数。就这一条。</p>
+
+<p>把一个样本 <i>x</i> 和它的镜像 −<i>x</i> 放一起看：</p>
+
+<div class="eq">
+  <div class="m"><span class="cc">cos(−<i>tx</i>) = cos(<i>tx</i>)</span> <span style="font-size:14px;color:var(--ink2)">　→ 两边同号，<strong>相加</strong>　→ 看不出左右，只看出「摊得多宽」= <strong>形状</strong></span></div>
+  <div class="m" style="margin-top:4px"><span class="ss">sin(−<i>tx</i>) = −sin(<i>tx</i>)</span> <span style="font-size:14px;color:var(--ink2)">　→ 两边反号，<strong>抵消</strong>　→ 只有左右不平衡才留下 = <strong>对称性</strong></span></div>
+</div>
+
+<p>所以对称分布的 sin 项两两抵消、必然为 0；sin 项不为 0 就是<strong>偏斜的铁证</strong>。而 cos 项对对称分布不抵消，它累起来描述宽窄和尾巴。</p>
+
+<figure>
+  <div class="ft">±x 一对样本的贡献</div>
+  <div class="fs">左：cos 同号相加（信息留下）· 右：sin 反号相消（归零）</div>
+  <svg viewBox="0 0 840 230" role="img" aria-label="cos 偶函数相加与 sin 奇函数相消">
+    <!-- LEFT cos -->
+    <text x="40" y="26" class="dl" fill="var(--c1)">cos：偶函数</text>
+    <line x1="40" y1="130" x2="370" y2="130" stroke="var(--base)" stroke-width="1"/>
+    <line x1="205" y1="52" x2="205" y2="190" stroke="var(--grid)" stroke-width="1"/>
+    <path d="M40 190 C 74 190, 88 62, 122 62 C 156 62, 171 190, 205 190 C 239 190, 253 62, 287 62 C 321 62, 336 190, 370 190"
+          fill="none" stroke="var(--c1)" stroke-width="2" opacity=".3"/>
+    <line x1="122" y1="130" x2="122" y2="62" stroke="var(--c1)" stroke-width="2.5"/>
+    <line x1="287" y1="130" x2="287" y2="62" stroke="var(--c1)" stroke-width="2.5"/>
+    <circle cx="122" cy="62" r="5" fill="var(--c1)"/>
+    <circle cx="287" cy="62" r="5" fill="var(--c1)"/>
+    <text x="100" y="54" class="axl tn" fill="var(--c1)">+0.8</text>
+    <text x="265" y="54" class="axl tn" fill="var(--c1)">+0.8</text>
+    <text x="112" y="148" class="axl">−x</text>
+    <text x="283" y="148" class="axl">+x</text>
+    <text x="60" y="214" class="axl">相加 → 均值非零 → 保留了形状信息</text>
+
+    <!-- RIGHT sin -->
+    <text x="470" y="26" class="dl" fill="var(--c2)">sin：奇函数</text>
+    <line x1="470" y1="130" x2="800" y2="130" stroke="var(--base)" stroke-width="1"/>
+    <line x1="635" y1="52" x2="635" y2="190" stroke="var(--grid)" stroke-width="1"/>
+    <path d="M470 130 C 497 58, 525 58, 552 130 C 580 202, 608 202, 635 130 C 662 58, 690 58, 717 130 C 745 202, 773 202, 800 130"
+          fill="none" stroke="var(--c2)" stroke-width="2" opacity=".3"/>
+    <line x1="552" y1="130" x2="552" y2="72" stroke="var(--c2)" stroke-width="2.5"/>
+    <line x1="717" y1="130" x2="717" y2="188" stroke="var(--c2)" stroke-width="2.5"/>
+    <circle cx="552" cy="72" r="5" fill="var(--c2)"/>
+    <circle cx="717" cy="188" r="5" fill="var(--c2)"/>
+    <text x="530" y="64" class="axl tn" fill="var(--c2)">+0.7</text>
+    <text x="695" y="206" class="axl tn" fill="var(--c2)">−0.7</text>
+    <text x="542" y="148" class="axl">−x</text>
+    <text x="713" y="122" class="axl">+x</text>
+    <text x="490" y="214" class="axl">抵消 → 均值为 0 → 只对偏斜有反应</text>
+  </svg>
+  <figcaption>这不是谁规定的分工，而是「<strong>偶函数保留 ±x 的共同点，奇函数保留 ±x 的差异</strong>」的必然结果。</figcaption>
+</figure>
+
+<h3>实测：四种分布的读数</h3>
+<p>N=4000 样本实算，按 SIGReg 的定义把两项误差分开统计：</p>
+
+<table>
+  <thead><tr><th>分布（都已标准化）</th><th class="n">cos 项误差</th><th class="n">sin 项误差</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>高斯（对照）</td><td class="n">0.0006</td><td class="n">0.0035</td><td>都≈0，通过</td></tr>
+    <tr><td>偏斜</td><td class="n">0.173</td><td class="n"><strong>1.062</strong></td><td><span class="ss">sin 抓到不对称</span></td></tr>
+    <tr><td>双峰（对称）</td><td class="n"><strong>1.228</strong></td><td class="n">0.0001</td><td><span class="cc">cos 抓到形状</span>，sin 完全看不见</td></tr>
+    <tr><td>坍缩（σ=0.05）</td><td class="n"><strong>7.771</strong></td><td class="n">0.0000</td><td>cos 报出坍缩</td></tr>
+  </tbody>
+</table>
+
+<p><strong>双峰那行最能说明问题</strong>：它左右对称，所以 sin 项几乎精确为 0（0.0001）——sin 完全看不见它有两个峰；
+但 cos 项 1.228，准确报出形状不对。偏斜那行正相反，sin 项 1.062 主导。<strong>两项各管一半，缺一不可。</strong></p>
+
+<figure>
+  <div class="ft">四种分布的曲线：虚线是高斯目标</div>
+  <div class="fs">上：cos 分量 · 下：sin 分量 · 横轴是频率 t（0 到 3，共 17 个节点）</div>
+  <svg viewBox="0 0 840 450" role="img" aria-label="四种分布的 cos 与 sin 特征函数曲线">
+    <!-- TOP cos -->
+    <text x="44" y="24" class="dl" fill="var(--c1)">cos 分量　管形状</text>
+    <line x1="60" y1="40" x2="420" y2="40" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="60" y1="88" x2="420" y2="88" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="60" y1="136" x2="420" y2="136" stroke="var(--base)" stroke-width="1"/>
+    <line x1="60" y1="184" x2="420" y2="184" stroke="var(--grid)" stroke-width="1"/>
+    <text x="30" y="44" class="axl tn">1.0</text>
+    <text x="30" y="92" class="axl tn">0.5</text>
+    <text x="30" y="140" class="axl tn">0.0</text>
+    <text x="24" y="188" class="axl tn">−0.5</text>
+    <!-- gauss target -->
+    <path d="M60 40 L82 41.7 L105 46.5 L127 54.1 L150 63.4 L172 74.1 L195 84.9 L217 95.4 L240 104.8 L262 112.8 L285 119.4 L307 124.5 L330 128.3 L352 131 L375 132.9 L397 134.2 L420 134.9"
+          fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="5 4"/>
+    <text x="242" y="118" class="dl" fill="var(--muted)">高斯目标</text>
+    <!-- collapse -->
+    <path d="M60 40 L150 40.2 L240 40.8 L330 41.8 L420 43.2"
+          fill="none" stroke="var(--c2)" stroke-width="2"/>
+    <text x="344" y="34" class="dl" fill="var(--c2)">坍缩</text>
+    <!-- bimodal -->
+    <path d="M60 40 L82 41.8 L105 46.6 L127 54.6 L150 65 L172 77.6 L195 91.4 L217 105.8 L240 120.2 L262 133.8 L285 146.2 L307 156.8 L330 165.4 L352 171.9 L375 176.1 L397 178.1 L420 178.3"
+          fill="none" stroke="var(--c1)" stroke-width="2"/>
+    <text x="330" y="196" class="dl" fill="var(--c1)">双峰</text>
+    <text x="56" y="206" class="axl tn">0</text>
+    <text x="414" y="206" class="axl tn">3</text>
+
+    <!-- density thumbnails right -->
+    <text x="490" y="24" class="dl" fill="var(--ink)">分布长什么样</text>
+    <text x="490" y="52" class="axl">高斯</text>
+    <path d="M552 66 Q 570 66 582 56 Q 594 38 606 32 Q 618 38 630 56 Q 642 66 660 66" fill="none" stroke="var(--muted)" stroke-width="2"/>
+    <line x1="552" y1="66" x2="660" y2="66" stroke="var(--base)" stroke-width="1"/>
+    <text x="490" y="110" class="axl">双峰</text>
+    <path d="M552 124 Q 562 124 570 104 Q 578 90 586 106 Q 592 120 606 120 Q 620 120 626 106 Q 634 90 642 106 Q 650 124 660 124" fill="none" stroke="var(--c1)" stroke-width="2"/>
+    <line x1="552" y1="124" x2="660" y2="124" stroke="var(--base)" stroke-width="1"/>
+    <text x="674" y="116" class="axl">对称，但形状错</text>
+    <text x="490" y="168" class="axl">坍缩</text>
+    <path d="M552 182 L600 182 L600 148 L610 148 L610 182 L660 182" fill="none" stroke="var(--c2)" stroke-width="2"/>
+    <line x1="552" y1="182" x2="660" y2="182" stroke="var(--base)" stroke-width="1"/>
+    <text x="674" y="174" class="axl">全挤成一点</text>
+    <text x="490" y="226" class="axl">偏斜</text>
+    <path d="M552 240 Q 558 240 564 196 Q 572 182 584 202 Q 602 232 632 238 Q 648 240 660 240" fill="none" stroke="var(--c2)" stroke-width="2" stroke-dasharray="4 3"/>
+    <line x1="552" y1="240" x2="660" y2="240" stroke="var(--base)" stroke-width="1"/>
+    <text x="674" y="232" class="axl">左右不平衡</text>
+
+    <!-- BOTTOM sin -->
+    <text x="44" y="278" class="dl" fill="var(--c2)">sin 分量　管对称</text>
+    <line x1="60" y1="312" x2="420" y2="312" stroke="var(--base)" stroke-width="1"/>
+    <line x1="60" y1="364" x2="420" y2="364" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="60" y1="416" x2="420" y2="416" stroke="var(--grid)" stroke-width="1"/>
+    <text x="30" y="316" class="axl tn">0.0</text>
+    <text x="24" y="368" class="axl tn">−0.2</text>
+    <text x="24" y="420" class="axl tn">−0.4</text>
+    <!-- skew sin -->
+    <path d="M60 312 L82 312.6 L105 316.1 L127 323.4 L150 333.6 L172 345.9 L195 358.6 L217 370.4 L240 380.8 L262 389.7 L285 396.6 L307 401.2 L330 403.7 L352 404 L375 401.7 L397 397.5 L420 391.7"
+          fill="none" stroke="var(--c2)" stroke-width="2"/>
+    <circle cx="352" cy="404" r="4" fill="var(--c2)" stroke="var(--surface)" stroke-width="2"/>
+    <text x="228" y="424" class="dl" fill="var(--c2)">偏斜 → 大幅偏离</text>
+    <!-- others flat -->
+    <path d="M60 312 L150 312.2 L240 312.9 L330 313.1 L420 311.5" fill="none" stroke="var(--c1)" stroke-width="2"/>
+    <text x="140" y="304" class="dl" fill="var(--c1)">高斯 / 双峰 / 坍缩 → 都压在 0 线</text>
+    <text x="490" y="316" class="axl">三条对称的分布重合在 0 线上，</text>
+    <text x="490" y="334" class="axl">因为 sin 只对「左右不平衡」有反应。</text>
+    <text x="490" y="364" class="axl">这就是为什么两项都需要：</text>
+    <text x="490" y="382" class="axl" fill="var(--c1)">cos 抓形状（双峰、坍缩）</text>
+    <text x="490" y="400" class="axl" fill="var(--c2)">sin 抓偏斜</text>
+  </svg>
+  <div class="lg">
+    <span><i class="sw" style="background:var(--muted)"></i>高斯目标</span>
+    <span><i class="sw" style="background:var(--c1)"></i>双峰</span>
+    <span><i class="sw" style="background:var(--c2)"></i>坍缩 / 偏斜</span>
+  </div>
+  <figcaption>上排：双峰的 cos 一路下坠穿过 0 变负，坍缩的死死贴在 1.0——都严重偏离虚线。
+  下排：只有偏斜的 sin 潜到 −0.4，其余三条全在 0 线上。</figcaption>
+</figure>
+
+<h2><b>4</b>为什么要 mean</h2>
+<p class="sub">因为特征函数的定义就是期望，而期望在有限样本上就是求平均。</p>
+
+<div class="eq">
+  <div class="m">φ(<i>t</i>) = <strong>E</strong>[ e<sup><i>itx</i></sup> ] <span style="font-size:14px;color:var(--ink2)">　理论定义，对整个分布</span></div>
+  <div class="m" style="margin-top:6px">φ̂(<i>t</i>) = <strong>(1/N) Σ</strong><sub><i>n</i></sub> e<sup><i>itx</i><sub><i>n</i></sub></sup> <span style="font-size:14px;color:var(--ink2)">　样本估计 ← 代码里的 <code>.mean(0)</code></span></div>
+  <div class="cm">没有 mean，就只是单个样本的一个点，不含任何分布信息。mean 把 N 个样本的振荡加起来平均，得到这批数据在频率 <i>t</i> 上的<strong>集体响应</strong>。</div>
+</div>
+
+<h3>直观：mean 就是「一堆箭头求和」</h3>
+<p>把每个样本的 <code>e^(itx)</code> 看成单位圆上一个箭头（长度都是 1，角度是 <i>t·x</i>）。mean 就是把 N 个箭头加起来除以 N。三种情形一目了然：</p>
+
+<figure>
+  <div class="ft">N 个单位箭头的平均</div>
+  <div class="fs">合成向量的长度 = |φ̂(t)|，它的水平投影 = cos_mean，垂直投影 = sin_mean</div>
+  <svg viewBox="0 0 840 250" role="img" aria-label="特征函数作为单位圆上箭头平均的几何解释">
+    <!-- 1 collapsed -->
+    <circle cx="130" cy="124" r="58" fill="none" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="66" y1="124" x2="194" y2="124" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="130" y1="60" x2="130" y2="188" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="130" y1="124" x2="184" y2="104" stroke="var(--c2)" stroke-width="1.6" opacity=".35"/>
+    <line x1="130" y1="124" x2="186" y2="110" stroke="var(--c2)" stroke-width="1.6" opacity=".35"/>
+    <line x1="130" y1="124" x2="185" y2="107" stroke="var(--c2)" stroke-width="3"/>
+    <circle cx="185" cy="107" r="4.5" fill="var(--c2)"/>
+    <text x="76" y="32" class="dl" fill="var(--c2)">坍缩：全同向</text>
+    <text x="56" y="212" class="axl">合成很长，|φ̂|≈1</text>
+    <text x="56" y="230" class="axl">离目标远</text>
+
+    <!-- 2 gaussian -->
+    <circle cx="420" cy="124" r="58" fill="none" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="356" y1="124" x2="484" y2="124" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="420" y1="60" x2="420" y2="188" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="420" y1="124" x2="476" y2="107" stroke="var(--c1)" stroke-width="1.5" opacity=".3"/>
+    <line x1="420" y1="124" x2="470" y2="96" stroke="var(--c1)" stroke-width="1.5" opacity=".3"/>
+    <line x1="420" y1="124" x2="468" y2="157" stroke="var(--c1)" stroke-width="1.5" opacity=".3"/>
+    <line x1="420" y1="124" x2="450" y2="72" stroke="var(--c1)" stroke-width="1.5" opacity=".3"/>
+    <line x1="420" y1="124" x2="436" y2="180" stroke="var(--c1)" stroke-width="1.5" opacity=".3"/>
+    <line x1="420" y1="124" x2="454" y2="117" stroke="var(--c1)" stroke-width="3"/>
+    <circle cx="454" cy="117" r="4.5" fill="var(--c1)"/>
+    <text x="368" y="32" class="dl" fill="var(--c1)">高斯：适度散开</text>
+    <text x="352" y="212" class="axl">部分抵消，合成中等</text>
+    <text x="352" y="230" class="axl">恰好落在目标上</text>
+
+    <!-- 3 over-spread -->
+    <circle cx="710" cy="124" r="58" fill="none" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="646" y1="124" x2="774" y2="124" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="710" y1="60" x2="710" y2="188" stroke="var(--grid)" stroke-width="1"/>
+    <line x1="710" y1="124" x2="766" y2="107" stroke="var(--muted)" stroke-width="1.5" opacity=".45"/>
+    <line x1="710" y1="124" x2="735" y2="70" stroke="var(--muted)" stroke-width="1.5" opacity=".45"/>
+    <line x1="710" y1="124" x2="672" y2="78" stroke="var(--muted)" stroke-width="1.5" opacity=".45"/>
+    <line x1="710" y1="124" x2="652" y2="132" stroke="var(--muted)" stroke-width="1.5" opacity=".45"/>
+    <line x1="710" y1="124" x2="682" y2="176" stroke="var(--muted)" stroke-width="1.5" opacity=".45"/>
+    <line x1="710" y1="124" x2="750" y2="170" stroke="var(--muted)" stroke-width="1.5" opacity=".45"/>
+    <circle cx="710" cy="124" r="5" fill="var(--muted)"/>
+    <text x="644" y="32" class="dl" fill="var(--muted)">过度分散：全抵消</text>
+    <text x="644" y="212" class="axl">合成≈原点，|φ̂|≈0</text>
+    <text x="644" y="230" class="axl">也离目标远</text>
+  </svg>
+  <figcaption><strong>这张图顺带解释了 SIGReg 的致命弱点。</strong>坍缩时箭头全挤在一起，
+  这时微调某个样本几乎不改变合成方向 ⟹ 梯度趋于 0。
+  也就是说它<em>知道</em>错了（误差数值很大，实测 7.77），但<em>推不动</em>。
+  VISReg 用 <span class="m" style="font-size:16px">(1−σ)²</span>（梯度恒为 −2）替代它，就是冲着这一点。</figcaption>
+</figure>
+
+<h3>mean 的附带好处：跨卡精确合并</h3>
+<div class="eq">
+  <div class="m" style="font-size:17px">all-reduce-mean( mean<sub>单卡</sub> ) = mean<sub>全局</sub> <span style="color:var(--good);font-size:15px">✓ 精确无损</span></div>
+  <div class="cm">mean 是线性的，所以跨卡求平均等于全局 batch 的 mean，只需传 17×K 个标量。
+  VISReg 的 shape 含 <code>sort</code>——「排好序的第 3 名」跨卡求均值毫无意义，只能 all-gather 整个 batch。这是 SIGReg 的一个真实优势。</div>
+</div>
+
+<h2><b>5</b>loss 怎么组装</h2>
+
+<p>要比两个复数（算出来的 φ̂ 和目标 φ），用<strong>差的模长平方</strong> = 实部差² + 虚部差²。
+高斯的 φ 是<strong>纯实数</strong>（虚部为 0，因为高斯对称），所以虚部差就是 sin_mean 本身：</p>
+
+<div class="eq">
+  <div class="m">| φ̂(<i>t</i>) − φ(<i>t</i>) |² = ( <span class="cc">cos_mean</span> − e<sup>−<i>t</i>²/2</sup> )² + <span class="ss">sin_mean</span>²</div>
+  <div class="cm">左项把 cos 曲线拉向高斯钟形（<span class="cc">对齐形状</span>）；右项把 sin 压到 0（<span class="ss">强制对称</span>）。
+  其中 e<sup>−t²/2</sup> 是标准高斯的特征函数，有闭式解。</div>
+</div>
+
+<p>然后在 17 个频率上加权求和，对 K 个方向取平均，最后乘全局样本数：</p>
+
+<div class="eq">
+  <div class="m">L = <i>N</i>·<i>W</i> · mean<sub><i>K</i></sub> [ Σ<sub><i>j</i></sub> <i>w<sub>j</sub></i> · ( ( <span class="cc">cos_mean<sub><i>j</i></sub></span> − φ<sub><i>j</i></sub> )² + <span class="ss">sin_mean<sub><i>j</i></sub></span>² ) ]</div>
+  <div class="cm"><i>N·W</i> = batch × 卡数。<strong>为什么要乘</strong>：特征函数是均值量，跟 batch 多大无关；不乘的话大 batch 下正则占比会被稀释。
+  <strong>这正是 VISReg 权重必须重新标定的原因</strong>——VISReg 天然与 batch 无关，不乘这个因子，两者裸损失量级差好几个数量级。</div>
+</div>
+
+<div class="eq" style="padding:13px 17px">
+  <div style="font:13.5px/1.85 ui-monospace,Menlo,monospace;white-space:pre">x_t      = (x @ A).unsqueeze(-1) * t   <span style="color:var(--muted)"># 投影 × 频率</span>
+<span class="cc">cos_mean = x_t.cos().mean(0)</span>           <span style="color:var(--muted)"># 实部　← mean 在这</span>
+<span class="ss">sin_mean = x_t.sin().mean(0)</span>           <span style="color:var(--muted)"># 虚部</span>
+err      = (<span class="cc">cos_mean</span> - phi)**2 + <span class="ss">sin_mean</span>**2
+loss     = (err @ weights).mean() * N * world_size</div>
+</div>
+
+<h2><b>6</b>哪些是数学，哪些是人为设计</h2>
+<p class="sub">你问的核心。答案是分层的：底层全是数学，上层才是设计。</p>
+
+<table>
+  <thead><tr><th style="width:42%">环节</th><th style="width:15%">归属</th><th>为什么</th></tr></thead>
+  <tbody>
+    <tr><td>e<sup>iθ</sup> = cos θ + i·sin θ</td><td style="color:var(--good);font-weight:650">数学</td><td>恒等式，来自泰勒级数和 i²=−1</td></tr>
+    <tr><td>傅里叶用复指数当核</td><td style="color:var(--good);font-weight:650">数学</td><td>变换的定义，依赖欧拉提供零件</td></tr>
+    <tr><td>特征函数唯一决定分布</td><td style="color:var(--good);font-weight:650">数学</td><td>概率论定理——这是「比 φ 就等于比分布」的合法性来源</td></tr>
+    <tr><td>特征函数永远存在</td><td style="color:var(--good);font-weight:650">数学</td><td>|e<sup>itx</sup>|=1 有界，期望必收敛</td></tr>
+    <tr><td>cos 管形状、sin 管对称</td><td style="color:var(--good);font-weight:650">数学</td><td>奇偶函数在 ±x 上相加/相消</td></tr>
+    <tr><td>高斯的 φ = e<sup>−t²/2</sup></td><td style="color:var(--good);font-weight:650">数学</td><td>可解析积出的闭式解</td></tr>
+    <tr><td>用 mean 估计期望</td><td style="color:var(--ink2);font-weight:650">数学+惯例</td><td>无偏估计，大数定律保证</td></tr>
+    <tr><td>取 17 个节点、t 到 3</td><td style="color:var(--c2);font-weight:650">人为设计</td><td>Epps-Pulley 1983 的工程折中，可改</td></tr>
+    <tr><td>梯形权重 × 高斯窗</td><td style="color:var(--c2);font-weight:650">人为设计</td><td>数值积分方案的选择，可换</td></tr>
+    <tr><td>乘 N·world_size</td><td style="color:var(--c2);font-weight:650">人为设计</td><td>为「batch 不变性」加的缩放</td></tr>
+    <tr><td>把统计检验当 loss 用</td><td style="color:var(--c2);font-weight:650">人为设计</td><td><strong>SIGReg 的真正创新</strong>——把假设检验改造成可反传的正则项</td></tr>
+  </tbody>
+</table>
+
+<div class="card">
+  <p style="margin:0 0 8px"><strong>底层全是数学</strong>：欧拉公式、傅里叶框架、特征函数的唯一性和有界性、cos/sin 的奇偶分工——
+  1930 年代概率论就定下的，不是谁「设计」的。</p>
+  <p style="margin:0"><strong>上层才是设计</strong>：取几个频率点、怎么加权、要不要乘 batch 因子，以及最关键的「把 Epps-Pulley 检验改造成能反传的 loss」。
+  SIGReg 的贡献在这一层。</p>
+</div>
+
+<h2><b>7</b>和 VISReg 的分野</h2>
+
+<table>
+  <thead><tr><th>&nbsp;</th><th>SIGReg</th><th>VISReg 的 shape 项</th></tr></thead>
+  <tbody>
+    <tr><td>在哪比</td><td>频域（特征函数）</td><td>空域（数值本身）</td></tr>
+    <tr><td>用复数/欧拉吗</td><td><strong>用</strong>，cos/sin 就是从 e<sup>itx</sup> 拆出来的</td><td><strong>不用</strong>，纯实数排序和减法</td></tr>
+    <tr><td>核心运算</td><td>cos / sin / mean / 加权和</td><td><code>sort</code> + 高斯分位数 + 逐位相减</td></tr>
+    <tr><td>要排序吗</td><td>不要（均值和顺序无关）</td><td><strong>要</strong>（排序就是最优传输配对）</td></tr>
+    <tr><td>坍缩时梯度</td><td>→ 0，失效</td><td>scale 项恒为 −2，强</td></tr>
+    <tr><td>跨卡</td><td>all-reduce 均值，精确省带宽</td><td>all-gather 整个 batch</td></tr>
+    <tr><td>batch 量级</td><td>要显式乘 N·卡数</td><td>天然与 batch 无关</td></tr>
+  </tbody>
+</table>
+
+<p><strong>总结</strong>：复数、欧拉、cos/sin 这一整套，是「进频域用特征函数比分布」这条路线的必备装备。
+VISReg 选择留在空域用最优传输，所以完全不需要它们。
+<span class="cc">cos 管形状</span>、<span class="ss">sin 管对称</span>、mean 做期望估计——这三件事不是设计选择，
+而是「决定用特征函数」之后的直接推论。</p>
+
+<p class="sub" style="margin-top:32px">相关：<code>visreg_vs_sigreg.md</code>（计算差异与实测） ·
+<code>src/open_clip/loss.py</code> ·
+<a href="https://arxiv.org/abs/2511.08544" style="color:var(--c1)">LeJEPA 2511.08544</a> ·
+<a href="https://arxiv.org/abs/2606.02572" style="color:var(--c1)">VISReg 2606.02572</a></p>
+
+</div>
+</body>
+</html>
