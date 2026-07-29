@@ -9,6 +9,7 @@ from torch.utils.checkpoint import checkpoint
 
 from .utils import to_2tuple, feature_take_indices
 from .pos_embed import get_2d_sincos_pos_embed
+from .attn_res import AttnResGate, attn_res_anchor_layers
 
 
 class LayerNormFp32(nn.LayerNorm):
@@ -286,6 +287,17 @@ class ResidualAttentionBlock(nn.Module):
             attn_mask=attn_mask
         )[0]
 
+    def branch_attn(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
+        """Attention branch output only, without the residual add.
+
+        Used by :class:`AttnResTransformer`, which owns the residual bookkeeping.
+        """
+        return self.ls_1(self.attention(q_x=self.ln_1(x), attn_mask=attn_mask))
+
+    def branch_mlp(self, x: torch.Tensor):
+        """MLP branch output only, without the residual add."""
+        return self.ls_2(self.mlp(self.ln_2(x)))
+
     def forward(
             self,
             q_x: torch.Tensor,
@@ -347,6 +359,12 @@ class CustomResidualAttentionBlock(nn.Module):
         if hasattr(self.mlp.c_fc, 'int8_original_dtype'):
             return self.mlp.c_fc.int8_original_dtype
         return self.mlp.c_fc.weight.dtype
+
+    def branch_attn(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
+        return self.ls_1(self.ln_attn(self.attn(self.ln_1(x), attn_mask=attn_mask)))
+
+    def branch_mlp(self, x: torch.Tensor):
+        return self.ls_2(self.mlp(self.ln_2(x)))
 
     def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
         x = x + self.ls_1(self.ln_attn(self.attn(self.ln_1(x), attn_mask=attn_mask)))
@@ -576,9 +594,131 @@ class Transformer(nn.Module):
         return x
 
 
+class AttnResTransformer(Transformer):
+    """:class:`Transformer` with Attention Residuals along the depth axis.
+
+    Replaces the single L-layer identity highway with ``ceil(L / block_size)``
+    short highways plus a softmax-gated read across depth. Ported from Kimi-K3
+    (``KimiDecoderLayer._forward_attn_residual``); see :mod:`open_clip.attn_res`
+    for the mechanism and for why the reference implementation is memory-hostile.
+
+    Per layer ``i``, with ``anchors`` the frozen block partial sums and ``stream``
+    the live residual::
+
+        stream = x
+        if anchors:  x = sa_gate([*anchors, stream])
+        if i % block_size == 0:                     # anchor layer
+            anchors.append(stream); stream = None   # restart the highway
+        stream = (stream or 0) + block.branch_attn(x)
+        x      = mlp_gate([*anchors, stream])
+        stream = stream + block.branch_mlp(x)
+
+    ``resblocks`` keeps its structure and parameter names, so a plain
+    :class:`Transformer` checkpoint loads with ``strict=False`` (only the gates
+    are new). Note that no gate setting recovers a plain transformer exactly: a
+    convex combination cannot express ``anchor + stream``, so the identity
+    highway across a block boundary is genuinely gone. ``identity_init=True``
+    only fixes the activation *scale* at init (stream-dominant instead of the
+    uniform mean over slots that K3's ``proj_weight = 0`` gives). Train from
+    scratch; grafting onto pretrained weights will still cost accuracy.
+    """
+
+    def __init__(self, *args, attn_res_block_size: int = 6, naive_attn_res: bool = False,
+                 identity_init: bool = True, attn_res_eps: float = 1e-6, **kwargs):
+        super().__init__(*args, **kwargs)
+        assert attn_res_block_size >= 1
+        self.attn_res_block_size = attn_res_block_size
+        self.anchor_layers = attn_res_anchor_layers(self.layers, attn_res_block_size)
+
+        gate_kw = dict(eps=attn_res_eps, naive=naive_attn_res, identity_init=identity_init)
+        # layer 0 reads nothing (no anchors yet), so its sa gate is dead weight in
+        # K3 -- we simply do not create it.
+        self.sa_gates = nn.ModuleList([
+            AttnResGate(self.width, **gate_kw) if i > 0 else nn.Identity()
+            for i in range(self.layers)
+        ])
+        self.mlp_gates = nn.ModuleList([AttnResGate(self.width, **gate_kw)
+                                        for _ in range(self.layers)])
+        self.output_gate = AttnResGate(self.width, **gate_kw)
+
+    def _mix(self, gate, anchors: List[torch.Tensor], stream: torch.Tensor, shape):
+        if not anchors:
+            return stream
+        flat = [a.reshape(-1, self.width) for a in anchors]
+        flat.append(stream.reshape(-1, self.width))
+        return gate(flat).view(shape)
+
+    def _run(
+            self,
+            x: torch.Tensor,
+            attn_mask: Optional[torch.Tensor] = None,
+            take_indices: Optional[set] = None,
+    ) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        ckpt = self.grad_checkpointing and not torch.jit.is_scripting()
+        shape = x.shape
+        anchors: List[torch.Tensor] = []
+        # the live residual stream; carried across layers, reset at anchor layers
+        stream: Optional[torch.Tensor] = x
+        intermediates: List[torch.Tensor] = []
+
+        for i, blk in enumerate(self.resblocks):
+            if anchors:
+                x = self._mix(self.sa_gates[i], anchors, stream, shape)
+            if i % self.attn_res_block_size == 0:
+                anchors.append(stream)
+                stream = None
+
+            attn_out = checkpoint(blk.branch_attn, x, attn_mask, use_reentrant=False) \
+                if ckpt else blk.branch_attn(x, attn_mask)
+            stream = attn_out if stream is None else stream + attn_out
+
+            x = self._mix(self.mlp_gates[i], anchors, stream, shape)
+            mlp_out = checkpoint(blk.branch_mlp, x, use_reentrant=False) \
+                if ckpt else blk.branch_mlp(x)
+            stream = stream + mlp_out
+
+            if take_indices is not None and i in take_indices:
+                # the layer's "output" is the stream state, mixed as the next
+                # layer would see it -- otherwise probes see a partial sum
+                out_i = self._mix(self.output_gate, anchors, stream, shape)
+                intermediates.append(out_i.transpose(0, 1) if not self.batch_first else out_i)
+
+        x = self._mix(self.output_gate, anchors, stream, shape)
+        return x, intermediates
+
+    def forward(self, x: torch.Tensor, attn_mask: Optional[torch.Tensor] = None):
+        if not self.batch_first:
+            x = x.transpose(0, 1).contiguous()    # NLD -> LND
+        x, _ = self._run(x, attn_mask)
+        if not self.batch_first:
+            x = x.transpose(0, 1)    # LND -> NLD
+        return x
+
+    def forward_intermediates(
+            self,
+            x: torch.Tensor,
+            attn_mask: Optional[torch.Tensor] = None,
+            indices: Optional[Union[int, List[int]]] = None,
+            stop_early: bool = False,
+    ):
+        # stop_early is ignored: anchors from later blocks feed the output gate,
+        # so truncating the stack changes the result rather than just saving work.
+        take_indices, _ = feature_take_indices(len(self.resblocks), indices)
+        if not self.batch_first:
+            x = x.transpose(0, 1).contiguous()
+        x, intermediates = self._run(x, attn_mask, take_indices=set(take_indices))
+        if not self.batch_first:
+            x = x.transpose(0, 1)
+        return x, intermediates
+
+    def prune_intermediate_layers(self, indices: Union[int, List[int]] = 1):
+        raise NotImplementedError(
+            'AttnRes anchors couple every layer to the output gate; pruning would '
+            'silently change the output.')
+
+
 def _expand_token(token, batch_size: int):
     return token.view(1, 1, -1).expand(batch_size, -1, -1)
-
 
 class VisionTransformer(nn.Module):
     output_tokens: torch.jit.Final[bool]
@@ -611,6 +751,9 @@ class VisionTransformer(nn.Module):
             scale_attn_inner: bool = False,
             scale_attn: bool = False,
             scale_fc: bool = False,
+            attn_res_block_size: Optional[int] = None,
+            attn_res_identity_init: bool = True,
+            attn_res_naive: bool = False,
     ):
         super().__init__()
         assert pool_type in ('tok', 'avg', 'none')
@@ -650,7 +793,16 @@ class VisionTransformer(nn.Module):
         self.patch_dropout = PatchDropout(patch_dropout) if patch_dropout > 0. else nn.Identity()
 
         self.ln_pre = nn.Identity() if no_ln_pre else norm_layer(width)
-        self.transformer = Transformer(
+        transformer_cls = Transformer
+        extra_kwargs = {}
+        if attn_res_block_size is not None:
+            transformer_cls = AttnResTransformer
+            extra_kwargs = dict(
+                attn_res_block_size=attn_res_block_size,
+                identity_init=attn_res_identity_init,
+                naive_attn_res=attn_res_naive,
+            )
+        self.transformer = transformer_cls(
             width,
             layers,
             heads,
@@ -665,6 +817,7 @@ class VisionTransformer(nn.Module):
             scale_attn_inner=scale_attn_inner,
             scale_attn=scale_attn,
             scale_fc=scale_fc,
+            **extra_kwargs,
         )
 
         if attentional_pool:
