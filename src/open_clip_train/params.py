@@ -681,6 +681,34 @@ def parse_args(args):
         default=1.0,
         help='VISReg centering term weight. 0 disables it.'
     )
+    parser.add_argument(
+        "--visreg-topk-pool",
+        type=int,
+        default=0,
+        help=(
+            'VISReg shape: sample this many candidate directions, then keep the K worst '
+            '(K = --sigreg-slices) for the gradient. 0 = disabled (pure random). '
+            'Selection runs under no_grad; loss value becomes a biased SWD estimate, '
+            'but gradients focus on genuinely deviating directions.'
+        )
+    )
+    parser.add_argument(
+        "--visreg-mixture",
+        type=int,
+        default=0,
+        help=(
+            'VISReg shape target = M-component equal-weight Gaussian mixture instead of a '
+            'single standard Gaussian. 0/1 = standard Gaussian. Motivation: real CLIP '
+            'features are multi-island (measured 66-68%% nearest-neighbour same-cluster rate); '
+            'forcing a unimodal target at high weight destroys semantic clustering.'
+        )
+    )
+    parser.add_argument(
+        "--visreg-mixture-sep",
+        type=float,
+        default=2.0,
+        help='Spacing between mixture component centres, in units of sigma. Used with --visreg-mixture.'
+    )
 
     # ============ Modality Gap ============
     parser.add_argument(

@@ -62,7 +62,9 @@ run() {  # run TAG PORT TARGET WEIGHT
 # ── 第一阶段：cls 上跨数量级扫权重（基线 1.83e-4，梯度占比 2.1e-07）──────────
 run "cls_1e2x"  29600 cls 1.83e-2     # 100×    → 占比 ~2e-05
 run "cls_1e4x"  29601 cls 1.83e0      # 1e4×    → 占比 ~2e-03
-run "cls_1e6x"  29602 cls 1.83e2      # 1e6×    → 占比 ~2e-01（预期接近/超过崩溃点）
+# cls_1e6x 已取消：1e4× 时 IN-1k 已掉 1.7pt（崩溃点已定位），1e6× 无新信息。
+#   算力让给 visreg_stage2.sh（机制改进：top-K / 混合高斯目标）。
+# run "cls_1e6x"  29602 cls 1.83e2
 
 # ── 第二阶段：cls_proj（MLP projector 缓冲，正则不直接压 backbone）───────────
 # 诊断显示 cls_proj 裸 loss 大 21×，但透到 backbone 的梯度只大 1.8× → 需更大权重

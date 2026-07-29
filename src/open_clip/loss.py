@@ -650,6 +650,9 @@ class VISReg(nn.Module):
         lambda_center: float = 1.0,
         gather: bool = True,
         eps: float = 1e-6,
+        topk_pool: int = 0,
+        mixture: int = 0,
+        mixture_sep: float = 2.0,
     ):
         super().__init__()
         self.K = int(num_slices)
@@ -658,17 +661,54 @@ class VISReg(nn.Module):
         self.lambda_center = float(lambda_center)
         self.gather = bool(gather)
         self.eps = float(eps)
-        # 标准高斯分位数目标缓存（按全局 N 生成）
+        # top-K 方向挑选：先采 topk_pool 个候选，按各方向 loss 取最差的 K 个。
+        # 0 = 关闭（纯随机）。选方向在 no_grad 下做，被选中的方向再照常带梯度计算，
+        # 故 loss 数值有偏（不再是 SWD 无偏估计），但梯度方向更聚焦于真正偏离的方向。
+        self.topk_pool = int(topk_pool)
+        # 混合高斯目标：mixture=M>0 时，shape 的目标分位数取 M 分量等权混合高斯，
+        # 分量中心等距分布、间距 mixture_sep（单位：标准差），整体重标准化到 mean0/var1。
+        # 动机：实测真实 CLIP 特征是多岛的（最近邻同簇率 66-68%），而标准高斯目标是
+        # 单峰的——高权重下强行压成单峰会毁掉语义聚类（实测 1e4x 时 IN-1k 掉 1.7pt）。
+        self.mixture = int(mixture)
+        self.mixture_sep = float(mixture_sep)
+        # 目标分位数缓存（按全局 N 生成）
         self._cached_N = -1
         self.register_buffer("_target", torch.zeros(0), persistent=False)
 
     def _get_target(self, N: int, device, dtype) -> torch.Tensor:
         if self._cached_N != N or self._target.numel() != N:
             q = torch.linspace(1, N, N, device=device, dtype=torch.float32) / (N + 1)
-            tgt = torch.erfinv(2 * q - 1).mul_(math.sqrt(2.0))
+            if self.mixture > 1:
+                tgt = self._mixture_quantiles(q, device)
+            else:
+                tgt = torch.erfinv(2 * q - 1).mul_(math.sqrt(2.0))
             self._target = tgt
             self._cached_N = N
         return self._target.to(device=device, dtype=dtype)
+
+    def _mixture_quantiles(self, q: torch.Tensor, device) -> torch.Tensor:
+        """M 分量等权混合高斯的分位数（数值反演 CDF），再标准化到 mean0/var1。
+
+        分量中心：等距对称分布，间距 mixture_sep；各分量单位方差。
+        用密集网格上的 CDF 做单调插值反演——比闭式解简单且足够精确（N 个分位点）。
+        """
+        M = self.mixture
+        centers = (torch.arange(M, dtype=torch.float32, device=device) - (M - 1) / 2.0) * self.mixture_sep
+        # 混合分布的理论方差 = 1(分量内) + var(centers)，用于标准化目标到 var=1
+        scale = math.sqrt(1.0 + float(centers.pow(2).mean()))
+        lo = float(centers.min()) - 6.0
+        hi = float(centers.max()) + 6.0
+        grid = torch.linspace(lo, hi, 20001, device=device, dtype=torch.float32)
+        # 混合 CDF = mean_m Φ(grid - c_m)，单调递增，用 searchsorted + 线性插值反演
+        cdf = torch.stack([
+            0.5 * (1.0 + torch.erf((grid - c) / math.sqrt(2.0))) for c in centers
+        ]).mean(0).contiguous()
+        qd = q.to(device).contiguous()
+        idx = torch.searchsorted(cdf, qd).clamp(1, len(grid) - 1)
+        c0, c1 = cdf[idx - 1], cdf[idx]
+        g0, g1 = grid[idx - 1], grid[idx]
+        w = ((qd - c0) / (c1 - c0).clamp(min=1e-12)).clamp(0, 1)
+        return (g0 + w * (g1 - g0)) / scale
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -695,10 +735,22 @@ class VISReg(nn.Module):
         scale_loss = (std - 1.0).pow(2).mean()
 
         z_norm = z_c / std.detach().unsqueeze(0)                 # stop-grad 解耦 shape/scale
-        W = torch.randn(D, self.K, device=z.device, dtype=z.dtype)
-        W = W / (W.norm(p=2, dim=0, keepdim=True) + 1e-12)
-        p_sorted = (z_norm @ W).sort(dim=0).values               # [N, K]
         target = self._get_target(N, z.device, z.dtype).unsqueeze(1)  # [N, 1]
+
+        if self.topk_pool > self.K:
+            # 先在候选池上无梯度评估每个方向的 loss，取最差的 K 个方向
+            with torch.no_grad():
+                Wp = torch.randn(D, self.topk_pool, device=z.device, dtype=z.dtype)
+                Wp = Wp / (Wp.norm(p=2, dim=0, keepdim=True) + 1e-12)
+                ps = (z_norm.detach() @ Wp).sort(dim=0).values
+                per_dir = (ps - target).pow(2).mean(dim=0)       # [pool]
+                sel = per_dir.argsort(descending=True)[:self.K]
+            W = Wp[:, sel]
+        else:
+            W = torch.randn(D, self.K, device=z.device, dtype=z.dtype)
+            W = W / (W.norm(p=2, dim=0, keepdim=True) + 1e-12)
+
+        p_sorted = (z_norm @ W).sort(dim=0).values               # [N, K]
         shape_loss = (p_sorted - target).pow(2).mean()
 
         return (
@@ -715,6 +767,9 @@ def _build_reg(
     visreg_lambda_scale: float = 1.0,
     visreg_lambda_shape: float = 1.0,
     visreg_lambda_center: float = 1.0,
+    visreg_topk_pool: int = 0,
+    visreg_mixture: int = 0,
+    visreg_mixture_sep: float = 2.0,
 ) -> nn.Module:
     """按 reg_method 构造正则器（SIGReg 或 VISReg），二者入口/出口一致。"""
     if reg_method == 'sigreg':
@@ -725,6 +780,9 @@ def _build_reg(
             lambda_scale=visreg_lambda_scale,
             lambda_shape=visreg_lambda_shape,
             lambda_center=visreg_lambda_center,
+            topk_pool=visreg_topk_pool,
+            mixture=visreg_mixture,
+            mixture_sep=visreg_mixture_sep,
         )
     raise ValueError(f"Unknown reg_method={reg_method!r}, expected 'sigreg' or 'visreg'")
 
@@ -1155,6 +1213,9 @@ class SIGRegContrastiveLoss(nn.Module):
             visreg_lambda_scale: float = 1.0,
             visreg_lambda_shape: float = 1.0,
             visreg_lambda_center: float = 1.0,
+            visreg_topk_pool: int = 0,
+            visreg_mixture: int = 0,
+            visreg_mixture_sep: float = 2.0,
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
@@ -1184,6 +1245,7 @@ class SIGRegContrastiveLoss(nn.Module):
         self.sigreg = _build_reg(
             reg_method, sigreg_knots, sigreg_num_slices,
             visreg_lambda_scale, visreg_lambda_shape, visreg_lambda_center,
+            visreg_topk_pool, visreg_mixture, visreg_mixture_sep,
         )
 
         # Representation uniformity losses
@@ -1438,6 +1500,9 @@ class CLIPWithDINOLoss(nn.Module):
         visreg_lambda_scale: float = 1.0,
         visreg_lambda_shape: float = 1.0,
         visreg_lambda_center: float = 1.0,
+        visreg_topk_pool: int = 0,
+        visreg_mixture: int = 0,
+        visreg_mixture_sep: float = 2.0,
     ):
         super().__init__()
         self.dino_loss_weight = dino_loss_weight
@@ -1472,6 +1537,7 @@ class CLIPWithDINOLoss(nn.Module):
             self.sigreg = _build_reg(
                 reg_method, 17, sigreg_num_slices,
                 visreg_lambda_scale, visreg_lambda_shape, visreg_lambda_center,
+                visreg_topk_pool, visreg_mixture, visreg_mixture_sep,
             )
         else:
             self.sigreg = None

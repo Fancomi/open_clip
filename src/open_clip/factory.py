@@ -848,6 +848,9 @@ def create_loss(args):
             visreg_lambda_scale=getattr(args, 'visreg_lambda_scale', 1.0),
             visreg_lambda_shape=getattr(args, 'visreg_lambda_shape', 1.0),
             visreg_lambda_center=getattr(args, 'visreg_lambda_center', 1.0),
+            visreg_topk_pool=getattr(args, 'visreg_topk_pool', 0),
+            visreg_mixture=getattr(args, 'visreg_mixture', 0),
+            visreg_mixture_sep=getattr(args, 'visreg_mixture_sep', 2.0),
         )
     elif getattr(args, 'dinov3', False):
         # CLIPWithDINOLoss：需要从 model 中读取 embed_dim，由 main.py 传入
@@ -874,6 +877,9 @@ def create_loss(args):
             visreg_lambda_scale=getattr(args, 'visreg_lambda_scale', 1.0),
             visreg_lambda_shape=getattr(args, 'visreg_lambda_shape', 1.0),
             visreg_lambda_center=getattr(args, 'visreg_lambda_center', 1.0),
+            visreg_topk_pool=getattr(args, 'visreg_topk_pool', 0),
+            visreg_mixture=getattr(args, 'visreg_mixture', 0),
+            visreg_mixture_sep=getattr(args, 'visreg_mixture_sep', 2.0),
         )
     elif getattr(args, 'multi_teacher', False):
         weights = None
