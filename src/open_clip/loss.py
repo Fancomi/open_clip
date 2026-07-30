@@ -760,6 +760,56 @@ class VISReg(nn.Module):
         )
 
 
+class CrossModalMatch(nn.Module):
+    """跨模态对齐：把两塔特征投到**同一组**随机方向上再比较。两种模式。
+
+    动机：第十节实测「单塔分布正则对下游免疫」——把单塔推向 N(0,I) 是个**绝对目标**，
+    与下游需要的东西无因果。本模块换成**相对目标**：约束图/文两个分布的相对关系，
+    这直接就是 modality gap，与检索有明确因果链。是 ModalityGapLoss（只对齐均值，
+    一阶）的高阶推广。
+
+    mode='dist'（分布对齐 / 方案 A）:
+        逐方向 sorted 投影值相等 + 逐维 std 相等。
+        注意 sort 是**置换不变**的 —— 该项不含配对信息（实测：文本随机打乱，loss
+        变化 <1e-8），故**只能作辅助项**，绝不能替代对比损失（否则存在
+        「两塔各自独立推成 N(0,I)」的退化解，检索退化到随机）。
+        建议配合独立 head 使用，避免直接改写 CLIP 空间。
+
+    mode='pair'（逐对对齐 / 方案 B）:
+        不排序，要求**同一样本**的图/文投影值接近：mean_k mean_i ((v_i-t_i)·w_k)²
+        配对身份完整保留。w 各向同性随机时其期望 = ‖v-t‖²/D，即逐样本 MSE 的随机
+        投影估计；取 K<D 相当于「只要求 K 个随机子空间上对齐，其余方向自由」，
+        比直接 MSE 温和（不会把两塔压成完全相同、毁掉模态特异信息）。
+    """
+
+    def __init__(self, num_slices: int = 256, mode: str = 'pair', eps: float = 1e-6):
+        super().__init__()
+        assert mode in ('pair', 'dist'), f"mode must be 'pair'/'dist', got {mode!r}"
+        self.K = int(num_slices)
+        self.mode = mode
+        self.eps = float(eps)
+
+    def forward(self, v: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        """v, t: [N, D] 同维度的两塔特征（unnormalized）。共用一组投影方向。"""
+        assert v.shape == t.shape, f"两塔维度须一致: {v.shape} vs {t.shape}"
+        D = v.shape[1]
+        W = torch.randn(D, self.K, device=v.device, dtype=v.dtype)
+        W = W / (W.norm(p=2, dim=0, keepdim=True) + 1e-12)
+
+        if self.mode == 'pair':
+            # 保留配对身份：不排序，逐样本比投影值
+            return ((v - t) @ W).pow(2).mean()
+
+        # mode == 'dist'：分布对齐（置换不变，仅作辅助）
+        vc, tc = v - v.mean(0, keepdim=True), t - t.mean(0, keepdim=True)
+        sv = (vc.pow(2).mean(0) + self.eps).sqrt()
+        st = (tc.pow(2).mean(0) + self.eps).sqrt()
+        scale_term = (sv - st).pow(2).mean()
+        pv = ((vc / sv.detach()) @ W).sort(dim=0).values
+        pt = ((tc / st.detach()) @ W).sort(dim=0).values
+        return (pv - pt).pow(2).mean() + scale_term
+
+
 def _build_reg(
     reg_method: str,
     sigreg_knots: int,
@@ -1216,6 +1266,9 @@ class SIGRegContrastiveLoss(nn.Module):
             visreg_topk_pool: int = 0,
             visreg_mixture: int = 0,
             visreg_mixture_sep: float = 2.0,
+            reg_sides: str = 'both',
+            xmatch_weight: float = 0.0,
+            xmatch_mode: str = 'pair',
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
@@ -1247,6 +1300,14 @@ class SIGRegContrastiveLoss(nn.Module):
             visreg_lambda_scale, visreg_lambda_shape, visreg_lambda_center,
             visreg_topk_pool, visreg_mixture, visreg_mixture_sep,
         )
+        # 正则作用于哪一侧：both（现行，双塔都正则）/ img / txt
+        assert reg_sides in ('both', 'img', 'txt'), \
+            f"reg_sides must be 'both'/'img'/'txt', got {reg_sides!r}"
+        self.reg_sides = reg_sides
+        # 跨模态对齐辅助项（相对目标，见 CrossModalMatch）
+        self.xmatch_weight = float(xmatch_weight)
+        self.xmatch = CrossModalMatch(num_slices=sigreg_num_slices, mode=xmatch_mode) \
+            if xmatch_weight > 0 else None
 
         # Representation uniformity losses
         self.uniformity_weight = uniformity_weight
@@ -1345,7 +1406,13 @@ class SIGRegContrastiveLoss(nn.Module):
             output_dict: bool = False,
     ):
         # SIGReg 作用在 unnormalized proj 上（由 CLIPLeJEPA 提供）
-        projs = [f for f in (image_proj, text_proj) if f is not None]
+        # reg_sides 控制作用侧：both=双塔（现行）/ img=仅视觉 / txt=仅文本
+        if self.reg_sides == 'img':
+            projs = [image_proj] if image_proj is not None else []
+        elif self.reg_sides == 'txt':
+            projs = [text_proj] if text_proj is not None else []
+        else:
+            projs = [f for f in (image_proj, text_proj) if f is not None]
         if self.sigreg_joint and len(projs) == 2 and projs[0].shape[-1] == projs[1].shape[-1]:
             reg = self.sigreg(torch.cat(projs, dim=0))
         else:
@@ -1418,6 +1485,12 @@ class SIGRegContrastiveLoss(nn.Module):
                 image_features, text_features, logit_scale, logit_bias, output_dict=False
             )
             losses = {"contrastive_loss": main_loss, "sigreg_loss": weighted_reg}
+
+        # 跨模态对齐辅助项（同一组随机方向上比两塔）。需两塔同维 —— cls target 下
+        # image_proj 是 backbone 维、text_proj 是 clip 维，不同维，故要求 clip/clip_proj。
+        if self.xmatch is not None and image_proj is not None and text_proj is not None \
+                and image_proj.shape[-1] == text_proj.shape[-1]:
+            losses["xmatch_loss"] = self.xmatch_weight * self.xmatch(image_proj, text_proj)
 
         # modality_gap_loss pre-computed by model (pre-L2-norm), just accumulate
         if modality_gap_loss is not None:

@@ -851,6 +851,9 @@ def create_loss(args):
             visreg_topk_pool=getattr(args, 'visreg_topk_pool', 0),
             visreg_mixture=getattr(args, 'visreg_mixture', 0),
             visreg_mixture_sep=getattr(args, 'visreg_mixture_sep', 2.0),
+            reg_sides=getattr(args, 'reg_sides', 'both'),
+            xmatch_weight=getattr(args, 'xmatch_weight', 0.0),
+            xmatch_mode=getattr(args, 'xmatch_mode', 'pair'),
         )
     elif getattr(args, 'dinov3', False):
         # CLIPWithDINOLoss：需要从 model 中读取 embed_dim，由 main.py 传入

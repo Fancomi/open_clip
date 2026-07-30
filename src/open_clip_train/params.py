@@ -704,6 +704,34 @@ def parse_args(args):
         )
     )
     parser.add_argument(
+        "--reg-sides",
+        type=str, default='both', choices=['both', 'img', 'txt'],
+        help=(
+            'Which tower the regularizer acts on. "both" (default, current recipe -- note '
+            'the text tower has been regularized all along), "img" / "txt" for ablation.'
+        )
+    )
+    parser.add_argument(
+        "--xmatch-weight",
+        type=float, default=0.0,
+        help=(
+            'Cross-modal match auxiliary loss weight. Projects BOTH towers onto the SAME '
+            'random directions. 0 = disabled. Requires --sigreg-target clip/clip_proj '
+            '(both towers must share a dimension). Auxiliary only -- never a replacement '
+            'for the contrastive loss.'
+        )
+    )
+    parser.add_argument(
+        "--xmatch-mode",
+        type=str, default='pair', choices=['pair', 'dist'],
+        help=(
+            '"pair": per-sample alignment on projections, keeps pairing identity '
+            '(= random-projection estimate of per-pair MSE, gentler than plain MSE). '
+            '"dist": sorted-shape + std alignment -- permutation invariant, carries NO '
+            'pairing signal, so it must stay a small auxiliary term.'
+        )
+    )
+    parser.add_argument(
         "--visreg-mixture-sep",
         type=float,
         default=2.0,
