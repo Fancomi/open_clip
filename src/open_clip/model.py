@@ -66,6 +66,11 @@ class CLIPVisionCfg:
     scale_attn: bool = False  # apply layer norm after full attention block
     scale_fc: bool = False  # apply layer norm in MLP block
 
+    # Attention Residuals (AttnRes), ported from Kimi-K3. None disables it.
+    attn_res_block_size: Optional[int] = None  # depth-block size; K3 uses 12 for 93 layers
+    attn_res_identity_init: bool = True  # start every gate as a no-op on the residual stream
+    attn_res_naive: bool = False  # use the memory-hostile reference kernel (benchmarks only)
+
     timm_model_name: Optional[str] = None  # a valid model name overrides layers, width, patch_size
     timm_model_pretrained: bool = False  # use (imagenet) pretrained weights for named model
     timm_pool: str = 'avg'  # feature pooling for timm model ('abs_attn', 'rot_attn', 'avg', '')
@@ -206,6 +211,9 @@ def _build_vision_tower(
             scale_attn_inner=vision_cfg.scale_attn_inner,
             scale_attn=vision_cfg.scale_attn,
             scale_fc=vision_cfg.scale_fc,
+            attn_res_block_size=vision_cfg.attn_res_block_size,
+            attn_res_identity_init=vision_cfg.attn_res_identity_init,
+            attn_res_naive=vision_cfg.attn_res_naive,
         )
 
     return visual
