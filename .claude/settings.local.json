@@ -21,7 +21,8 @@
       "Bash(which node:*)",
       "Bash(cd:*)",
       "Bash(git:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Skill(dataviz)"
     ]
   }
 }
