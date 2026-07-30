@@ -41,6 +41,8 @@ export PYTHONPATH=./src:$PYTHONPATH   # 工作目录 open_clip/
 - student: 本地 vLLM/sglang gemma(8001-8)/qwen(8005-8, 与 gemma 端口互斥), 关思考模式
 - teacher: `openai/gpt-5.6-sol` 走 ~/.claude/settings.json 厂内代理 (OpenAI chat 协议, base 补 /v1);
   兼 GEPA reflection_lm + 保真裁判。(历史: 早期用 anthropic/Opus 4.8, 见 lab_lm.make_teacher 注释)
+  归属头 `comate_custom_header` 必须是完整 JSON 且 `source` 非空——oneapi 对残头照样返回 200,
+  统计会静默丢失, 所以 `lab_lm._parse_custom_headers` 解析失败/缺 source 时直接抛错。
 
 ## 实验结论 (train1000/val200, 优化口径演进)
 口径从"严格保原意"逐步放宽到"闭集允许向上抽象", 保真与降词首次同时到高位:
@@ -72,4 +74,4 @@ gemma 优胜提示词 `outputs/optimized_prompt_gemma.txt` 自己学到一条我
 - `diagnose_rare.py` 稀有词构成诊断 (无模型): 专名/数字仅 0.7%, 大头是可抽象的具体词
 - `optimize.py`   GEPA 优化主入口 (SMOKE 冒烟)
 - `apply.py`      全量改写落盘 (分片 + 断点续跑 + --ports 多卡并发 + --merge)
-- `tests/`        bpe_freq + metric 单测 (pytest caption_rewrite/tests/ -v)
+- `tests/`        bpe_freq + metric + lab_lm(归属头) 单测 (pytest caption_rewrite/tests/ -v)
