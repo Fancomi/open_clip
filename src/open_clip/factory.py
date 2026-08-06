@@ -152,7 +152,12 @@ def get_model_config(model_name):
         config = _get_hf_config(model_id)
         return config.get('model_cfg', config)
     elif model_name in _MODEL_CONFIGS:
-        return deepcopy(_MODEL_CONFIGS[model_name])
+        cfg = deepcopy(_MODEL_CONFIGS[model_name])
+        # PE 系文本塔默认 32 位置太小；整家族默认 256（factory 在随机初始化时应用）。
+        # 显式 --force-context-length 始终优先。
+        if model_name.startswith('PE-') and cfg.get('text_cfg', {}).get('context_length') == 32:
+            cfg['text_cfg']['context_length'] = 256
+        return cfg
     else:
         return None
 
@@ -446,6 +451,14 @@ def create_model(
         vision_cfg["image_size"] = force_image_size
     if force_context_length is not None:
         text_cfg["context_length"] = force_context_length
+    elif schema is None and model_cfg.get('custom_text') and model_name_cleaned.startswith('PE-') \
+            and text_cfg.get('context_length', 32) <= 32:
+        # PE 系文本塔默认 context_length=32，对长 caption 太小。`pretrained=''`（== 随机初始化
+        # 从头训练）时把 32 → 256，覆盖 gemma dense 长文本；显式 --force-context-length 始终优先。
+        # 若后续需要"分句采样/重排"等更省算力的策略，可在 tokenizer_kwargs 加 reduction_mask。
+        # 注意：该分支在 checkpoint_path 为真时也会被命中（get_model_config 里已把 32→256），
+        # 但随后 resize_text_pos_embed 会把 ckpt 的 32 pos_embed 插值到 256，等效"微调续训"。
+        text_cfg["context_length"] = 256
 
     # Check compatibility (e.g., QuickGELU warning for tags)
     if schema is None and pretrained_cfg_for_tag:
@@ -715,6 +728,9 @@ def get_tokenizer(
     if context_length is None:
         # Use context_length from text_cfg if available, otherwise default
         context_length = text_config.get('context_length', DEFAULT_CONTEXT_LENGTH)
+        # 与 create_model() 的"随机初始化从头训练"默认保持一致：PE 系文本塔 32 → 256。
+        if context_length == 32 and identifier.startswith('PE-'):
+            context_length = 256
 
     # Merge tokenizer kwargs: function kwargs override config kwargs
     tokenizer_kwargs = text_config.get('tokenizer_kwargs', {}) # Start with config kwargs

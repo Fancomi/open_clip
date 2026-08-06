@@ -111,6 +111,9 @@ def _pecfg(url='', hf_hub='', **kwargs):
         'std': (0.5, 0.5, 0.5),
         'interpolation': 'bilinear',
         'resize_mode': 'squash',
+        # PE 系文本塔默认 32 位置太小；整家族默认 256（factory 在随机初始化时应用）。
+        # 显式 --force-context-length 始终优先。
+        'context_length': 256,
         **kwargs,
     }
 
@@ -778,8 +781,9 @@ def is_pretrained_cfg(model: str, tag: str):
 def get_pretrained_cfg(model: str, tag: str):
     if model not in _PRETRAINED:
         return {}
-    model_pretrained = _PRETRAINED[model]
-    return model_pretrained.get(_clean_tag(tag), {})
+    cfg = _PRETRAINED[model].get(_clean_tag(tag), {})
+    # 与 _pecfg 的 context_length:256 默认一致，保持整个内置 PE 家族统一。
+    return _pecfg(**cfg) if model.startswith('PE-') and cfg else cfg
 
 
 def get_pretrained_url(model: str, tag: str):

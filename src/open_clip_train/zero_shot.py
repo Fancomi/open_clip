@@ -89,7 +89,7 @@ def zero_shot_eval(model, data, epoch, args, tokenizer=None):
 
     logging.info('Starting zero-shot imagenet.')
     if tokenizer is None:
-        tokenizer = get_tokenizer(args.model)
+        tokenizer = get_tokenizer(args.model, context_length=getattr(args, 'force_context_length', None))
 
     logging.info('Building zero-shot classifier')
     device = torch.device(args.device)

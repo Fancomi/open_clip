@@ -677,7 +677,17 @@ def main(args):
         if os.path.isfile(os.path.join(_local_model_dir, 'tokenizer.json')):
             _tokenizer_model = f'local-dir:{_local_model_dir}'
             logging.info(f"Using local tokenizer from: {_local_model_dir}")
-    tokenizer = get_tokenizer(_tokenizer_model, cache_dir=args.cache_dir, context_length=args.force_context_length)
+    tokenizer = get_tokenizer(_tokenizer_model, cache_dir=args.cache_dir,
+                              context_length=args.force_context_length)
+    _model_clip = getattr(model, 'clip_model', model)  # 解包 CLIPLeJEPA / CLIPWithDINO
+    _model_ctx = getattr(_model_clip, 'context_length', None)
+    if args.force_context_length is None and getattr(tokenizer, 'context_length', None) != _model_ctx:
+        # 对齐训练时 PE 系"随机初始化从头训练"的默认 256：tokenizer 与模型必须同窗口。
+        # 显式 --force-context-length 时两者天然一致，不重复设置。
+        logging.info(f"Aligning tokenizer context_length {getattr(tokenizer, 'context_length', None)} "
+                     f"-> model.context_length {_model_ctx}")
+        tokenizer = get_tokenizer(_tokenizer_model, cache_dir=args.cache_dir,
+                                  context_length=_model_ctx)
     data = get_data(
         args,
         (preprocess_train, preprocess_val),
