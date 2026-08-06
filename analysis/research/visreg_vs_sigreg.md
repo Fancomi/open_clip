@@ -577,11 +577,11 @@ VISReg, scale:shape = 1:1, no-center, weight = 1.83e-4, K = 256, target = cls
 | `scripts/tools/probe_grad_ratio.py` | 正则/对比损失的 backbone 梯度占比（2.1e-07）|
 | `scripts/tools/probe_islands.py` | 多岛性度量 + 同协方差高斯对照 |
 | `scripts/tools/probe_shape_slices.py` | 逐切片 loss 离散度、谱条件数、K 对估计波动 |
-| `scripts/train/visreg_cc3m.sh` | A–E 组件消融 |
-| `scripts/train/visreg_sweep.sh` | scale:shape 权重面 |
-| `scripts/train/visreg_wsweep.sh` | 跨数量级强度扫描 |
-| `scripts/train/visreg_mech.sh` | 机制改动（混合高斯目标 / top-K）|
-| `scripts/train/visreg_xmodal.sh` | 跨模态相对目标 + 正则侧/位置消融 |
+| `scripts/train/visreg.sh ab` | A–E 组件消融 |
+| `scripts/train/visreg.sh sweep` | scale:shape 权重面 |
+| `scripts/train/visreg.sh wsweep` | 跨数量级强度扫描 |
+| `scripts/train/visreg.sh mech` | 机制改动（混合高斯目标 / top-K）|
+| `scripts/train/visreg.sh xmodal` | 跨模态相对目标 + 正则侧/位置消融 |
 | `scripts/eval/eval_imagenet_zeroshot.sh` | 对存档 ckpt 补测 IN-1k zero-shot |
 
 ## 相关

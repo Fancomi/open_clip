@@ -323,13 +323,15 @@ pos 在涨，但**没有任何机制压低 neg**。一旦两塔特征云重叠�
 | `scripts/tools/probe_grad_ratio.py` | 梯度占比诊断（2.1e-07）|
 | `scripts/tools/probe_islands.py` | 多岛性 + 同协方差对照（#21）|
 | `scripts/tools/probe_shape_slices.py` | 逐切片离散度、谱条件数、K 敏感性 |
-| `scripts/train/visreg_cc3m.sh` | #1–#4 组件消融 |
-| `scripts/train/visreg_sweep.sh` | #5/#6 权重面 |
-| `scripts/train/visreg_magnitude.sh` | #7/#8 强度 0.5×/2× |
-| `scripts/train/visreg_wsweep.sh` | #9–#11 跨数量级强度、#16 |
-| `scripts/train/visreg_slices.sh` | #12 切片数 |
-| `scripts/train/visreg_mech.sh` | #13–#15 机制改动 |
-| `scripts/train/visreg_xmodal.sh` | #17–#20 位置与跨模态 |
+| `scripts/train/visreg.sh ab` | #1–#4 组件消融 |
+| `scripts/train/visreg.sh sweep` | #5/#6 权重面 |
+| `scripts/train/visreg.sh magnitude` | #7/#8 强度 0.5×/2× |
+| `scripts/train/visreg.sh wsweep` | #9–#11 跨数量级强度、#16 |
+| `scripts/train/visreg.sh slices` | #12 切片数 |
+| `scripts/train/visreg.sh mech` | #13–#15 机制改动 |
+| `scripts/train/visreg.sh stage2` | 第二阶段机制改进 |
+| `scripts/train/visreg.sh xmodal` | #17–#20 位置与跨模态 |
+| `scripts/train/visreg.sh smoke` | 冒烟（SIGReg/VISReg 各几步 + eval）|
 | `scripts/eval/eval_imagenet_zeroshot.sh` | 对存档 ckpt 补测 IN-1k |
 
 ## 相关

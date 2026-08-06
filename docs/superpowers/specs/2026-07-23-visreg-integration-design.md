@@ -87,7 +87,7 @@ DDP 平均梯度 ⇒ 等价 `K×M` 切片（论文 §3.2）。因此：
 
 ## 6. 实验矩阵（cc3m-tsv，冠军配方，只改正则项）
 
-`scripts/train/visreg_cc3m.sh`：`--dataset-type csv --csv-separator $'\t'`，
+`scripts/train/visreg.sh ab`：`--dataset-type csv --csv-separator $'\t'`，
 `--train-data .../cc3m-tsv/annotations/clip_train.tsv`，其余 = 冠军配方。
 
 | run | 正则 | 参数 |
@@ -100,7 +100,7 @@ DDP 平均梯度 ⇒ 等价 `K×M` 切片（论文 §3.2）。因此：
 
 ## 7. 验证
 
-1. **smoke**（`scripts/train/smoke_visreg.sh`）：几十 step 跑通 SIGReg / VISReg 两条 loss
+1. **smoke**（`scripts/train/visreg.sh smoke`）：几十 step 跑通 SIGReg / VISReg 两条 loss
    路径 + 强制一次 COCO eval，确认无 NaN、loss 下降、分布式 gather 正常。
 2. smoke 通过后正式投递 A–E。
 
