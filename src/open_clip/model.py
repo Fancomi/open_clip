@@ -723,6 +723,12 @@ class CLIPLeJEPA(nn.Module):
             proj_dim: int = 512,
             proj_layers: int = 3,
             output_dict: bool = False,
+            noise_scheme: str = "",
+            noise_vec_norm: float = 3.25,
+            noise_angle_min: float = 45.0,
+            noise_angle_max: float = 75.0,
+            noise_mix_ratio: float = 0.15,
+            noise_sides: str = "both",
     ):
         super().__init__()
         self.output_dict = output_dict
@@ -775,6 +781,18 @@ class CLIPLeJEPA(nn.Module):
             # "clip" or "cls": Identity (no extra parameters)
             self.image_projector = nn.Identity()
             self.text_projector = nn.Identity()
+
+        # CLIP 空间 embedding 噪声（训练增强，eval 自动关闭）
+        from .embedding_noise import EmbeddingNoise
+        self.embedding_noise = EmbeddingNoise.create(
+            noise_scheme, clip_embed_dim,
+            vec_norm=noise_vec_norm,
+            angle_min=noise_angle_min, angle_max=noise_angle_max,
+            mix_ratio=noise_mix_ratio,
+        )
+        assert noise_sides in ("both", "img", "txt"), \
+            f"noise_sides must be 'both'/'img'/'txt', got {noise_sides!r}"
+        self.noise_sides = noise_sides
 
     @staticmethod
     def _build_mlp(in_dim: int, out_dim: int, hidden_dim: int, num_layers: int) -> nn.Sequential:
@@ -838,6 +856,13 @@ class CLIPLeJEPA(nn.Module):
 
         image_features = F.normalize(image_clip_raw, dim=-1) if image_clip_raw is not None else None
         text_features = F.normalize(text_raw, dim=-1) if text_raw is not None else None
+
+        # 训练时对 CLIP 空间特征加噪声（对比损失用加噪特征，增强鲁棒性）
+        if self.training and self.embedding_noise is not None:
+            if image_features is not None and self.noise_sides in ("both", "img"):
+                image_features = self.embedding_noise(image_features)
+            if text_features is not None and self.noise_sides in ("both", "txt"):
+                text_features = self.embedding_noise(text_features)
 
         if self.output_dict:
             out = {
@@ -998,6 +1023,115 @@ class DualTeacherCLIP(nn.Module):
             "logit_bias_sig": self.logit_bias_sig,
         }
         return out
+
+
+class DualTextCLIP(nn.Module):
+    """共享图像编码器 + 两个可训练文本塔（短 gt + 长 dense），双 SigLIP 对齐。
+
+    架构：一个图像 backbone，两个独立 TextTransformer（短/长文本），各自配
+    一个图像线性 head（投影到对应文本空间），用 DualSigLipLoss 并行训练。
+    图像学到同时兼容短 caption 与 gemma dense 长文本的表征。
+
+    forward 输出 key 对齐 DualSigLipLoss：
+      image_features_pe/text_features_pe/logit_scale_pe/logit_bias_pe
+      image_features_sig/text_features_sig/logit_scale_sig/logit_bias_sig
+    eval（texts_sig=None）时退化为单塔（pe 分支）。
+    """
+    output_dict: torch.jit.Final[bool]
+
+    def __init__(
+            self,
+            image_backbone: nn.Module,
+            text_cfg: CLIPTextCfg,
+            embed_dim: int = 1024,
+            backbone_dim: int = 768,
+            init_logit_scale: float = np.log(1 / 0.07),
+            init_logit_bias: Optional[float] = -10.0,
+            quick_gelu: bool = False,
+            cast_dtype: Optional[torch.dtype] = None,
+            output_dict: bool = True,
+    ):
+        super().__init__()
+        self.output_dict = output_dict
+        self.visual = image_backbone
+        self.backbone_dim = backbone_dim
+
+        # 两个独立可训练文本塔（短/长，共享 text_cfg；context_length 由调用方决定）
+        self.text_short = _build_text_tower(embed_dim, text_cfg, quick_gelu, cast_dtype)
+        self.text_long = _build_text_tower(embed_dim, text_cfg, quick_gelu, cast_dtype)
+
+        # 图像双 head：backbone pool → 各文本空间
+        self.head_pe = nn.Linear(backbone_dim, embed_dim)
+        self.head_sig = nn.Linear(backbone_dim, embed_dim)
+
+        # 双 logit scale/bias（SigLIP）；pe 分支无独立 bias（DDP 静态图避免未用参数）
+        self.logit_scale_pe = nn.Parameter(torch.ones([]) * init_logit_scale)
+        self.logit_bias_pe = None
+        self.logit_scale_sig = nn.Parameter(torch.ones([]) * init_logit_scale)
+        self.logit_bias_sig = nn.Parameter(torch.ones([]) * init_logit_bias) if init_logit_bias is not None else None
+
+        # 兼容属性（train.py / factory 依赖）
+        self.context_length = self.text_short.context_length
+        self.batch_gap_loss = None
+        self.modality_gap_weight = 0.0
+
+    def _image_feat(self, tokens: torch.Tensor) -> torch.Tensor:
+        """CLIP embedding：trunk pool → fc_norm → visual.head（[B, embed_dim]）。"""
+        trunk = self.visual.trunk
+        pooled = trunk.pool(tokens)
+        pooled = trunk.fc_norm(pooled)
+        return self.visual.head(pooled)
+
+    def forward(self, images: torch.Tensor, texts_pe: torch.Tensor, texts_sig: Optional[torch.Tensor] = None):
+        tokens = self.visual.trunk.forward_features(images)
+        feat = self._image_feat(tokens)
+
+        image_features_pe = F.normalize(self.head_pe(feat), dim=-1)
+        text_features_pe = F.normalize(self.text_short(texts_pe), dim=-1)
+
+        if texts_sig is None:
+            return {
+                "image_features": image_features_pe,
+                "text_features": text_features_pe,
+                "logit_scale": self.logit_scale_pe.exp(),
+                "logit_bias": self.logit_bias_pe,
+            }
+
+        image_features_sig = F.normalize(self.head_sig(feat), dim=-1)
+        text_features_sig = F.normalize(self.text_long(texts_sig), dim=-1)
+
+        out = {
+            "image_features_pe": image_features_pe,
+            "text_features_pe": text_features_pe,
+            "logit_scale_pe": self.logit_scale_pe.exp(),
+            "logit_bias_pe": self.logit_bias_pe,
+            "image_features_sig": image_features_sig,
+            "text_features_sig": text_features_sig,
+            "logit_scale_sig": self.logit_scale_sig.exp(),
+            "logit_bias_sig": self.logit_bias_sig,
+        }
+        if self.output_dict:
+            return out
+        return image_features_pe, text_features_pe, image_features_sig, text_features_sig
+
+    def encode_text(self, text, normalize: bool = False):
+        """短塔编码（zero-shot 用标准模板）。"""
+        x = self.text_short(text)
+        return F.normalize(x, dim=-1) if normalize else x
+
+    @torch.jit.ignore
+    def set_grad_checkpointing(self, enable=True):
+        if hasattr(self.visual, 'trunk') and hasattr(self.visual.trunk, 'set_grad_checkpointing'):
+            self.visual.trunk.set_grad_checkpointing(enable)
+        self.text_short.set_grad_checkpointing(enable)
+        self.text_long.set_grad_checkpointing(enable)
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        nwd = set()
+        if hasattr(self.visual, 'trunk') and hasattr(self.visual.trunk, 'no_weight_decay'):
+            nwd |= {f'visual.trunk.{p}' for p in self.visual.trunk.no_weight_decay()}
+        return nwd
 
 
 class MultiTeacherCLIP(nn.Module):

@@ -91,6 +91,12 @@ def parse_args(args):
         help="For csv-like datasets, the name of the key for the captions."
     )
     parser.add_argument(
+        "--csv-caption2-key",
+        type=str,
+        default=None,
+        help="Optional second caption column (DualTextCLIP: short+long text towers)."
+    )
+    parser.add_argument(
         "--imagenet-val",
         type=str,
         default=None,
@@ -258,6 +264,14 @@ def parse_args(args):
         default=False,
         action='store_true',
         help="Enable dual-teacher mode: one image encoder aligns with two frozen text encoders.",
+    )
+    parser.add_argument(
+        "--dual-text",
+        default=False,
+        action='store_true',
+        help="Enable DualTextCLIP: shared image tower + two trainable text towers (short+long), "
+             "dual SigLIP alignment. Requires --csv-caption2-key (long caption column) "
+             "and --tokenizer-secondary is auto-created.",
     )
     parser.add_argument(
         "--dual-cls",
@@ -645,6 +659,45 @@ def parse_args(args):
         type=int,
         default=3,
         help='Projector MLP depth (only used with clip_proj / cls_proj targets).'
+    )
+    # ── CLIP 空间 embedding 噪声（NOVIC 风格训练增强）────────────────────
+    parser.add_argument(
+        "--noise-scheme",
+        default="",
+        choices=["", "gausselem", "uniformangle", "gausselemuniformangle"],
+        help='CLIP embedding noise scheme for contrastive training. '
+             '"gausselem": element Gaussian (vec_norm); "uniformangle": rotate by angle in [min,max]; '
+             '"gausselemuniformangle": mix by ratio. Empty = disabled (default).'
+    )
+    parser.add_argument(
+        "--noise-vec-norm",
+        type=float,
+        default=3.25,
+        help='GaussElem noise vector norm (NOVIC default 3.25).'
+    )
+    parser.add_argument(
+        "--noise-angle-min",
+        type=float,
+        default=45.0,
+        help='UniformAngle min rotation in degrees (NOVIC default 45).'
+    )
+    parser.add_argument(
+        "--noise-angle-max",
+        type=float,
+        default=75.0,
+        help='UniformAngle max rotation in degrees (NOVIC default 75).'
+    )
+    parser.add_argument(
+        "--noise-mix-ratio",
+        type=float,
+        default=0.15,
+        help='Mix ratio of UniformAngle in gausselemuniformangle (NOVIC default 0.15).'
+    )
+    parser.add_argument(
+        "--noise-sides",
+        default="both",
+        choices=["both", "img", "txt"],
+        help='Which side(s) get noise in CLIP space: both (default) / img / txt.'
     )
     parser.add_argument(
         "--sigreg-slices",
