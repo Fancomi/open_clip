@@ -101,11 +101,14 @@ run() {  # run TAG PORT DATA EXTRA
 run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
     local TAG=$1 PORT=$2 EXTRA=$3
     local NAME="visreg_gemma_${DATA_VERSION}_${TAG}_${TS}"
-    # 动态构造，保证 EPOCHS/WARMUP/PreGpuBS 的 override 生效
+    # 动态构造，保证 EPOCHS/WARMUP/PreGpuBS/GEMMA_N_TRAIN 的 override 生效
     local BASE="--precision amp_bf16 --workers 32 --batch-size ${PreGpuBS} \
         --lr ${LR} --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 \
         --save-frequency 1 --grad-checkpointing --log-every-n-steps 1 --val-frequency 1"
-    local GEMMA_COMMON="--warmup ${WARMUP} ${BASE} --epochs ${EPOCHS} \
+    # csv loader 用实际行数作 num_samples；GEMMA_N_TRAIN>0 时强制样本数（冒烟用）
+    local NS=""
+    [ -n "${GEMMA_N_TRAIN:-}" ] && [ "${GEMMA_N_TRAIN}" -gt 0 ] 2>/dev/null && NS="--train-num-samples ${GEMMA_N_TRAIN}"
+    local GEMMA_COMMON="--warmup ${WARMUP} ${BASE} --epochs ${EPOCHS} ${NS} \
         --dataset-type csv --force-context-length 256 \
         --csv-img-key filepath --csv-caption-key caption --val-num-captions-per-image 5 \
         --imagenet-val ${IMNVAL}"
@@ -270,8 +273,9 @@ case "${1:-usage}" in
         echo "!!!! 缺 ${GEMMA_TSV} —— 先构建"
         exit 1
     fi
-    # 冒烟：1 epoch、小 batch、短 warmup（需在 GEMMA_COMMON 展开前设置）
+    # 冒烟：1 epoch、小 batch、短 warmup、小样本（4 steps）
     EPOCHS=1 WARMUP=2 PreGpuBS=256
+    GEMMA_N_TRAIN=$((PreGpuBS * GPUS * 4))
     run_gemma "smoke" 29642 "--reg-method visreg --sigreg-weight ${VISREG_W} \
         --visreg-lambda-scale 1.0 --visreg-lambda-shape 1.0 --visreg-lambda-center 0.0"
     ;;
