@@ -498,9 +498,9 @@ class DualSigLipLoss(nn.Module):
         self.loss_sig = SigLipLoss(cache_labels, rank, world_size, dist_impl)
 
     def forward(self, image_features_pe, text_features_pe, logit_scale_pe,
-                image_features_sig, text_features_sig, logit_scale_sig, logit_bias_sig,
-                output_dict=False, **kwargs):
-        lp = self.loss_pe(image_features_pe, text_features_pe, logit_scale_pe, None, output_dict=True)
+                image_features_sig, text_features_sig, logit_scale_sig, logit_bias_sig=None,
+                logit_bias_pe=None, output_dict=False, **kwargs):
+        lp = self.loss_pe(image_features_pe, text_features_pe, logit_scale_pe, logit_bias_pe, output_dict=True)
         ls = self.loss_sig(image_features_sig, text_features_sig, logit_scale_sig, logit_bias_sig, output_dict=True)
         loss = lp["siglip_loss"] + ls["siglip_loss"]
         if output_dict:

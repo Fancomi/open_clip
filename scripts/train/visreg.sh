@@ -130,6 +130,32 @@ run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
         --name "${NAME}" < /dev/null || echo "!!!! ${TAG} 失败/崩溃（本身是信息，继续）"
 }
 
+run_dual() {  # run_dual TAG PORT   (DualTextCLIP 双文本塔, 双列 TSV)
+    local TAG=$1 PORT=$2
+    local NAME="visreg_dual_${TAG}_${TS}"
+    # 双列数据：filepath, caption_short(gt), caption_dense；无 sigreg（双塔自带双 SigLIP）
+    local DUAL_COMMON="--warmup ${WARMUP} --precision amp_bf16 --workers 32 --batch-size ${PreGpuBS} \
+        --lr ${LR} --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 \
+        --save-frequency 1 --grad-checkpointing --log-every-n-steps 1 --val-frequency 1 \
+        --epochs ${EPOCHS} --dataset-type csv --force-context-length 256 \
+        --csv-img-key filepath --csv-caption-key caption_short --csv-caption2-key caption_dense \
+        --val-num-captions-per-image 5 --imagenet-val ${IMNVAL}"
+    echo "======== [dual] ${TAG} => ${NAME} ========"
+    if [ "${DRY_RUN:-0}" = "1" ]; then
+        echo "[dry-run] torchrun --nproc_per_node=${GPUS} --master_port=${PORT} -m open_clip_train.main \
+            --model PE-Core-B-16-dinov3 --train-data ${DUAL_TSV} --val-data ${VAL} \
+            ${DUAL_COMMON} --siglip --neg-mode projective --init-logit-scale ${INIT_LS} \
+            --opt muon --muon-lr ${MUON_LR} --probe-data ${PROBE_TSV} --dual-text --name ${NAME}"
+        return 0
+    fi
+    torchrun --nproc_per_node=${GPUS} --master_port=${PORT} -m open_clip_train.main \
+        --model "PE-Core-B-16-dinov3" \
+        --train-data "${DUAL_TSV}" --val-data "${VAL}" \
+        ${DUAL_COMMON} --siglip --neg-mode projective --init-logit-scale ${INIT_LS} \
+        --opt muon --muon-lr ${MUON_LR} --probe-data ${PROBE_TSV} --dual-text \
+        --name "${NAME}" < /dev/null || echo "!!!! ${TAG} 失败/崩溃（本身是信息，继续）"
+}
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 各模式
 # ═══════════════════════════════════════════════════════════════════════════
@@ -280,9 +306,49 @@ case "${1:-usage}" in
         --visreg-lambda-scale 1.0 --visreg-lambda-shape 1.0 --visreg-lambda-center 0.0"
     ;;
 
+  # ── 噪声消融（cc3m gt 上验证 NOVIC 风格噪声）──────────────────────────
+  #   usage: NOISE_SCHEME=gausselemuniformangle NOISE_VEC_NORM=0.5 \
+  #          NOISE_ANGLE_MIN=45 NOISE_ANGLE_MAX=75 NOISE_MIX_RATIO=0.15 \
+  #          bash scripts/train/visreg.sh noise TAG PORT
+  noise)
+    _tag="${2:-gauss}"; _port="${3:-29650}"
+    _ns="${NOISE_SCHEME:-}"
+    _extra=""
+    if [ -n "$_ns" ]; then
+        _extra="--noise-scheme ${_ns} --noise-vec-norm ${NOISE_VEC_NORM:-3.25} \
+            --noise-angle-min ${NOISE_ANGLE_MIN:-45} --noise-angle-max ${NOISE_ANGLE_MAX:-75} \
+            --noise-mix-ratio ${NOISE_MIX_RATIO:-0.15} --noise-sides ${NOISE_SIDES:-both}"
+    fi
+    run "noise_${_tag}" ${_port} "${CC3M_TSV}" "${VISREG_E} ${_extra}"
+    ;;
+
+  # ── 噪声消融全组（cc3m gt 串行，E 配方 + 各噪声方案）──────────────────
+  #   baseline（无噪声）= 本次 cc3m gt 结果（COCO 24.10/IN 23.48），不重跑
+  noise-ab)
+    _p=29651
+    run "n_g05"     $((_p)) "${CC3M_TSV}" "${VISREG_E} --noise-scheme gausselem --noise-vec-norm 0.5"
+    run "n_g325"    $((_p+1)) "${CC3M_TSV}" "${VISREG_E} --noise-scheme gausselem --noise-vec-norm 3.25"
+    run "n_uniform" $((_p+2)) "${CC3M_TSV}" "${VISREG_E} --noise-scheme uniformangle --noise-angle-min 45 --noise-angle-max 75"
+    run "n_mix05"   $((_p+3)) "${CC3M_TSV}" "${VISREG_E} --noise-scheme gausselemuniformangle --noise-vec-norm 0.5 --noise-angle-min 45 --noise-angle-max 75 --noise-mix-ratio 0.15"
+    run "n_mix325"  $((_p+4)) "${CC3M_TSV}" "${VISREG_E} --noise-scheme gausselemuniformangle --noise-vec-norm 3.25 --noise-angle-min 45 --noise-angle-max 75 --noise-mix-ratio 0.15"
+    ;;
+
+  # ── DualTextCLIP：双文本塔（短 gt + 长 dense），双 SigLIP 对齐 ──────────
+  #   数据 = clip_train_dual.tsv（filepath, caption_short, caption_dense）
+  dual-text)
+    DUAL_TSV="${GEMMA_TSV_DIR}/clip_train_dual.tsv"
+    if [ ! -f "${DUAL_TSV}" ]; then
+        echo "!!!! 缺 ${DUAL_TSV} —— 先跑 scripts/data/build_dual_tsv.py"
+        exit 1
+    fi
+    _tag="${2:-E}"; _port="${3:-29660}"
+    # DualTextCLIP：无 sigreg（双塔自带双损失），E 配方超参 + 双列数据
+    run_dual "${_tag}" ${_port}
+    ;;
+
   *)
     echo "未知模式: ${1}"
-    echo "用法: bash scripts/train/visreg.sh {smoke|ab|sweep|magnitude|wsweep|slices|mech|stage2|xmodal|gemma|gemma-smoke}"
+    echo "用法: bash scripts/train/visreg.sh {smoke|ab|sweep|magnitude|wsweep|slices|mech|stage2|xmodal|gemma|gemma-smoke|noise|noise-ab|dual-text}"
     exit 1
     ;;
 esac

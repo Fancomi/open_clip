@@ -32,7 +32,7 @@ except ImportError:
 
 from open_clip import create_model_and_transforms, trace_model, get_tokenizer, create_loss
 from open_clip.factory import attach_modality_modules
-from open_clip.model import CLIPLeJEPA, CLIPWithDINO, DualTeacherCLIP, MultiTeacherCLIP
+from open_clip.model import CLIPLeJEPA, CLIPWithDINO, DualTeacherCLIP, MultiTeacherCLIP, DualTextCLIP
 from open_clip_train.data import get_data
 from open_clip_train.distributed import is_master, init_distributed_device, broadcast_object
 from open_clip_train.logger import setup_logging
@@ -253,9 +253,29 @@ def main(args):
         **model_kwargs,
     )
 
+    # DualTextCLIP: 共享图像塔 + 双文本塔（短 gt + 长 dense），双 SigLIP 对齐
+    if getattr(args, 'dual_text', False):
+        from open_clip.model import CLIPTextCfg
+        from open_clip.factory import get_model_config
+        logging.info("=> Wrapping model with DualTextCLIP (short + long text towers)")
+        _cfg = get_model_config(args.model)
+        _text_cfg = dict(_cfg['text_cfg'])
+        _text_cfg['context_length'] = args.force_context_length or _text_cfg.get('context_length', 256)
+        _base_clip = model.clip_model if isinstance(model, CLIPLeJEPA) else model
+        model = DualTextCLIP(
+            image_backbone=_base_clip.visual,
+            text_cfg=CLIPTextCfg(**_text_cfg),
+            embed_dim=_base_clip.embed_dim if hasattr(_base_clip, 'embed_dim') else _cfg['embed_dim'],
+            backbone_dim=_cfg['embed_dim'],  # _image_feat 用 visual.head 输出 [B, embed_dim]
+            init_logit_scale=np.log(10) if getattr(args, 'siglip', False) else np.log(1 / 0.07),
+            init_logit_bias=-10.0 if getattr(args, 'siglip', False) else None,
+            output_dict=True,
+        ).to(device)
+        logging.info(f"   DualTextCLIP assembled (embed_dim={_cfg['embed_dim']})")
+
     # SIGReg (standalone, no DINOv3): wrap model to expose image_proj/text_proj
     sigreg_target = getattr(args, 'sigreg_target', 'none') or 'none'
-    if sigreg_target != 'none' and not getattr(args, 'dinov3', False):
+    if sigreg_target != 'none' and not getattr(args, 'dinov3', False) and not getattr(args, 'dual_text', False):
         logging.info(f"=> Wrapping model with CLIPLeJEPA (sigreg_target={sigreg_target})")
         model = CLIPLeJEPA(
             clip_model=model,
@@ -263,6 +283,12 @@ def main(args):
             proj_dim=getattr(args, 'sigreg_proj_dim', 512),
             proj_layers=getattr(args, 'sigreg_proj_layers', 3),
             output_dict=True,
+            noise_scheme=getattr(args, 'noise_scheme', ''),
+            noise_vec_norm=getattr(args, 'noise_vec_norm', 3.25),
+            noise_angle_min=getattr(args, 'noise_angle_min', 45.0),
+            noise_angle_max=getattr(args, 'noise_angle_max', 75.0),
+            noise_mix_ratio=getattr(args, 'noise_mix_ratio', 0.15),
+            noise_sides=getattr(args, 'noise_sides', 'both'),
         )
         model = model.to(device)
 
@@ -373,6 +399,13 @@ def main(args):
         )
         logging.info(f"   DualTeacherCLIP assembled: dual_cls={dual_cls}, backbone_dim={pe_backbone_dim}, "
                      f"pe_dim={pe_dim}, sig_dim={sig_dim}")
+
+    # DualTextCLIP 的长塔 tokenizer（与短塔同款，context 对齐模型）
+    if getattr(args, 'dual_text', False):
+        tokenizer_secondary = get_tokenizer(
+            args.model, cache_dir=args.cache_dir,
+            context_length=args.force_context_length or 256,
+        )
 
     # ── Multi-teacher mode ───────────────────────────────────────────────────
     tokenizer_list = None
@@ -531,7 +564,7 @@ def main(args):
             ddp_args.pop('find_unused_parameters', None)
         elif getattr(args, 'pos_only', 'none') != 'none':
             ddp_args['static_graph'] = True
-        if getattr(args, 'dual_teacher', False):
+        if getattr(args, 'dual_teacher', False) or getattr(args, 'dual_text', False):
             ddp_args['static_graph'] = True
         if getattr(args, 'multi_teacher', False):
             ddp_args['static_graph'] = True

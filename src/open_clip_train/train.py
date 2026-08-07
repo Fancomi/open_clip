@@ -98,7 +98,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
 
         # ---- Batch unpacking: DINOv3 vs standard ----
         is_multi_teacher = getattr(args, 'multi_teacher', False)
-        is_dual_teacher = getattr(args, 'dual_teacher', False)
+        is_dual_teacher = getattr(args, 'dual_teacher', False) or getattr(args, 'dual_text', False)
         if is_dinov3:
             # batch = (batch_dict, texts)
             # batch_dict: {global_crops, local_crops, collated_masks, masks_weight, mask_indices}

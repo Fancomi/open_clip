@@ -27,16 +27,24 @@ except ImportError:
 
 
 class CsvDataset(Dataset):
-    def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", tokenizer=None):
+    def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", tokenizer=None,
+                 caption2_key=None, tokenizer2=None):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
 
         self.images = df[img_key].tolist()
+        # caption_key 缺失时回退到 'caption'（val 单列数据集兼容 dual-text 配置）
+        if caption_key not in df.columns:
+            caption_key = 'caption'
         self.captions = df[caption_key].tolist()
         self.transforms = transforms
         logging.debug('Done loading data.')
 
         self.tokenize = tokenizer
+        # 可选第二文本列（DualTextCLIP 用）：caption2_key + tokenizer2
+        self.caption2_key = caption2_key if caption2_key and caption2_key in df.columns else None
+        self.captions2 = df[caption2_key].tolist() if self.caption2_key else None
+        self.tokenize2 = tokenizer2
 
     def __len__(self):
         return len(self.captions)
@@ -48,6 +56,9 @@ class CsvDataset(Dataset):
             # 损坏图片: 返回随机邻居替代
             return self.__getitem__((idx + 1) % len(self))
         texts = self.tokenize([str(self.captions[idx])])[0]
+        if self.captions2 is not None:
+            texts2 = self.tokenize2([str(self.captions2[idx])])[0]
+            return images, texts, texts2
         return images, texts
 
 
@@ -608,7 +619,9 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None, **kw
         img_key=args.csv_img_key,
         caption_key=args.csv_caption_key,
         sep=args.csv_separator,
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
+        caption2_key=getattr(args, 'csv_caption2_key', None),
+        tokenizer2=kwargs.get('tokenizer_secondary', None),
     )
     num_samples = len(dataset)
     sampler = DistributedSampler(dataset) if args.distributed and is_train else None
