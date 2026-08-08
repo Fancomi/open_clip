@@ -1082,7 +1082,30 @@ class DualTextCLIP(nn.Module):
         pooled = trunk.fc_norm(pooled)
         return self.visual.head(pooled)
 
-    def forward(self, images: torch.Tensor, texts_pe: torch.Tensor, texts_sig: Optional[torch.Tensor] = None):
+    def encode_image(self, image, normalize: bool = False):
+        """短塔对应的图像编码（zero-shot 用）。"""
+        tokens = self.visual.trunk.forward_features(image)
+        feat = self._image_feat(tokens)
+        x = self.head_pe(feat)
+        return F.normalize(x, dim=-1) if normalize else x
+
+    def encode_text(self, text, normalize: bool = False):
+        """短塔编码（zero-shot 用标准模板）。"""
+        x = self.text_short(text)
+        return F.normalize(x, dim=-1) if normalize else x
+
+    def forward(self, images: Optional[torch.Tensor] = None, texts_pe: Optional[torch.Tensor] = None,
+                texts_sig: Optional[torch.Tensor] = None, image: Optional[torch.Tensor] = None,
+                text: Optional[torch.Tensor] = None):
+        # 兼容关键字调用（zero-shot: image/text）
+        if image is not None:
+            images = image
+        if text is not None:
+            texts_pe = text
+        # 仅图像（zero-shot 推理）：返回短塔图像特征
+        if images is not None and texts_pe is None:
+            return {"image_features": self.encode_image(images, normalize=True),
+                    "logit_scale": self.logit_scale_pe.exp(), "logit_bias": self.logit_bias_pe}
         tokens = self.visual.trunk.forward_features(images)
         feat = self._image_feat(tokens)
 
@@ -1113,11 +1136,6 @@ class DualTextCLIP(nn.Module):
         if self.output_dict:
             return out
         return image_features_pe, text_features_pe, image_features_sig, text_features_sig
-
-    def encode_text(self, text, normalize: bool = False):
-        """短塔编码（zero-shot 用标准模板）。"""
-        x = self.text_short(text)
-        return F.normalize(x, dim=-1) if normalize else x
 
     @torch.jit.ignore
     def set_grad_checkpointing(self, enable=True):

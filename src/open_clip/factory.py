@@ -911,7 +911,7 @@ def create_loss(args):
             world_size=args.world_size,
             dist_impl=getattr(args, 'loss_dist_impl', None),
         )
-    elif getattr(args, 'dual_teacher', False):
+    elif getattr(args, 'dual_teacher', False) or getattr(args, 'dual_text', False):
         return DualSigLipLoss(
             rank=args.rank,
             world_size=args.world_size,
