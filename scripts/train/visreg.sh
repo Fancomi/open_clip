@@ -333,6 +333,17 @@ case "${1:-usage}" in
     run "n_mix325"  $((_p+4)) "${CC3M_TSV}" "${VISREG_E} --noise-scheme gausselemuniformangle --noise-vec-norm 3.25 --noise-angle-min 45 --noise-angle-max 75 --noise-mix-ratio 0.15"
     ;;
 
+  # ── 小角度噪声消融（验证"方向多样性 std"假设）─────────────────────────
+  #   对照: n_g05(22.66/23.00)  n_mix05(21.66/22.94)
+  noise-small)
+    _p=29661
+    run "n_s5_20"      $((_p)) "${CC3M_TSV}" "${VISREG_E} --noise-scheme uniformangle --noise-angle-min 5 --noise-angle-max 20"
+    run "n_s10_30"     $((_p+1)) "${CC3M_TSV}" "${VISREG_E} --noise-scheme uniformangle --noise-angle-min 10 --noise-angle-max 30"
+    run "n_g05_a5_20"  $((_p+2)) "${CC3M_TSV}" "${VISREG_E} --noise-scheme gausselemuniformangle --noise-vec-norm 0.5 --noise-angle-min 5 --noise-angle-max 20 --noise-mix-ratio 0.15"
+    run "n_g05_a10_30" $((_p+3)) "${CC3M_TSV}" "${VISREG_E} --noise-scheme gausselemuniformangle --noise-vec-norm 0.5 --noise-angle-min 10 --noise-angle-max 30 --noise-mix-ratio 0.15"
+    run "n_g05_a10_30r30" $((_p+4)) "${CC3M_TSV}" "${VISREG_E} --noise-scheme gausselemuniformangle --noise-vec-norm 0.5 --noise-angle-min 10 --noise-angle-max 30 --noise-mix-ratio 0.30"
+    ;;
+
   # ── DualTextCLIP：双文本塔（短 gt + 长 dense），双 SigLIP 对齐 ──────────
   #   数据 = clip_train_dual.tsv（filepath, caption_short, caption_dense）
   dual-text)
