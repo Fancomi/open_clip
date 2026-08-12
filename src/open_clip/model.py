@@ -729,6 +729,7 @@ class CLIPLeJEPA(nn.Module):
             noise_angle_max: float = 75.0,
             noise_mix_ratio: float = 0.15,
             noise_sides: str = "both",
+            pcm_dim: int = 0,
     ):
         super().__init__()
         self.output_dict = output_dict
@@ -737,6 +738,8 @@ class CLIPLeJEPA(nn.Module):
         self.logit_scale = clip_model.logit_scale
         self.logit_bias = getattr(clip_model, 'logit_bias', None)
         self.sigreg_target = sigreg_target
+        # PCM（Long-CLIP Primary Component Matching）短文本分支的 PCA 维度，0=关闭
+        self.pcm_dim = pcm_dim
 
         # 获取 CLIP embedding dim（TimmModel.head 输出）
         clip_embed_dim = (
@@ -804,6 +807,22 @@ class CLIPLeJEPA(nn.Module):
         layers.append(nn.Linear(hidden_dim, out_dim))
         return nn.Sequential(*layers)
 
+    @staticmethod
+    def _pca_reduce(x: torch.Tensor, k: int) -> torch.Tensor:
+        """PCA 降维再重建（Long-CLIP Primary Component Matching, ECCV 2024）。
+
+        保留前 k 个主成分后回到原空间，迫使短文本只匹配图像的"主要语义"，
+        从而在长文本主导训练时保住短模板（zero-shot）能力。
+        用 SVD 而非 eig（原论文注释：避免 inf）。
+        """
+        if k <= 0 or k >= x.shape[-1] or x.shape[0] <= k:
+            return x
+        mean = x.mean(dim=0, keepdim=True)
+        xc = (x - mean).float()
+        _, _, vt = torch.linalg.svd(xc, full_matrices=False)
+        pc = vt[:k].T                       # [D, k]
+        return (xc @ pc @ pc.T + mean).to(x.dtype)
+
     def _get_image_raw(self, image: torch.Tensor):
         """Return (clip_embedding_unnorm, sigreg_input_unnorm)."""
         if self.sigreg_target in ("cls", "cls_proj"):
@@ -831,7 +850,13 @@ class CLIPLeJEPA(nn.Module):
         """Delegate to wrapped CLIP (build_zero_shot_classifier needs this)."""
         return self.clip_model.encode_text(text, normalize=normalize)
 
-    def forward(self, image: Optional[torch.Tensor] = None, text: Optional[torch.Tensor] = None):
+    def forward(self, image: Optional[torch.Tensor] = None, text: Optional[torch.Tensor] = None,
+                text2: Optional[torch.Tensor] = None):
+        """前向。
+
+        text        : 主文本（PCM 模式下为长文本 dense；常规模式为唯一文本）
+        text2       : PCM 短文本分支（gt 短 caption）。仅 pcm_dim>0 且训练时生效。
+        """
         image_proj = None
         text_proj = None
 
@@ -864,6 +889,16 @@ class CLIPLeJEPA(nn.Module):
             if text_features is not None and self.noise_sides in ("both", "txt"):
                 text_features = self.embedding_noise(text_features)
 
+        # ── PCM 短文本分支（Long-CLIP Primary Component Matching）─────────────
+        # 长文本训练会让 EOT 表征被长文主导，短模板（zero-shot）失效。
+        # 短分支用 PCA 降维的图像特征对齐短 caption，迫使主成分保留短文本语义。
+        pcm_img_features = pcm_txt_features = None
+        if text2 is not None and self.pcm_dim > 0 and image_clip_raw is not None:
+            pcm_txt_raw = self.clip_model.encode_text(text2, normalize=False)
+            pcm_txt_features = F.normalize(pcm_txt_raw, dim=-1)
+            pcm_img_features = F.normalize(
+                self._pca_reduce(image_features, self.pcm_dim), dim=-1)
+
         if self.output_dict:
             out = {
                 "image_features": image_features, "text_features": text_features,
@@ -874,6 +909,9 @@ class CLIPLeJEPA(nn.Module):
                 out["logit_bias"] = self.logit_bias
             if gap_loss_val is not None:
                 out["modality_gap_loss"] = gap_loss_val
+            if pcm_img_features is not None:
+                out["pcm_image_features"] = pcm_img_features
+                out["pcm_text_features"] = pcm_txt_features
             return out
         if self.logit_bias is not None:
             return image_features, text_features, self.logit_scale.exp(), self.logit_bias, image_proj, text_proj

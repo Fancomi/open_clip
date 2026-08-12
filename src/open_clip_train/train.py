@@ -98,7 +98,9 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
 
         # ---- Batch unpacking: DINOv3 vs standard ----
         is_multi_teacher = getattr(args, 'multi_teacher', False)
-        is_dual_teacher = getattr(args, 'dual_teacher', False) or getattr(args, 'dual_text', False)
+        is_pcm = getattr(args, 'pcm_weight', 0.0) > 0
+        # PCM 与 dual_teacher/dual_text 共用「三元组 batch」解包路径（images, text, text2）
+        is_dual_teacher = getattr(args, 'dual_teacher', False) or getattr(args, 'dual_text', False) or is_pcm
         if is_dinov3:
             # batch = (batch_dict, texts)
             # batch_dict: {global_crops, local_crops, collated_masks, masks_weight, mask_indices}

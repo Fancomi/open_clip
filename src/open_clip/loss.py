@@ -1269,9 +1269,11 @@ class SIGRegContrastiveLoss(nn.Module):
             reg_sides: str = 'both',
             xmatch_weight: float = 0.0,
             xmatch_mode: str = 'pair',
+            pcm_weight: float = 0.0,
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
+        self.pcm_weight = pcm_weight
         self.pos_only = pos_only
         self.sigreg_joint = sigreg_joint
         self.within_modal_weight = within_modal_weight
@@ -1403,6 +1405,8 @@ class SIGRegContrastiveLoss(nn.Module):
             image_proj=None,
             text_proj=None,
             modality_gap_loss: Optional[torch.Tensor] = None,
+            pcm_image_features=None,
+            pcm_text_features=None,
             output_dict: bool = False,
     ):
         # SIGReg 作用在 unnormalized proj 上（由 CLIPLeJEPA 提供）
@@ -1491,6 +1495,13 @@ class SIGRegContrastiveLoss(nn.Module):
         if self.xmatch is not None and image_proj is not None and text_proj is not None \
                 and image_proj.shape[-1] == text_proj.shape[-1]:
             losses["xmatch_loss"] = self.xmatch_weight * self.xmatch(image_proj, text_proj)
+
+        # PCM 短文本分支（Long-CLIP Primary Component Matching）：
+        # 与主损失同款（含 neg_mode），作用在 PCA 降维图像特征 × 短 caption 上。
+        if pcm_image_features is not None and pcm_text_features is not None and self.pcm_weight > 0:
+            losses["pcm_loss"] = self.pcm_weight * self.main_loss(
+                pcm_image_features, pcm_text_features, logit_scale, logit_bias, output_dict=False
+            )
 
         # modality_gap_loss pre-computed by model (pre-L2-norm), just accumulate
         if modality_gap_loss is not None:

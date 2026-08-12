@@ -289,6 +289,7 @@ def main(args):
             noise_angle_max=getattr(args, 'noise_angle_max', 75.0),
             noise_mix_ratio=getattr(args, 'noise_mix_ratio', 0.15),
             noise_sides=getattr(args, 'noise_sides', 'both'),
+            pcm_dim=getattr(args, 'pcm_dim', 0) if getattr(args, 'pcm_weight', 0.0) > 0 else 0,
         )
         model = model.to(device)
 
@@ -406,6 +407,15 @@ def main(args):
             args.model, cache_dir=args.cache_dir,
             context_length=args.force_context_length or 256,
         )
+
+    # PCM 短文本分支的 tokenizer（同一个文本塔，故同款 tokenizer / 同 context）
+    if getattr(args, 'pcm_weight', 0.0) > 0:
+        tokenizer_secondary = get_tokenizer(
+            args.model, cache_dir=args.cache_dir,
+            context_length=args.force_context_length or 256,
+        )
+        logging.info(f"=> PCM enabled: weight={args.pcm_weight}, pca_dim={args.pcm_dim}, "
+                     f"caption2_key={getattr(args, 'csv_caption2_key', None)}")
 
     # ── Multi-teacher mode ───────────────────────────────────────────────────
     tokenizer_list = None

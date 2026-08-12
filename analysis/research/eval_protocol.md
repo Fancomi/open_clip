@@ -78,11 +78,18 @@ Projective SigLIP 的目标是 **|cos| → 1**（详见 `mgap_06_projective_sigl
    （模型推向反侧是 projective 的设计行为，不是缺陷）。
 3. 报告指标时**必须标注口径**，例如 `i2t R@1 = 23.50% (projective)`。
 
-### 2.3 对外兼容性提醒
+### 2.3 对外兼容性：不是阻塞项
 
-projective 训出的模型正样本 cos 为负，**不能 plug-and-play 到假设 `cos → +1` 的下游框架**
-（diffusion 文本编码器、标准 CLIP 检索服务、Long-CLIP / Fix-CLIP 等业界方案）。
-若需对外交付或与业界数字对齐，需要额外的符号对齐步骤（约束到 +1 分支，或最后做一次 standard 微调）。
+projective 训出的模型正样本 cos 为负。这**不构成下游使用的障碍**：
+
+- CLIP 预训练产物本身就不是 plug-and-play 的——下游任务基本都要重新训练，
+  重训时符号约定随新目标一起学到。
+- 少数免训练直接用的场景（如直接喂 diffusion 文本编码器），只需一次符号调整
+  （取 `|cos|` 或翻转投影），属于调整量级，不是研究阻塞项。
+
+因此 **projective 与 standard 是两条平行可比的路线**，可以并行推进、直接对照，
+不需要"先统一到 standard 再做研究"。移植业界方案（Long-CLIP / Fix-CLIP / TULIP 等
+standard 系）时，建议同时跑 projective 与 standard 两组作为对照。
 
 ---
 

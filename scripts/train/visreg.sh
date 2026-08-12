@@ -19,10 +19,15 @@
 #   bash scripts/train/visreg.sh xmodal                # 跨模态（原 visreg_xmodal）
 #   bash scripts/train/visreg.sh gemma                 # ★ gemma-dense 长文本（context=256）
 #   bash scripts/train/visreg.sh gemma-smoke           # gemma-dense 冒烟（1 epoch）
+#   bash scripts/train/visreg.sh pcm                   # ★ Long-CLIP PCM 长短双分支
+#   bash scripts/train/visreg.sh pcm-smoke             # PCM 冒烟（4 steps）
+#   bash scripts/train/visreg.sh gt-std                # standard 口径对照（vs projective）
 #
 # 关键参数（全部可环境变量 override）：
 #   GPUS PreGpuBS EPOCHS WARMUP VISREG_W VISREG_SLICES SIGREG_WEIGHT
 #   DATA_VERSION=gt|short|dense|dense_256   # gemma 文本版本（默认 dense_256）
+#   NEG_MODE=projective|standard            # 相似度几何；★评估须用同口径★
+#   PCM_WEIGHT PCM_DIM                      # PCM 短分支权重 / PCA 维度（默认 1.0 / 32）
 
 set -e
 source /root/paddlejob/workspace/env_run/penghaotian/envs/dino/bin/activate
@@ -60,7 +65,10 @@ VISREG_SLICES="${VISREG_SLICES:-256}"
 # 公共片段
 # ═══════════════════════════════════════════════════════════════════════════
 # 冠军配方（除正则项外全部固定）
-CHAMPION="--siglip --neg-mode projective --init-logit-scale ${INIT_LS} \
+# NEG_MODE 可 override（projective=E 配方默认；standard=与业界方案对齐的对照口径）
+# ★ 评估时 --neg-mode 必须与训练一致，详见 analysis/research/eval_protocol.md ★
+NEG_MODE="${NEG_MODE:-projective}"
+CHAMPION="--siglip --neg-mode ${NEG_MODE} --init-logit-scale ${INIT_LS} \
     --sigreg-target cls \
     --lr ${LR} --opt muon --muon-lr ${MUON_LR} \
     --probe-data ${PROBE_TSV}"
@@ -108,10 +116,17 @@ run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
     # csv loader 用实际行数作 num_samples；GEMMA_N_TRAIN>0 时强制样本数（冒烟用）
     local NS=""
     [ -n "${GEMMA_N_TRAIN:-}" ] && [ "${GEMMA_N_TRAIN}" -gt 0 ] 2>/dev/null && NS="--train-num-samples ${GEMMA_N_TRAIN}"
+    # PCM（Long-CLIP Primary Component Matching）：主分支长文本 + 短分支 PCA 图像×短文本
+    local CAPKEY="${CSV_CAPTION_KEY:-caption}"
+    local PCM=""
+    if [ -n "${PCM_WEIGHT:-}" ]; then
+        PCM="--pcm-weight ${PCM_WEIGHT} --pcm-dim ${PCM_DIM:-32} \
+             --csv-caption2-key ${CSV_CAPTION2_KEY:-caption_short}"
+    fi
     local GEMMA_COMMON="--warmup ${WARMUP} ${BASE} --epochs ${EPOCHS} ${NS} \
         --dataset-type csv --force-context-length 256 \
-        --csv-img-key filepath --csv-caption-key caption --val-num-captions-per-image 5 \
-        --imagenet-val ${IMNVAL}"
+        --csv-img-key filepath --csv-caption-key ${CAPKEY} --val-num-captions-per-image 5 \
+        ${PCM} --imagenet-val ${IMNVAL}"
     echo "======== [gemma] ${TAG} (data=${DATA_VERSION} ${EXTRA}) => ${NAME} ========"
     if [ ! -f "${GEMMA_TSV}" ]; then
         echo "!!!! 缺 ${GEMMA_TSV} —— 先跑 scripts/data/build_gemma_tsv.py 生成"
@@ -304,6 +319,60 @@ case "${1:-usage}" in
     GEMMA_N_TRAIN=$((PreGpuBS * GPUS * 4))
     run_gemma "smoke" 29642 "--reg-method visreg --sigreg-weight ${VISREG_W} \
         --visreg-lambda-scale 1.0 --visreg-lambda-shape 1.0 --visreg-lambda-center 0.0"
+    ;;
+
+  # ── ★ PCM：Long-CLIP Primary Component Matching（长短双分支）─────────────
+  #   长分支：图像 × dense 长文本（学长文本能力）
+  #   短分支：PCA_k(图像) × gt 短文本（保短模板 zero-shot 能力）
+  #   数据：clip_train_dual.tsv（filepath / caption_short / caption_dense）
+  #   口径：NEG_MODE=projective（默认，E 配方）| standard（业界对齐对照）
+  #   用法: bash scripts/train/visreg.sh pcm
+  #        NEG_MODE=standard bash scripts/train/visreg.sh pcm
+  pcm)
+    DUAL_TSV="${GEMMA_TSV_DIR}/clip_train_dual.tsv"
+    if [ ! -f "${DUAL_TSV}" ]; then
+        echo "!!!! 缺 ${DUAL_TSV} —— 先跑 python scripts/data/build_dual_tsv.py"
+        exit 1
+    fi
+    # 主文本=dense 长文，短分支=gt 短文
+    DATA_VERSION="pcm${PCM_DIM:-32}_${NEG_MODE}" \
+    GEMMA_TSV="${DUAL_TSV}" \
+    CSV_CAPTION_KEY=caption_dense \
+    CSV_CAPTION2_KEY=caption_short \
+    PCM_WEIGHT="${PCM_WEIGHT:-1.0}" \
+    PCM_DIM="${PCM_DIM:-32}" \
+      run_gemma "E" 29660 "${VISREG_E}"
+    ;;
+
+  # ── PCM 冒烟（4 steps 验证双分支管线 + 梯度）─────────────────────────────
+  pcm-smoke)
+    DUAL_TSV="${GEMMA_TSV_DIR}/clip_train_dual.tsv"
+    if [ ! -f "${DUAL_TSV}" ]; then
+        echo "!!!! 缺 ${DUAL_TSV}"
+        exit 1
+    fi
+    EPOCHS=1 WARMUP=2 PreGpuBS=256
+    GEMMA_N_TRAIN=$((PreGpuBS * GPUS * 4))
+    DATA_VERSION="pcmsmoke_${NEG_MODE}" \
+    GEMMA_TSV="${DUAL_TSV}" \
+    CSV_CAPTION_KEY=caption_dense \
+    CSV_CAPTION2_KEY=caption_short \
+    PCM_WEIGHT="${PCM_WEIGHT:-1.0}" \
+    PCM_DIM="${PCM_DIM:-32}" \
+      run_gemma "smoke" 29661 "${VISREG_E}"
+    ;;
+
+  # ── standard 口径对照（同 E 配方，仅 --neg-mode standard）────────────────
+  #   与 projective 基线（gt_base 23.50/23.20）配对，量化两种几何的差异
+  #   用法: bash scripts/train/visreg.sh gt-std
+  gt-std)
+    NEG_MODE=standard
+    CHAMPION="--siglip --neg-mode standard --init-logit-scale ${INIT_LS} \
+        --sigreg-target cls \
+        --lr ${LR} --opt muon --muon-lr ${MUON_LR} \
+        --probe-data ${PROBE_TSV}"
+    DATA_VERSION=gt GEMMA_TSV="${GEMMA_TSV_DIR}/clip_train_gt.tsv" \
+      run_gemma "gt_std" 29662 "${VISREG_E}"
     ;;
 
   # ── 噪声消融（cc3m gt 上验证 NOVIC 风格噪声）──────────────────────────

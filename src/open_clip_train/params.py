@@ -591,6 +591,24 @@ def parse_args(args):
         )
     )
     parser.add_argument(
+        "--pcm-weight",
+        default=0.0,
+        type=float,
+        help=(
+            'Primary Component Matching (Long-CLIP, ECCV 2024) 短文本分支权重。'
+            '>0 时启用：主分支用长文本(--csv-caption-key)对齐图像，短分支用 '
+            'PCA(--pcm-dim) 降维后的图像特征对齐短文本(--csv-caption2-key)，'
+            '让单塔同时保住长文本能力与短模板 zero-shot 能力。'
+            '需配合 --pcm-dim 与双列 TSV（filepath/caption_dense/caption_short）。'
+        )
+    )
+    parser.add_argument(
+        "--pcm-dim",
+        default=32,
+        type=int,
+        help='PCM 短分支的 PCA 保留维度（Long-CLIP 原论文用 32）。0 表示不降维。'
+    )
+    parser.add_argument(
         "--init-logit-scale",
         default=None,
         type=float,
