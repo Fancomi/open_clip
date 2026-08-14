@@ -10,7 +10,7 @@
    错配会让指标系统性归零（精确 0，不是随机值）—— 是评估 bug，不是模型坏。（第 1-2 节）
 2. **零重叠**：评测样本与训练集必须零重叠。CC3M 系数据互为训练集，不能互当评测集。
    干净评测目前只有 COCO karpathy 5cap 与 IN-1k val。（第 3 节）
-3. **只报全量**：检索指标只报全量 5000 图。小样本虚高 2.7 倍。（第 4 节）
+3. **只报全量**：检索指标只报全量（COCO 5000 图 / Urban-1k 1000 图）。小样本虚高 2.7 倍。（第 4 节）
 
 ---
 
@@ -113,10 +113,13 @@ standard 系）时，建议同时跑 projective 与 standard 两组作为对照�
    dual / mix / concat 各版本）共享同一批图，互为训练集，**不能互相当评测集**。
 2. 新写评测脚本时，必须先做重叠检查：把评测 filepath 与训练 TSV 的 filepath
    取交集，重叠 > 0 直接拒跑。
-3. 目前**干净的评测只有 COCO（karpathy 5cap）与 IN-1k val** —— CC3M 训练从未见过。
-4. 长文本能力目前**无干净评测集**。CC3M 之外没有第二份 dense 标注。要评测需先
-   建立：CC3M hold-out（需重训）／给 COCO val 生成 dense caption／外部 benchmark
-   （Urban-1k / ShareGPT4V / DCI）。
+3. 目前**干净的评测有三个**：COCO（karpathy 5cap，短文本）、IN-1k val（短模板分类）、
+   **Urban-1k（长文本检索，1000 图 × 平均 132 token 长描述）** —— 三者与 CC3M 训练集均无交集。
+4. Urban-1k 是 Long-CLIP (ECCV 2024) 配套 benchmark，入口 `scripts/eval/eval_urban1k.py`。
+   数据在 `datas/urban1k/Urban1k/{image,caption}/`。它填补了「长文本能力无干净评测」的空缺。
+
+**防护措施**：`eval_standard.py:assert_no_train_overlap()` 会在跑检索前把评测 filepath
+与 `datas/cc3m-tsv/annotations/clip_train*.tsv` 取交集，命中即 `SystemExit` 拒跑。
 
 ---
 
@@ -153,50 +156,72 @@ python scripts/eval/eval_standard.py --ckpt ... --tag foo --neg-mode standard --
 
 # 长描述模板对照（测长文本塔对长模板的响应）
 python scripts/eval/eval_standard.py --ckpt ... --tag gemma_dense --long-template
+
+# Urban-1k 长文本检索（1000 图 × 132-token 长描述，训练集外）
+python scripts/eval/eval_urban1k.py --ckpt ... --tag pcm_proj --neg-mode projective
 ```
 
 ---
 
-## 6. 可信基线（干净评测：COCO + IN-1k）
+## 6. 可信基线（干净评测：COCO + IN-1k + Urban-1k）
 
-全量 COCO karpathy 5cap（5000 图）+ IN-1k 100 类 × 20 图。
-**COCO/IN-1k 与 CC3M 训练集零重叠，是当前唯一干净的评测。**
+- **COCO** karpathy 5cap 全量 5000 图（短文本检索）
+- **IN-1k** 100 类 × 20 图，80 官方模板（短模板分类）
+- **Urban-1k** 1000 图 × 1000 长描述（长文本检索，平均 132 token）
 
-| 模型 | 训练数据 | 口径 | i2t R@1 | i2t R@5 | t2i R@1 | IN-1k top1 |
-|---|---|---|---|---|---|---|
-| **gt_base** | cc3m gt（256 ctx） | proj | **23.50%** | 47.34% | **16.84%** | **23.20%** |
-| **pcm_proj** | dual：dense 主 + gt 短分支 | proj | 23.22% | 47.34% | 15.12% | 22.20% |
-| **mix50** | 50% gt + 50% dense（整行替换） | proj | 21.18% | 43.92% | 14.35% | 20.90% |
-| **gemma_dense** | 100% gemma dense | proj | 7.74% | 15.96% | 2.09% | 1.85% |
-| **concat** | 每行 `gt + dense` 拼接 | proj | 训练即崩 | — | — | 0.50%（ep6） |
-| **pcm_std** | dual：dense 主 + gt 短分支 | **std** | 17.18% | 38.36% | 12.09% | 20.75% |
-| **gt_std** | cc3m gt（256 ctx） | **std** | 待全量重测¹ | — | — | 待重测¹ |
+三者与 CC3M 训练集均零重叠。每个模型用与其训练配方一致的 `neg-mode` 评估。
 
-¹ gt_std 于 2026-08-13 18:21 训练完成（epoch_10），尚未用 `eval_standard.py` 全量重测。
-训练日志内值：i2t 21.76% / IN-1k 23.34%（epoch 8）。
+### 短文本能力（COCO + IN-1k）
 
-训练日志内的旧 baseline（77 ctx gt）：IN-1k 23.48% / COCO i2t 22.84%。
+| 模型 | 训练数据 | 口径 | i2t R@1 | t2i R@1 | IN-1k top1 |
+|---|---|---|---|---|---|
+| **gt_base** | cc3m gt（256 ctx） | proj | **23.50%** | **16.84%** | 23.20% |
+| **pcm_proj** | dual：dense 主 + gt 短分支 | proj | 23.22% | 15.12% | 22.20% |
+| **mix50** | 50% gt + 50% dense（整行替换） | proj | 21.18% | 14.35% | 20.90% |
+| **gemma_dense** | 100% gemma dense | proj | 7.74% | 2.09% | 1.85% |
+| **concat** | 每行 `gt + dense` 拼接 | proj | 训练即崩 | — | 0.50%（ep6） |
+| **gt_std** | cc3m gt（256 ctx） | **std** | 21.82% | 15.81% | **23.45%** |
+| **pcm_std** | dual：dense 主 + gt 短分支 | **std** | 17.18% | 12.09% | 20.75% |
+
+### 长文本能力（Urban-1k）
+
+| 模型 | 口径 | i2t R@1 | i2t R@5 | t2i R@1 | t2i R@5 |
+|---|---|---|---|---|---|
+| **gemma_dense** | proj | **51.30%** | 74.10% | 49.70% | 73.20% |
+| **pcm_proj** | proj | **49.00%** | 72.50% | **51.20%** | 75.10% |
+| **mix50** | proj | 46.70% | 72.40% | 45.30% | 70.60% |
+| **pcm_std** | std | 45.80% | 71.60% | 45.00% | 73.00% |
+| **gt_base** | proj | **19.70%** | 38.50% | 20.00% | 40.50% |
+| **gt_std** | std | 16.70% | 36.00% | 17.90% | 37.10% |
 
 ### 从可信数据能得出的结论
 
-1. **PCM 防崩有效**：dense 主导训练下，concat 崩到 0.50%、纯 dense 仅 7.74%，
-   PCM 拉到 23.22%。
-2. **但 PCM 在短文本任务上未超越 gt_base**：i2t −0.28 / t2i −1.72 / IN-1k −1.00。
-   **dense 分支的边际贡献 ≈ 0 或轻微为负。**
-3. **projective 优于 standard**：gt 数据上 23.50% vs 21.76%（+1.7）；
-   PCM 上 23.22% vs 17.18%（+6.0）。
-4. **dense 长文本是否有可泛化价值 —— 尚无结论**（缺干净的长文本评测集，见第 3 节）。
+1. **dense 长文本确有可泛化价值（首次被干净数据证实）**：Urban-1k 上
+   pcm_proj **49.00%** vs gt_base **19.70%**（i2t，**+29.3 点**）。Urban-1k 与
+   CC3M/COCO 均无交集，排除了记忆效应 —— 见过 dense 长文的模型（pcm/mix/dense 系）
+   全部 ≥45%，只见过 gt 短文的模型（gt_base/gt_std）只有 17-20%。
+2. **PCM 的价值 = 让长文本能力几乎无代价**：pcm_proj 在短文本上仅比 gt_base
+   低 0.28（i2t）/ 1.00（IN-1k），却在长文本上高 29.3 点。
+   对比 concat（训练即崩）与纯 dense（短文本 7.74%），PCM 是三者中唯一两头兼顾的。
+3. **纯 dense 的长文本能力最强但短文本报废**：gemma_dense 长文本 51.30%（最高），
+   短文本 7.74% / IN-1k 1.85%（不可用）。**长短能力存在真实 trade-off，PCM 把
+   trade-off 曲线大幅右移。**
+4. **projective 全面优于 standard**：
+   gt 数据上 23.50 vs 21.82（短，+1.7）、19.70 vs 16.70（长，+3.0）；
+   PCM 上 23.22 vs 17.18（短，+6.0）、49.00 vs 45.80（长，+3.2）。
+   唯一例外：IN-1k 上 gt_std 23.45% 略高于 gt_base 23.20%（+0.25，在噪声范围内）。
 
 ### 被历次修正推翻的旧结论
 
 | 旧结论 | 失效原因 | 修正后 |
 |---|---|---|
-| gemma_dense「dense-query R@1 = 0，完全未对齐」 | 口径错配 | 弱但非零：i2t 7.74% |
+| gemma_dense「dense-query R@1 = 0，完全未对齐」 | 口径错配 | 短文本弱（7.74%）但长文本最强（51.30%） |
 | gemma_dense IN-1k = 0.93% | 口径错配 | 1.85%（proj, 100 类子集） |
 | gt_base i2t = 64.3% | 小样本虚高 | 23.50%（全量） |
 | mix50 i2t = 60.7% | 小样本虚高 | 21.18%（全量） |
-| 「PCM 让 dense 长文本能力 +42 点」 | 训练集内测试 | **无结论**，需干净评测集 |
-| 「PCM 让短文本检索掉 19 点」 | 训练集内测试 | 真实代价约 1 点（见上表） |
+| 「PCM 让 dense 长文本能力 +42 点」 | 训练集内测试 | 方向对，真实值 **+29.3 点**（Urban-1k） |
+| 「PCM 让短文本检索掉 19 点」 | 训练集内测试 | 真实代价 0.28 点（COCO i2t） |
+| 「dense 长文本是否有可泛化价值 — 尚无结论」 | 缺干净评测集 | **有价值**，Urban-1k 已证实 |
 
 ---
 

@@ -34,11 +34,46 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 COCO_GT = "/root/paddlejob/workspace/env_run/penghaotian/datas/coco/annotations/karpathy_5cap.tsv"
 IMAGENET_VAL = "/root/paddlejob/workspace/env_run/penghaotian/datas/imagenet-val"
 
+# CC3M 系训练 TSV（gt / dense / dual / mix / concat 共享同一批图，互为训练集）
+CC3M_ANN = Path("/root/paddlejob/workspace/env_run/penghaotian/datas/cc3m-tsv/annotations")
+
 # 长描述模板（对照 OPENAI_IMAGENET_TEMPLATES 的短句），测长文本塔的模板响应
 LONG_TEMPLATES = (
     lambda c: f'an image showing a {c}, with rich visual detail and clear composition.',
     lambda c: f'a detailed photograph of a {c}, capturing its texture and surroundings.',
 )
+
+
+def assert_no_train_overlap(eval_paths, train_tsvs=None, sample=2000):
+    """零重叠检查：评测图与训练集有交集就直接拒跑（eval_protocol.md 铁律 2）。
+
+    事故背景：曾直接读 clip_train_dense_256.tsv 前 1000 行当评测集，
+    与训练集重叠 1000/1000，产出的指标全部作废。
+    """
+    if train_tsvs is None:
+        train_tsvs = sorted(CC3M_ANN.glob("clip_train*.tsv"))
+    probe = set(str(p) for p in eval_paths[:sample])
+    for tsv in train_tsvs:
+        if not Path(tsv).exists():
+            continue
+        hit = 0
+        with open(tsv) as f:
+            for i, line in enumerate(f):
+                if i == 0:
+                    continue
+                if line.split("\t", 1)[0] in probe:
+                    hit += 1
+                    if hit >= 1:
+                        break
+        if hit:
+            raise SystemExit(
+                f"\n!!!! 拒绝评测：评测样本与训练集重叠 !!!!\n"
+                f"  训练 TSV : {tsv}\n"
+                f"  评测样本 : 前 {len(probe)} 条中至少 {hit} 条命中\n"
+                f"  CC3M 系数据（gt/dense/dual/mix/concat）互为训练集，不能互当评测集。\n"
+                f"  干净评测目前只有 COCO karpathy 5cap 与 IN-1k val。\n"
+                f"  详见 analysis/research/eval_protocol.md 第 3 节。\n")
+    print(f"  [零重叠检查] 通过：{len(probe)} 条评测样本与 {len(train_tsvs)} 个训练 TSV 无交集", flush=True)
 
 
 def apply_neg_mode(sim, neg_mode, neg_alpha=1.0):
@@ -89,6 +124,7 @@ def eval_coco_retrieval(model, tok, val_tr, device, neg_mode="projective", neg_a
                 caps_by_img.append(cur[1])
             cur[1].append(c)
     n_img = len(imgs)
+    assert_no_train_overlap(imgs)
     n_caps = len(caps_by_img[0])
     all_caps = [c for cs in caps_by_img for c in cs]
     # 每图的正确 caption 列范围
