@@ -1272,14 +1272,17 @@ class TextTransformer(nn.Module):
             x = torch.cat([x, _expand_token(self.cls_emb, x.size(0))], 1)
             seq_len += 1
 
-        attn_mask = self.attn_mask  # Base causal mask (if any)
+        # Base causal mask (if any). 必须切到当前 seq_len —— 支持变长输入
+        # （文本塔按 batch 内实际最大长度截断，可省掉 padding 上的无效计算）。
+        attn_mask = self.attn_mask
+        if attn_mask is not None:
+            attn_mask = attn_mask[:seq_len, :seq_len]
 
         # Class + padding additive mask
         if self.use_pad_mask or self.cls_emb is not None:
             add_mask  = self._build_additive_mask(text, seq_len, x.dtype)
             if attn_mask is not None:
-                # Slice the causal mask to match current sequence length
-                attn_mask = attn_mask[:seq_len, :seq_len].unsqueeze(0) + add_mask
+                attn_mask = attn_mask.unsqueeze(0) + add_mask
             else:
                 attn_mask = add_mask
 

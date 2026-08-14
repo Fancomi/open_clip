@@ -335,7 +335,7 @@ case "${1:-usage}" in
         exit 1
     fi
     # 主文本=dense 长文，短分支=gt 短文
-    DATA_VERSION="pcm${PCM_DIM:-32}_${NEG_MODE}" \
+    DATA_VERSION="pcmw${PCM_WEIGHT:-1.0}d${PCM_DIM:-32}_${NEG_MODE}" \
     GEMMA_TSV="${DUAL_TSV}" \
     CSV_CAPTION_KEY=caption_dense \
     CSV_CAPTION2_KEY=caption_short \
