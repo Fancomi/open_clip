@@ -814,14 +814,41 @@ class CLIPLeJEPA(nn.Module):
         保留前 k 个主成分后回到原空间，迫使短文本只匹配图像的"主要语义"，
         从而在长文本主导训练时保住短模板（zero-shot）能力。
         用 SVD 而非 eig（原论文注释：避免 inf）。
+
+        稳健性：训练后期 embedding 分布条件数变差，`linalg.svd` 会抛
+        `_LinAlgError: failed to converge (error code: 512)` —— pcm_dim=64 组
+        实测在 epoch 5 崩溃。这里做三级兜底：
+          1. 加微小对角 jitter 改善条件数后重试
+          2. 退化到 `torch.pca_lowrank`（随机化算法，对病态矩阵更稳）
+          3. 全部失败则返回原始特征（该 step 的短分支退化为全维对齐，不中断训练）
         """
         if k <= 0 or k >= x.shape[-1] or x.shape[0] <= k:
             return x
         mean = x.mean(dim=0, keepdim=True)
         xc = (x - mean).float()
-        _, _, vt = torch.linalg.svd(xc, full_matrices=False)
-        pc = vt[:k].T                       # [D, k]
-        return (xc @ pc @ pc.T + mean).to(x.dtype)
+
+        def _rebuild(pc):
+            return (xc @ pc @ pc.T + mean).to(x.dtype)
+
+        try:
+            _, _, vt = torch.linalg.svd(xc, full_matrices=False)
+            return _rebuild(vt[:k].T)
+        except Exception:
+            pass
+        # 1) jitter 重试：沿特征维加极小噪声打散重复奇异值
+        try:
+            xj = xc + torch.randn_like(xc) * (xc.std() * 1e-4 + 1e-8)
+            _, _, vt = torch.linalg.svd(xj, full_matrices=False)
+            return _rebuild(vt[:k].T)
+        except Exception:
+            pass
+        # 2) 随机化低秩分解
+        try:
+            _, _, v = torch.pca_lowrank(xc, q=min(k + 8, min(xc.shape)), center=False)
+            return _rebuild(v[:, :k])
+        except Exception:
+            logging.warning("PCM: PCA failed (svd + jitter + lowrank), 该 step 短分支退化为全维")
+            return x
 
     def _get_image_raw(self, image: torch.Tensor):
         """Return (clip_embedding_unnorm, sigreg_input_unnorm)."""
