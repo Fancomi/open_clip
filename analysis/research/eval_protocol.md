@@ -1,16 +1,18 @@
 # 评估协议：口径绑定、零重叠、全量报数
 
-*创建: 2026-08-12，更新: 2026-08-13 | 起因: 三次评估事故（口径错配 / 小样本虚高 / 训练集内测试）*
+*创建: 2026-08-12，更新: 2026-08-17 | 起因: 四次评估事故（口径错配 / 小样本虚高 / 训练集内测试 / epoch 未对齐）*
 
 ---
 
-## 0. 三条铁律
+## 0. 四条铁律
 
 1. **口径绑定**：相似度排序口径由训练 `--neg-mode` 决定，评估必须用同一口径。
    错配会让指标系统性归零（精确 0，不是随机值）—— 是评估 bug，不是模型坏。（第 1-2 节）
 2. **零重叠**：评测样本与训练集必须零重叠。CC3M 系数据互为训练集，不能互当评测集。
-   干净评测目前只有 COCO karpathy 5cap 与 IN-1k val。（第 3 节）
+   干净评测只有 COCO karpathy 5cap / IN-1k val / Urban-1k。（第 3 节）
 3. **只报全量**：检索指标只报全量（COCO 5000 图 / Urban-1k 1000 图）。小样本虚高 2.7 倍。（第 4 节）
+4. **同表同 epoch**：一张对比表里所有模型取同一 epoch 的 checkpoint。
+   ep9→ep10 漂移实测 1~1.7 点，与多数消融效应同量级。（第 6 节）
 
 ---
 
@@ -141,6 +143,24 @@ standard 系）时，建议同时跑 projective 与 standard 两组作为对照�
 
 ---
 
+## 4.5 epoch 未对齐（第四个坑）
+
+**事故**：PCM 超参 sweep 的四组在 `epoch_10` 评测，而更早的六组基线在 `epoch_9`，
+两批数字被放进同一张对比表。补跑 ep10 后发现漂移不小：
+
+| 模型 | COCO i2t ep9 → ep10 | Urban i2t ep9 → ep10 |
+|---|---|---|
+| pcm_proj | 23.22% → 22.08%（−1.14） | 49.00% → 47.30%（−1.70） |
+| gt_base | 23.50% → 23.14%（−0.36） | 19.70% → 18.30%（−1.40） |
+
+**1~1.7 点的漂移与多数消融声称的效应同量级**，混 epoch 比较会把噪声读成信号。
+（本例里结论方向没被推翻，但差值全部要改。）
+
+**铁律**：一张对比表里所有模型必须取同一 epoch。加新组时若旧组缺该 epoch 的评测，
+补跑旧组，不要用"差不多"的邻近 epoch 凑。修正后的表见 `longclip_01_pcm.md` §3。
+
+---
+
 ## 5. 标准评估入口
 
 唯一评估脚本：`scripts/eval/eval_standard.py`（其余临时脚本已删除，勿再重写）。
@@ -163,71 +183,38 @@ python scripts/eval/eval_urban1k.py --ckpt ... --tag pcm_proj --neg-mode project
 
 ---
 
-## 6. 可信基线（干净评测：COCO + IN-1k + Urban-1k）
+## 6. 干净评测集清单
 
-- **COCO** karpathy 5cap 全量 5000 图（短文本检索）
-- **IN-1k** 100 类 × 20 图，80 官方模板（短模板分类）
-- **Urban-1k** 1000 图 × 1000 长描述（长文本检索，平均 132 token）
+| 评测集 | 规模 | 测什么 | 入口 |
+|---|---|---|---|
+| **COCO** karpathy 5cap | 5000 图 × 5 caption（全量） | 短文本检索 | `eval_standard.py --retrieval` |
+| **IN-1k** val | 100 类 × 20 图，80 官方模板 | 短模板 zero-shot 分类 | `eval_standard.py --in1k-classes` |
+| **Urban-1k** | 1000 图 × 1000 长描述（平均 132 token，1:1） | 长文本检索 | `eval_urban1k.py` |
 
-三者与 CC3M 训练集均零重叠。每个模型用与其训练配方一致的 `neg-mode` 评估。
+三者与 CC3M 训练集均零重叠。每个模型必须用与其训练一致的 `--neg-mode` 评估。
 
-### 短文本能力（COCO + IN-1k）
+**注意**：IN-1k 目前用的是 100 类 × 20 图子集，与全量（1000 类 × 50 图）不可混比；
+COCO 与 Urban-1k 都是全量。跨模型对比时三项的采样配置必须一致。
 
-| 模型 | 训练数据 | 口径 | i2t R@1 | t2i R@1 | IN-1k top1 |
-|---|---|---|---|---|---|
-| **gt_base** | cc3m gt（256 ctx） | proj | **23.50%** | **16.84%** | 23.20% |
-| **pcm_proj** | dual：dense 主 + gt 短分支 | proj | 23.22% | 15.12% | 22.20% |
-| **mix50** | 50% gt + 50% dense（整行替换） | proj | 21.18% | 14.35% | 20.90% |
-| **gemma_dense** | 100% gemma dense | proj | 7.74% | 2.09% | 1.85% |
-| **concat** | 每行 `gt + dense` 拼接 | proj | 训练即崩 | — | 0.50%（ep6） |
-| **gt_std** | cc3m gt（256 ctx） | **std** | 21.82% | 15.81% | **23.45%** |
-| **pcm_std** | dual：dense 主 + gt 短分支 | **std** | 17.18% | 12.09% | 20.75% |
+**epoch 对齐**：同一张对比表里所有模型必须取同一 epoch 的 checkpoint（第 4.5 节）。
 
-### 长文本能力（Urban-1k）
+### 各路线的结果表在哪
 
-| 模型 | 口径 | i2t R@1 | i2t R@5 | t2i R@1 | t2i R@5 |
-|---|---|---|---|---|---|
-| **gemma_dense** | proj | **51.30%** | 74.10% | 49.70% | 73.20% |
-| **pcm_proj** | proj | **49.00%** | 72.50% | **51.20%** | 75.10% |
-| **mix50** | proj | 46.70% | 72.40% | 45.30% | 70.60% |
-| **pcm_std** | std | 45.80% | 71.60% | 45.00% | 73.00% |
-| **gt_base** | proj | **19.70%** | 38.50% | 20.00% | 40.50% |
-| **gt_std** | std | 16.70% | 36.00% | 17.90% | 37.10% |
+本页只管方法论，**不存结果**。具体基线数字见：
 
-### 从可信数据能得出的结论
+- **Long-CLIP / PCM 路线**（11 组：pcm 系 / gt_base / gt_std / mix50 / gemma_dense / concat）
+  → `longclip_01_pcm.md` §3
+- **VISReg 基座配方消融**（21 组）→ `visreg_all_attempts.md`
+- **projective / orthogonal 几何消融** → `mgap_06_projective_siglip.md`
 
-1. **dense 长文本确有可泛化价值（首次被干净数据证实）**：Urban-1k 上
-   pcm_proj **49.00%** vs gt_base **19.70%**（i2t，**+29.3 点**）。Urban-1k 与
-   CC3M/COCO 均无交集，排除了记忆效应 —— 见过 dense 长文的模型（pcm/mix/dense 系）
-   全部 ≥45%，只见过 gt 短文的模型（gt_base/gt_std）只有 17-20%。
-2. **PCM 的价值 = 让长文本能力几乎无代价**：pcm_proj 在短文本上仅比 gt_base
-   低 0.28（i2t）/ 1.00（IN-1k），却在长文本上高 29.3 点。
-   对比 concat（训练即崩）与纯 dense（短文本 7.74%），PCM 是三者中唯一两头兼顾的。
-3. **纯 dense 的长文本能力最强但短文本报废**：gemma_dense 长文本 51.30%（最高），
-   短文本 7.74% / IN-1k 1.85%（不可用）。**长短能力存在真实 trade-off，PCM 把
-   trade-off 曲线大幅右移。**
-4. **projective 全面优于 standard**：
-   gt 数据上 23.50 vs 21.82（短，+1.7）、19.70 vs 16.70（长，+3.0）；
-   PCM 上 23.22 vs 17.18（短，+6.0）、49.00 vs 45.80（长，+3.2）。
-   唯一例外：IN-1k 上 gt_std 23.45% 略高于 gt_base 23.20%（+0.25，在噪声范围内）。
-
-### 被历次修正推翻的旧结论
-
-| 旧结论 | 失效原因 | 修正后 |
-|---|---|---|
-| gemma_dense「dense-query R@1 = 0，完全未对齐」 | 口径错配 | 短文本弱（7.74%）但长文本最强（51.30%） |
-| gemma_dense IN-1k = 0.93% | 口径错配 | 1.85%（proj, 100 类子集） |
-| gt_base i2t = 64.3% | 小样本虚高 | 23.50%（全量） |
-| mix50 i2t = 60.7% | 小样本虚高 | 21.18%（全量） |
-| 「PCM 让 dense 长文本能力 +42 点」 | 训练集内测试 | 方向对，真实值 **+29.3 点**（Urban-1k） |
-| 「PCM 让短文本检索掉 19 点」 | 训练集内测试 | 真实代价 0.28 点（COCO i2t） |
-| 「dense 长文本是否有可泛化价值 — 尚无结论」 | 缺干净评测集 | **有价值**，Urban-1k 已证实 |
 
 ---
 
 ## 7. 相关文档
 
+- `longclip_01_pcm.md` — **Long-CLIP / PCM 路线的结果主页**（11 组总表 + 超参消融）
 - `mgap_06_projective_siglip.md` — projective SigLIP 的数学推导与消融（|cos| 目标的由来）
 - `mgap_05_orthogonal_siglip.md` — 前序 orthogonal 模式
-- `scripts/eval/eval_standard.py` — 唯一评估入口，`apply_neg_mode` 为口径实现
+- `scripts/eval/eval_standard.py` — COCO + IN-1k 入口，`apply_neg_mode` 为口径实现
+- `scripts/eval/eval_urban1k.py` — Urban-1k 长文本入口
 

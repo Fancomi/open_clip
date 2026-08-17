@@ -86,7 +86,7 @@ run() {  # run TAG PORT DATA EXTRA
     local NAME="visreg_${TAG}_${TS}"
     # 动态构造，保证 EPOCHS/WARMUP/PreGpuBS 的 override 生效
     local BASE="--precision amp_bf16 --workers 32 --batch-size ${PreGpuBS} \
-        --lr ${LR} --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 \
+        --lr ${LR} --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 --seed ${SEED:-0} \
         --save-frequency 1 --grad-checkpointing --log-every-n-steps 1 --val-frequency 1"
     local COMMON="--warmup ${WARMUP} ${BASE} --epochs ${EPOCHS} \
         --dataset-type csv --train-num-samples ${CC3M_N_TRAIN} \
@@ -111,7 +111,7 @@ run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
     local NAME="visreg_gemma_${DATA_VERSION}_${TAG}_${TS}"
     # 动态构造，保证 EPOCHS/WARMUP/PreGpuBS/GEMMA_N_TRAIN 的 override 生效
     local BASE="--precision amp_bf16 --workers 32 --batch-size ${PreGpuBS} \
-        --lr ${LR} --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 \
+        --lr ${LR} --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 --seed ${SEED:-0} \
         --save-frequency 1 --grad-checkpointing --log-every-n-steps 1 --val-frequency 1"
     # csv loader 用实际行数作 num_samples；GEMMA_N_TRAIN>0 时强制样本数（冒烟用）
     local NS=""
@@ -306,6 +306,25 @@ case "${1:-usage}" in
     run_gemma "E" 29640 "${VISREG_E}"
     # 对照：gt（原 CC3M caption）在 256 上下文下基线
     DATA_VERSION=gt GEMMA_TSV="${GEMMA_TSV_DIR}/clip_train_gt.tsv" run_gemma "gt_base" 29641 "${VISREG_E}"
+    ;;
+
+  # ── 噪声地板：同配置换 seed 重复跑，量 run-to-run 方差 ────────────────────
+  #   动机：同配置同 seed 的两个 gt_base run（0806 / 0811）末期 i2t 相差 0.70 点，
+  #   而超参扫描里不少差异只有 0.5 点级别 —— 没有方差界就无法定性。
+  #   用法: bash scripts/train/visreg.sh seed-var        # 跑 seed 1 与 2
+  #        SEED=3 bash scripts/train/visreg.sh gt-seed   # 单跑指定 seed
+  seed-var)
+    for s in 1 2; do
+        SEED=$s DATA_VERSION="gt_s${s}" \
+        GEMMA_TSV="${GEMMA_TSV_DIR}/clip_train_gt.tsv" \
+          run_gemma "gt_base" $((29670 + s)) "${VISREG_E}"
+    done
+    ;;
+
+  gt-seed)
+    SEED="${SEED:-0}" DATA_VERSION="gt_s${SEED:-0}" \
+    GEMMA_TSV="${GEMMA_TSV_DIR}/clip_train_gt.tsv" \
+      run_gemma "gt_base" 29675 "${VISREG_E}"
     ;;
 
   # ── gemma-dense 冒烟（1 epoch 快速验证 256 上下文管线）──────────────────
