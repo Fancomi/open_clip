@@ -1,6 +1,6 @@
 # 评估协议：口径绑定、零重叠、全量报数
 
-*创建: 2026-08-12，更新: 2026-08-17 | 起因: 四次评估事故（口径错配 / 小样本虚高 / 训练集内测试 / epoch 未对齐）*
+*创建: 2026-08-12，更新: 2026-08-27（新增 OVSS 局部口径）| 起因: 五次评估事故（口径错配 / 小样本虚高 / 训练集内测试 / epoch 未对齐 / 子集口径翻转排序）*
 
 ---
 
@@ -13,6 +13,15 @@
 3. **只报全量**：检索指标只报全量（COCO 5000 图 / Urban-1k 1000 图）。小样本虚高 2.7 倍。（第 4 节）
 4. **同表同 epoch**：一张对比表里所有模型取同一 epoch 的 checkpoint。
    ep9→ep10 漂移实测 1~1.7 点，与多数消融效应同量级。（第 6 节）
+5. **过 2σ 才算结论**：每个口径有实测噪声地板，|Δ| < 2σ 一律判"不可分辨"，
+   不得写成"略优/略差"。噪声地板由 **query 数量**决定，不由指标类型决定。（第 4.6 节）
+6. **全局口径的结论不能外推到局部表征**（新增 2026-08-27）。
+   前四个口径（k-NN / IN-1k / COCO / Urban）**全是"一张图 → 一个向量"的全局口径**，
+   它们一致同向也不能说明局部（逐 patch）表征变好了。
+   实证：`region_weight` 0.2→2.0 在五个全局口径上单调上升、每跳过 2σ，
+   而在 OVSS mIoU 上**单调下降 −14.19**（`region_01_supervision.md` §5.8）。
+   → 任何改动**局部**表征的方法（区域监督、dense 蒸馏、patch 级正则），
+   必须报一个局部口径，否则结论只在全局那一半成立。（第 6 节表格新增一行）
 
 ---
 
@@ -141,6 +150,12 @@ standard 系）时，建议同时跑 projective 与 standard 两组作为对照�
 - 若因资源限制必须采样，**必须在指标旁标注图数**，且只用于相对趋势，不得当作绝对值。
 - IN-1k 同理：子集（如 100 类 × 20 图）与全量（1000 类 × 50 图）不可混比。
 
+**2026-08-25 整改完成**：IN-1k 已全部重测为全量口径（1000 类 × 50 图 = 50000 图），
+`eval_standard.py` 的默认值即全量，输出行自带 `★全量★` / `⚠️子集` 标记。
+**2026-08-25 之前所有 IN-1k 数字（2000 图子集）一律作废**，全量总表见
+`in1k_fullscope_retest.md`。子集不只是虚高，方向也会翻：E_firstbox 子集 25.50% →
+全量 27.15%，因为子集只取前 100 个 wnid，类别难度分布有偏。
+
 ---
 
 ## 4.5 epoch 未对齐（第四个坑）
@@ -161,15 +176,52 @@ standard 系）时，建议同时跑 projective 与 standard 两组作为对照�
 
 ---
 
+## 4.6 噪声地板：每个口径的 2σ 门槛
+
+同配方、只改随机种子的重复运行给出的组间散布，就是"配置无差异时也会看到的差"。
+`gt_base` 系四次同配方运行（`0806` / `0811` / `s1` / `s2`）标定出下表。
+**任何小于 2σ 的差值不构成结论**，写文档时必须标 ✅（显著）/ ❌（噪声内）。
+
+| 口径 | query 数 | 2σ | 标定来源 |
+|---|---|---|---|
+| COCO t2i R@1 | 25000 caption | **0.13** | 4× gt_base |
+| k-NN proj | 50000 图 | **0.29** | 4× gt_base（全量重测 2026-08-25） |
+| k-NN backbone | 50000 图 | **0.30** | 同上 |
+| IN-1k zero-shot | 50000 图 | **0.32** | 4× gt_base（全量） |
+| COCO i2t R@1 | 5000 图 | **0.75** | 4× gt_base |
+| Urban-1k i2t R@1 | 1000 图 | **1.92** | 4× gt_base |
+| **VOC-20 OVSS mIoU**（penult） | 1449 图 / ~1.2 亿像素 | **~0.12** | ⚠️ 只有 2× gt_base（n=2） |
+| **VOC-20 OVSS mIoU**（last） | 同上 | **~0.16** | ⚠️ 同上 |
+
+**规律：2σ 随 query 数量单调下降，与"测的是分类还是检索"无关。**
+同一个 COCO 评测里 t2i（25000 条 caption 当 query）的 2σ 只有 0.13，
+而 i2t（5000 张图当 query）是 0.75，差 5.8 倍 —— 纯粹是样本量差 5 倍的结果。
+推论：**Urban-1k 只有 1000 图，它的单点结论最不可信；COCO t2i 最灵敏。**
+
+⚠️ **OVSS 两行是 n=2 的散布，不是 4 次运行的 2σ**（`gt_base` seed 0 vs seed 1，
+配置与数据完全相同，只差 `--seed`）。它给的是量级而不是分布，引用时按"粗地板"用。
+它之所以这么小，符合上面那条规律：query 是**像素**而不是图，样本量比其他口径高 4~5 个数量级。
+所以 OVSS 上几点的差都远超地板 —— 反过来说，**OVSS 上很小的差也可能是真的**，
+不要用其他口径的直觉（"差 1 点不算"）去判它。
+
+⚠️ **2026-08-25 修订**：k-NN 的旧 2σ 是 **0.78**，那是 100 类 × 20 图 = 2000 张
+子集下的标定值。全量口径把它压到 0.30（紧 2.6 倍）。**旧口径不只噪声大，还系统性
+压缩组间差异**（子集 Δ / 全量 Δ 的比值实测 0.13~0.50），所以此前一切"判为持平"的
+k-NN 结论都必须按新 2σ 重判。详见 `longclip_01_pcm.md` §5.8。
+
+---
+
 ## 5. 标准评估入口
 
 唯一评估脚本：`scripts/eval/eval_standard.py`（其余临时脚本已删除，勿再重写）。
+另有三个专用入口：`eval_urban1k.py`（长文本检索）、`eval_knn_probe.py`（纯图像 k-NN）、
+`eval_ovss.py`（开放词表分割 mIoU，**唯一的局部口径**）。
 
 ```bash
-# E 配方 / CHAMPION（projective，默认）
+# E 配方 / CHAMPION（projective，默认；IN-1k 默认即全量 1000 类 × 50 图）
 python scripts/eval/eval_standard.py \
-    --ckpt logs/visreg_gemma_gt_gt_base_0811_1318/checkpoints/epoch_9.pt \
-    --tag gt_base --retrieval --in1k-classes 100
+    --ckpt logs/visreg_gemma_gt_gt_base_0811_1318/checkpoints/epoch_10.pt \
+    --tag gt_base --retrieval --num-workers 14
 
 # standard 配方模型
 python scripts/eval/eval_standard.py --ckpt ... --tag foo --neg-mode standard --retrieval
@@ -179,22 +231,50 @@ python scripts/eval/eval_standard.py --ckpt ... --tag gemma_dense --long-templat
 
 # Urban-1k 长文本检索（1000 图 × 132-token 长描述，训练集外）
 python scripts/eval/eval_urban1k.py --ckpt ... --tag pcm_proj --neg-mode projective
+
+# IN-1k k-NN probe（纯图像口径，无文本参与；全量 1000×50 已是默认，勿再传子集参数）
+python scripts/eval/eval_knn_probe.py --ckpt ... --tag pcm_w0.2 --num-workers 12
+
+# OVSS：VOC-2012 val 开放词表分割 mIoU（唯一的**局部**表征口径，全量 1449 图已是默认）
+# --dense-mode penult = 与训练时区域分支同一条读出路径；last = 对照。两个都要报。
+python scripts/eval/eval_ovss.py --ckpt ... --tag regw2.0
+python scripts/eval/eval_ovss.py --ckpt ... --tag regw2.0_LAST --dense-mode last
 ```
 
 ---
 
 ## 6. 干净评测集清单
 
-| 评测集 | 规模 | 测什么 | 入口 |
-|---|---|---|---|
-| **COCO** karpathy 5cap | 5000 图 × 5 caption（全量） | 短文本检索 | `eval_standard.py --retrieval` |
-| **IN-1k** val | 100 类 × 20 图，80 官方模板 | 短模板 zero-shot 分类 | `eval_standard.py --in1k-classes` |
-| **Urban-1k** | 1000 图 × 1000 长描述（平均 132 token，1:1） | 长文本检索 | `eval_urban1k.py` |
+按**文本参与度**从低到高排成一把梯子 —— 这是区分"图像塔变好"与"文本塔更会对齐"的关键：
 
-三者与 CC3M 训练集均零重叠。每个模型必须用与其训练一致的 `--neg-mode` 评估。
+| 评测集 | 规模 | 测什么 | 文本长度 | 入口 |
+|---|---|---|---|---|
+| **IN-1k k-NN probe** | 1000 类 × 50 图 = 50000 图（全量） | **纯图像**特征质量（冻结骨干 + 近邻投票） | **无文本** | `eval_knn_probe.py` |
+| **IN-1k** val zero-shot | 同上，80 官方模板 | 短模板 zero-shot 分类 | ~8 tok | `eval_standard.py`（全量为默认） |
+| **COCO** karpathy 5cap | 5000 图 × 5 caption（全量） | 短文本检索 | ~13 tok | `eval_standard.py --retrieval` |
+| **Urban-1k** | 1000 图 × 1000 长描述（1:1） | 长文本检索 | ~132 tok | `eval_urban1k.py` |
+| **VOC-2012 val OVSS** | 1449 图，逐**像素**判定 | **局部**表征：patch 级语义可分割性 | 20 个类名 × 80 模板 | `eval_ovss.py` |
 
-**注意**：IN-1k 目前用的是 100 类 × 20 图子集，与全量（1000 类 × 50 图）不可混比；
-COCO 与 Urban-1k 都是全量。跨模型对比时三项的采样配置必须一致。
+⚠️ **OVSS 不在这把梯子上，它在另一根轴上。** 上面四个都是"一张图 → 一个向量 → 比一次"的
+**全局**口径，梯子排的是文本参与度；OVSS 是"每个 patch 自己去和类名比"的**局部**口径。
+两根轴可以互相矛盾，而且实测就是矛盾的（`region_weight` 在两边方向相反，铁律第 6 条）。
+所以**它不是第五级台阶，是第二把梯子的第一级**。
+其协议与 SCLIP / ClearCLIP / NACLIP 系列严格一致（短边 336、滑窗 224/stride 112、
+20 类 × 80 官方模板、**无任何推理期改造**、无后处理），因此可以与那一族论文的
+VOC20 一列对位看 —— 但骨干与类名同义词列表都未对齐，只能定位不能当同条件比较。
+
+五者与 CC3M 训练集均零重叠。每个模型必须用与其训练一致的 `--neg-mode` 评估
+（**k-NN probe 例外**：链路里没有文本，不涉及口径绑定，可跨 neg-mode 直接比）。
+**k-NN 同时报 backbone（trunk CLS，投影前 768d）与 proj（投影后 1024d）两个数**，
+两者之差 Δ(proj − bb) 本身是个诊断量（见 `longclip_01_pcm.md` §5.5）。
+⚠️ k-NN probe 是项目自定义口径（余弦 + softmax 温度加权、投影前特征），
+**不能与 DINO / DINOv3 论文的 k-NN 数字对标**，只做同源自比。
+**口径不要靠 run 名字猜，直接读 `logs/<run>/params.txt` 的 `neg_mode` 字段** ——
+2026-08-25 重测时正因为按名字猜，漏判了 `gt_std`（真为 standard），把它评成 8.54%
+（真值 23.34%）。
+
+**三项现已全部为全量口径**，跨模型对比无需再对齐采样配置。若为冒烟临时缩小
+`--in1k-classes/--in1k-per-class`，输出会打 `⚠️子集(不可与全量混比)`，此类数字禁止入表。
 
 **epoch 对齐**：同一张对比表里所有模型必须取同一 epoch 的 checkpoint（第 4.5 节）。
 
@@ -203,7 +283,10 @@ COCO 与 Urban-1k 都是全量。跨模型对比时三项的采样配置必须�
 本页只管方法论，**不存结果**。具体基线数字见：
 
 - **Long-CLIP / PCM 路线**（11 组：pcm 系 / gt_base / gt_std / mix50 / gemma_dense / concat）
-  → `longclip_01_pcm.md` §3
+  → `longclip_01_pcm.md` §3，k-NN 全量总表见 §5.2
+- **区域-短语监督路线**（12 组：C1~C4 / H / E1~E3 / A′ resize 对照 / G 叠加 / regw0.5 / regw1.0 / regw2.0）
+  → `region_01_supervision.md` §4，`region_weight` 扫描见 §5.7
+- **IN-1k 全量口径总表**（24 组：基线 / PCM 全系 / region 全系）→ `in1k_fullscope_retest.md`
 - **VISReg 基座配方消融**（21 组）→ `visreg_all_attempts.md`
 - **projective / orthogonal 几何消融** → `mgap_06_projective_siglip.md`
 
@@ -212,9 +295,15 @@ COCO 与 Urban-1k 都是全量。跨模型对比时三项的采样配置必须�
 
 ## 7. 相关文档
 
-- `longclip_01_pcm.md` — **Long-CLIP / PCM 路线的结果主页**（11 组总表 + 超参消融）
+- `longclip_01_pcm.md` — **Long-CLIP / PCM 路线的结果主页**（11 组总表 + 超参消融 + 2σ 标定）
+- `region_01_supervision.md` — **区域-短语监督路线的结果主页**（12 组总表 + `region_weight` 扫描 + resize 对照
+  + `region_weight` 扫描）。⚠️ 它 §5.3 记了一条方法论教训：
+  **"这条线的旋钮已调平"这个判断，在其中一个旋钮从未被扫过的情况下写过一次，第二天就被推翻。
+  下"调平"结论前先确认该旋钮真的被扫过。**
+- `in1k_fullscope_retest.md` — IN-1k 全量口径重测（24 组），子集口径作废的直接证据
 - `mgap_06_projective_siglip.md` — projective SigLIP 的数学推导与消融（|cos| 目标的由来）
 - `mgap_05_orthogonal_siglip.md` — 前序 orthogonal 模式
 - `scripts/eval/eval_standard.py` — COCO + IN-1k 入口，`apply_neg_mode` 为口径实现
 - `scripts/eval/eval_urban1k.py` — Urban-1k 长文本入口
+- `scripts/eval/eval_knn_probe.py` — IN-1k k-NN probe 入口（纯图像口径，文件头有口径声明）
 

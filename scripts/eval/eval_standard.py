@@ -181,7 +181,8 @@ def eval_coco_retrieval(model, tok, val_tr, device, neg_mode="projective", neg_a
 
 
 def eval_imagenet(model, tok, val_tr, device, num_classes=1000, per_class=50,
-                  neg_mode="projective", neg_alpha=1.0, long_template=False):
+                  neg_mode="projective", neg_alpha=1.0, long_template=False,
+                  num_workers=12):
     """IN-1k zero-shot。默认 80 官方模板；long_template=True 时用长描述模板对照。"""
     from open_clip.zero_shot_classifier import build_zero_shot_classifier
     from open_clip.zero_shot_metadata import OPENAI_IMAGENET_TEMPLATES, IMAGENET_CLASSNAMES
@@ -198,20 +199,38 @@ def eval_imagenet(model, tok, val_tr, device, num_classes=1000, per_class=50,
         dirs = sorted([d for d in val_root.iterdir() if d.is_dir()])[:num_classes]
         correct1 = correct5 = total = 0
         dt = torch.float16 if device == "cuda" else torch.float32
+        # 批量前向（全量 5 万张时逐张会慢一个数量级）
+        paths, labels = [], []
         for i, d in enumerate(dirs):
-            imgs = sorted(d.iterdir())[:per_class]
-            for img in imgs:
-                t = val_tr(Image.open(img).convert("RGB")).unsqueeze(0)
-                f = model.encode_image(t.to(device=device, dtype=dt), normalize=True).float().cpu()
-                raw = apply_neg_mode(100. * (f @ classifier), neg_mode, neg_alpha)
-                topk = raw.topk(5, dim=1).indices[0]
-                correct1 += (topk[0] == i)
-                correct5 += (i in topk)
-                total += 1
+            for img in sorted(d.iterdir())[:per_class]:
+                paths.append(img)
+                labels.append(i)
+        # 多进程解码：单线程 ~90 img/s，全量 5 万张要 9 分钟且 GPU 空转；
+        # DataLoader(shuffle=False) 顺序与 transform 不变，逐样本结果等价。
+        class _ValSet(torch.utils.data.Dataset):
+            def __len__(self): return len(paths)
+            def __getitem__(self, i):
+                return val_tr(Image.open(paths[i]).convert("RGB")), labels[i]
+
+        BS = 100
+        loader = torch.utils.data.DataLoader(
+            _ValSet(), batch_size=BS, shuffle=False,
+            num_workers=num_workers, pin_memory=True)
+        for ts, lab in loader:
+            f = model.encode_image(ts.to(device=device, dtype=dt), normalize=True).float().cpu()
+            raw = apply_neg_mode(100. * (f @ classifier), neg_mode, neg_alpha)
+            top5i = raw.topk(5, dim=1).indices
+            correct1 += (top5i[:, 0] == lab).sum().item()
+            correct5 += (top5i == lab.unsqueeze(1)).any(1).sum().item()
+            total += len(lab)
+            if total % 10000 == 0:
+                print(f"    ... {total}/{len(paths)}", flush=True)
         top1 = correct1 / total
         top5 = correct5 / total
         tname = "长模板" if long_template else "80官方模板"
-        print(f"  IN-1k top1={top1:.4f} top5={top5:.4f} ({total} 图, {num_classes} 类, {tname})", flush=True)
+        scope = "★全量★" if (num_classes >= 1000 and per_class >= 50) else "⚠️子集(不可与全量混比)"
+        print(f"  IN-1k top1={top1:.4f} top5={top5:.4f} "
+              f"({total} 图, {num_classes} 类, {tname}, {scope})", flush=True)
     return {"in1k_top1": top1, "in1k_top5": top5}
 
 
@@ -223,10 +242,14 @@ def main():
                     choices=["standard", "projective", "antipodal", "orthogonal"],
                     help="必须与训练配方的 --neg-mode 一致（E 配方=projective）")
     ap.add_argument("--neg-alpha", type=float, default=1.0, help="与训练一致；<1.0 时覆盖 neg-mode")
-    ap.add_argument("--in1k-classes", type=int, default=100, help="IN-1k 类数（全量=1000，慢）")
-    ap.add_argument("--in1k-per-class", type=int, default=20, help="IN-1k 每类图数（全量=50）")
+    ap.add_argument("--in1k-classes", type=int, default=1000,
+                    help="IN-1k 类数。★默认全量 1000（open_clip 标准协议）★；"
+                         "改小只用于快速冒烟，子集数字不可与全量混比")
+    ap.add_argument("--in1k-per-class", type=int, default=50,
+                    help="IN-1k 每类图数。★默认全量 50（= val 全部）★")
     ap.add_argument("--retrieval", action="store_true", help="是否跑 COCO 检索")
     ap.add_argument("--long-template", action="store_true", help="IN-1k 额外跑长描述模板对照")
+    ap.add_argument("--num-workers", type=int, default=12, help="IN-1k 图像解码进程数")
     args = ap.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -240,11 +263,13 @@ def main():
 
     print(f"[{args.tag}] IN-1k zero-shot (neg_mode={args.neg_mode}):", flush=True)
     eval_imagenet(model, tok, val_tr, device, args.in1k_classes, args.in1k_per_class,
-                  args.neg_mode, args.neg_alpha, long_template=False)
+                  args.neg_mode, args.neg_alpha, long_template=False,
+                  num_workers=args.num_workers)
     if args.long_template:
         print(f"[{args.tag}] IN-1k zero-shot 长模板对照:", flush=True)
         eval_imagenet(model, tok, val_tr, device, args.in1k_classes, args.in1k_per_class,
-                      args.neg_mode, args.neg_alpha, long_template=True)
+                      args.neg_mode, args.neg_alpha, long_template=True,
+                      num_workers=args.num_workers)
 
 
 if __name__ == "__main__":

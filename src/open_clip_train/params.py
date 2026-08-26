@@ -591,6 +591,73 @@ def parse_args(args):
         )
     )
     parser.add_argument(
+        "--region-weight",
+        default=0.0,
+        type=float,
+        help=(
+            '区域-短语对比分支权重（FG-CLIP 式，ICML 2025）。>0 时启用：'
+            '从倒数第二层 patch feature map 用 RoIAlign 抠区域特征，与短语做对比。'
+            '需配合 --csv-region-key（JSON 列 [[phrase,x1,y1,x2,y2],...]，坐标归一化）'
+            '与 --image-resize-only（区域坐标要求不做随机裁剪）。'
+            'FG-CLIP 原论文用 0.1。'
+        )
+    )
+    parser.add_argument(
+        "--region-cc-weight", default=0.0, type=float,
+        help=(
+            '区域短语之间的类别对比权重（FG-CLIP2 hard_category_contrastive_loss，'
+            '原论文 region_cc_loss_weight=0.1）。推开同 batch 内不同区域的短语 embedding，'
+            '防止高频短语（eyes/nose/ears）塌成一团。'
+        )
+    )
+    parser.add_argument(
+        "--region-no-boxtext-head", default=False, action="store_true",
+        help=(
+            '区域文本不用独立投影头，与整句共用 text_projection。'
+            '默认关（即用独立 head，对齐 FG-CLIP2 的 boxtext_head）。消融用。'
+        )
+    )
+    parser.add_argument(
+        "--region-gather", default="local", type=str, choices=["local", "gather"],
+        help=(
+            '区域分支负样本池范围。local=只在 rank 内（FG-CLIP 的做法，矩阵 n^2）；'
+            'gather=跨卡收集文本侧扩大负样本池 world 倍（矩阵 n x n_total，按行分块算）。'
+            '区域数是 batch 的 K 倍，gather 的矩阵按平方放大 —— K=12/B=512/world=8 时'
+            '全量要 4.8GB，故分块。两者性能差异待实验。'
+        )
+    )
+    parser.add_argument(
+        "--region-shared-scale", default=False, action="store_true",
+        help=(
+            '区域分支与全图共用 logit_scale。默认关（用独立温度，对齐 FG-CLIP 的 '
+            'logit_scale_finegrained）——区域对齐的难度与全图不同，共用可能互相拖累。'
+        )
+    )
+    parser.add_argument(
+        "--csv-region-key", default=None, type=str,
+        help='TSV 里区域列的列名（如 regions）。见 scripts/data/build_region_tsv.py'
+    )
+    parser.add_argument(
+        "--max-region", default=12, type=int,
+        help='每图最多用多少个区域（实测 p90=11，成本随此值线性增长）'
+    )
+    parser.add_argument(
+        "--region-crop-aug", default=False, action="store_true",
+        help=(
+            '区域监督下启用随机裁剪，框随裁剪同步变换（完全包含策略：裁出画面的框丢弃）。'
+            '动机：关掉 RandomResizedCrop 实测代价 COCO i2t −1.70 / IN-1k −0.70（均超 2σ），'
+            '这部分正则化收益不该白丢。优先级高于 --image-resize-only。'
+        )
+    )
+    parser.add_argument(
+        "--image-resize-only", default=False, action="store_true",
+        help=(
+            '训练图像变换只做 resize 到目标尺寸，不做 RandomResizedCrop。'
+            '★ 用区域监督时必须开 ★ —— 区域坐标是相对原图归一化的，'
+            '随机裁剪会让坐标失效（FG-CLIP 同样直接 resize）。'
+        )
+    )
+    parser.add_argument(
         "--pcm-weight",
         default=0.0,
         type=float,

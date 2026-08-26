@@ -253,6 +253,30 @@ def main(args):
         **model_kwargs,
     )
 
+    # 区域监督要求图像变换只做 resize（不做 RandomResizedCrop）——
+    # 区域坐标是相对原图归一化的，随机裁剪会让坐标失效。FG-CLIP 同样直接 resize。
+    if getattr(args, 'region_crop_aug', False) and getattr(args, 'region_weight', 0.0) > 0:
+        # 区域 + 随机裁剪：框跟着裁剪同步变换（完全包含策略，裁出画面的框丢弃）
+        from torchvision.transforms import InterpolationMode, Compose
+        from open_clip_train.data import RandomResizedCropWithBoxes
+        _rrc = preprocess_train.transforms[0]          # 原 RandomResizedCrop
+        _tail = Compose(list(preprocess_train.transforms[1:]))
+        preprocess_train = RandomResizedCropWithBoxes(
+            size=_rrc.size, scale=_rrc.scale, ratio=_rrc.ratio,
+            interpolation=InterpolationMode.BICUBIC, tail=_tail)
+        logging.info(f"=> region_crop_aug: RandomResizedCropWithBoxes"
+                     f"(size={_rrc.size}, scale={_rrc.scale}) —— 框随裁剪同步变换")
+    elif getattr(args, 'image_resize_only', False):
+        from torchvision.transforms import Compose, Resize, InterpolationMode
+        _sz = preprocess_val.transforms[0].size
+        _sz = _sz if isinstance(_sz, (tuple, list)) else (_sz, _sz)
+        # 用 val 变换的后半段（ToTensor + Normalize），前面换成无裁剪的 Resize
+        _tail = [t for t in preprocess_val.transforms
+                 if type(t).__name__ not in ('Resize', 'CenterCrop')]
+        preprocess_train = Compose([Resize(_sz, interpolation=InterpolationMode.BICUBIC,
+                                           antialias=True)] + _tail)
+        logging.info(f"=> image_resize_only: preprocess_train 换为无裁剪 Resize{tuple(_sz)}")
+
     # DualTextCLIP: 共享图像塔 + 双文本塔（短 gt + 长 dense），双 SigLIP 对齐
     if getattr(args, 'dual_text', False):
         from open_clip.model import CLIPTextCfg
@@ -290,6 +314,10 @@ def main(args):
             noise_mix_ratio=getattr(args, 'noise_mix_ratio', 0.15),
             noise_sides=getattr(args, 'noise_sides', 'both'),
             pcm_dim=getattr(args, 'pcm_dim', 0) if getattr(args, 'pcm_weight', 0.0) > 0 else 0,
+            region_own_scale=(getattr(args, 'region_weight', 0.0) > 0
+                              and not getattr(args, 'region_shared_scale', False)),
+            region_boxtext_head=(getattr(args, 'region_weight', 0.0) > 0
+                                 and not getattr(args, 'region_no_boxtext_head', False)),
         )
         model = model.to(device)
 

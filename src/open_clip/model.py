@@ -730,6 +730,8 @@ class CLIPLeJEPA(nn.Module):
             noise_mix_ratio: float = 0.15,
             noise_sides: str = "both",
             pcm_dim: int = 0,
+            region_own_scale: bool = False,
+            region_boxtext_head: bool = False,
     ):
         super().__init__()
         self.output_dict = output_dict
@@ -740,6 +742,10 @@ class CLIPLeJEPA(nn.Module):
         self.sigreg_target = sigreg_target
         # PCM（Long-CLIP Primary Component Matching）短文本分支的 PCA 维度，0=关闭
         self.pcm_dim = pcm_dim
+        # 区域分支的独立温度（对齐 FG-CLIP 的 logit_scale_finegrained）。
+        # None = 与全图共用 logit_scale（region_shared_scale 消融组用）。
+        self.logit_scale_region = (
+            nn.Parameter(self.logit_scale.detach().clone()) if region_own_scale else None)
 
         # 获取 CLIP embedding dim（TimmModel.head 输出）
         clip_embed_dim = (
@@ -771,6 +777,10 @@ class CLIPLeJEPA(nn.Module):
                 )
         self._backbone_dim = backbone_dim
         self._clip_embed_dim = clip_embed_dim
+        # 区域文本的独立投影头（FG-CLIP2 `boxtext_head`）。区域短语与整句的分布差异大，
+        # 共用 text_projection 会互相拖累。None = 共用（消融组）。
+        self.boxtext_head = (
+            nn.Linear(clip_embed_dim, clip_embed_dim) if region_boxtext_head else None)
 
         # Build projectors
         img_in = backbone_dim if sigreg_target in ("cls", "cls_proj") else clip_embed_dim
@@ -877,6 +887,60 @@ class CLIPLeJEPA(nn.Module):
         """Delegate to wrapped CLIP (build_zero_shot_classifier needs this)."""
         return self.clip_model.encode_text(text, normalize=normalize)
 
+    def _roi_features(self, image: torch.Tensor, boxes: torch.Tensor,
+                      n_valid: torch.Tensor) -> Optional[torch.Tensor]:
+        """区域特征（FG-CLIP 式 Primary Region Matching）。
+
+        从**倒数第二层** patch token 取 2D feature map，RoIAlign 抠出每个框的
+        区域向量，再过 visual.head 投到文本空间。
+
+        为什么用倒数第二层：最后一层已被全图对比损失"污染"（所有 patch 都被
+        推向全图语义），局部性差。FG-CLIP 同样取 `hidden_states[-2]`。
+
+        参数:
+          image   [B,3,H,W]
+          boxes   [B,K,4]  归一化坐标 [0,1]，无效位为全 0
+          n_valid [B]      每图有效框数
+        返回:
+          (feats [B*K, embed_dim], mask [B*K] bool) —— 定长，padded 位由 mask 标记。
+          trunk 不支持中间层时返回 None。
+        """
+        from torchvision.ops import roi_align
+
+        trunk = self.clip_model.visual.trunk
+        if not hasattr(trunk, "forward_intermediates"):
+            return None
+        # 倒数第二层，直接拿 [B, C, h, w]（prefix token 已分离）
+        _, inter = trunk.forward_intermediates(
+            image, indices=[-2], return_prefix_tokens=True, norm=True)
+        fmap = inter[0][0] if isinstance(inter[0], (list, tuple)) else inter[0]  # [B, C, h, w]
+        B, C, h, w = fmap.shape
+
+        # ★ 定长输出 ★：每图恒定 K 个框（无效位用 [0,0,1,1] 占位），保证各 rank
+        # 张量尺寸一致 —— 这是 region_gather='gather' 能做 all_gather 的前提。
+        # 变长展平会让 NCCL 尺寸不匹配（实测 watchdog 超时 SIGABRT）。
+        K = boxes.shape[1]
+        b = boxes.float().clone().view(B * K, 4)
+        b[:, [0, 2]] *= w
+        b[:, [1, 3]] *= h
+        # 保证 x2>x1、y2>y1（至少 1 个 feature 像素），否则 roi_align 返回 0
+        b[:, 2] = torch.maximum(b[:, 2], b[:, 0] + 1.0)
+        b[:, 3] = torch.maximum(b[:, 3], b[:, 1] + 1.0)
+        # roi_align 的 batch-index 形式：[N, 5] = (batch_idx, x1, y1, x2, y2)
+        bidx = torch.arange(B, device=b.device, dtype=b.dtype).repeat_interleave(K).unsqueeze(1)
+        rois_in = torch.cat([bidx, b], dim=1)
+
+        # 输出 1×1 = 区域平均池化；aligned=True 修正半像素偏移
+        rois = roi_align(fmap.float(), rois_in, output_size=(1, 1),
+                         spatial_scale=1.0, sampling_ratio=-1, aligned=True)[..., 0, 0]
+        # 过 visual.head 投到文本空间（跳过 pooling —— 那是全图池化，区域分支不能用）
+        head = self.clip_model.visual.head
+        feats = head(rois.to(fmap.dtype))                     # [B*K, D]
+        # mask：每图前 n_valid 个为有效
+        ar = torch.arange(K, device=n_valid.device).unsqueeze(0).expand(B, K)
+        mask = (ar < n_valid.unsqueeze(1)).reshape(B * K)
+        return feats, mask
+
     @staticmethod
     def _trim_to_batch_max(text: torch.Tensor) -> torch.Tensor:
         """把 token 序列截断到 batch 内实际最大长度（EOT 位置 +1）。
@@ -894,11 +958,17 @@ class CLIPLeJEPA(nn.Module):
         return text[:, :max_len] if max_len < text.shape[1] else text
 
     def forward(self, image: Optional[torch.Tensor] = None, text: Optional[torch.Tensor] = None,
-                text2: Optional[torch.Tensor] = None):
+                text2: Optional[torch.Tensor] = None,
+                region_texts: Optional[torch.Tensor] = None,
+                region_boxes: Optional[torch.Tensor] = None,
+                region_nvalid: Optional[torch.Tensor] = None):
         """前向。
 
-        text        : 主文本（PCM 模式下为长文本 dense；常规模式为唯一文本）
-        text2       : PCM 短文本分支（gt 短 caption）。仅 pcm_dim>0 且训练时生效。
+        text          : 主文本（PCM 模式下为长文本 dense；常规模式为唯一文本）
+        text2         : PCM 短文本分支（gt 短 caption）。仅 pcm_dim>0 且训练时生效。
+        region_texts  : [B,K,L] 区域短语 token。仅 region 模式生效。
+        region_boxes  : [B,K,4] 归一化坐标，无效位全 0。
+        region_nvalid : [B]     每图有效区域数。
         """
         image_proj = None
         text_proj = None
@@ -942,12 +1012,37 @@ class CLIPLeJEPA(nn.Module):
             pcm_img_features = F.normalize(
                 self._pca_reduce(image_features, self.pcm_dim), dim=-1)
 
+        # ── 区域-短语对比分支（FG-CLIP 式）─────────────────────────────────────
+        # 全图对比只监督 pooled 特征，patch token 得不到直接监督。这里用 RoIAlign
+        # 从倒数第二层 patch map 抠区域特征，与对应短语做对比 —— 直接监督空间特征。
+        region_img_f = region_txt_f = region_mask = None
+        if (region_texts is not None and region_boxes is not None
+                and region_nvalid is not None and image is not None):
+            out_roi = self._roi_features(image, region_boxes, region_nvalid)
+            if out_roi is not None:
+                rois, region_mask = out_roi                       # [B*K, D], [B*K]
+                # 短语定长展平（与 rois 同为 batch-major，逐位对应）
+                B, K, L = region_texts.shape
+                flat = region_texts.reshape(B * K, L)
+                txt_raw = self.clip_model.encode_text(
+                    self._trim_to_batch_max(flat), normalize=False)
+                if self.boxtext_head is not None:
+                    txt_raw = self.boxtext_head(txt_raw)
+                region_img_f = F.normalize(rois, dim=-1)
+                region_txt_f = F.normalize(txt_raw, dim=-1)
+
         if self.output_dict:
             out = {
                 "image_features": image_features, "text_features": text_features,
                 "image_proj": image_proj, "text_proj": text_proj,
                 "logit_scale": self.logit_scale.exp(),
             }
+            if region_img_f is not None:
+                out["region_image_features"] = region_img_f
+                out["region_text_features"] = region_txt_f
+                out["region_mask"] = region_mask
+                if self.logit_scale_region is not None:
+                    out["region_logit_scale"] = self.logit_scale_region.exp()
             if self.logit_bias is not None:
                 out["logit_bias"] = self.logit_bias
             if gap_loss_val is not None:

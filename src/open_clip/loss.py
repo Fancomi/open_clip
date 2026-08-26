@@ -1270,10 +1270,17 @@ class SIGRegContrastiveLoss(nn.Module):
             xmatch_weight: float = 0.0,
             xmatch_mode: str = 'pair',
             pcm_weight: float = 0.0,
+            region_weight: float = 0.0,
+            region_gather: str = 'local',
+            region_cc_weight: float = 0.0,
     ):
         super().__init__()
         self.sigreg_weight = sigreg_weight
         self.pcm_weight = pcm_weight
+        self.region_weight = region_weight
+        assert region_gather in ('local', 'gather'), region_gather
+        self.region_gather = region_gather
+        self.region_cc_weight = region_cc_weight
         self.pos_only = pos_only
         self.sigreg_joint = sigreg_joint
         self.within_modal_weight = within_modal_weight
@@ -1396,6 +1403,95 @@ class SIGRegContrastiveLoss(nn.Module):
         # Normalise by B (same convention as SigLipLoss._loss: sum / B)
         return loss.sum() / N
 
+    @staticmethod
+    def _region_cc_loss(txt_f, topk: int = 10, sim_cap: float = 0.95):
+        """区域短语之间的类别对比（FG-CLIP2 `hard_category_contrastive_loss`）。
+
+        推开同 batch 内不同区域的短语 embedding，防止高频短语塌成一团。
+        对症我们数据里的实际问题：top 短语全是 eyes/nose/ears/eyebrows 等人脸部件，
+        不同图的这些短语会互相成为"假负样本"。
+
+        实现按 FG-CLIP2 原样：
+          1. 短语间余弦相似度，对角置 0（自己不算）
+          2. >sim_cap(0.95) 的置 0 —— 那是重复短语（真的同义），不该硬推开
+          3. 取每行 top-k 最相似的，用 PNTextLoss = mean(-log(1/sum(exp(sim))))
+             = mean(log(sum(exp(sim))))，即 logsumexp，惩罚"最像的那几个太像"
+        """
+        n = txt_f.shape[0]
+        if n < 2:
+            return None
+        sim = txt_f @ txt_f.T
+        eye = torch.eye(n, device=sim.device, dtype=sim.dtype)
+        sim = sim * (1.0 - eye)                          # 对角清零
+        sim = torch.where(sim > sim_cap, torch.zeros_like(sim), sim)
+        k = min(topk, n - 1)
+        vals, _ = sim.topk(k, dim=1, largest=True, sorted=True)
+        return torch.log(vals.exp().sum(dim=1)).mean()   # == PNTextLoss
+
+    def _region_loss(self, img_f, txt_f, mask, logit_scale, logit_bias=None):
+        """区域-短语对比损失（SigLIP 口径，保留 neg_mode）。
+
+        输入是**定长** [B*K, D]（各 rank 尺寸一致，这是 all_gather 能工作的前提），
+        mask [B*K] 布尔，标记有效区域；padded 行由 mask 排除，不靠零向量蒙混。
+
+        `region_gather` 是本轮要做实验对比的变量：
+
+        - `'local'`：只在 rank 内构造负样本（FG-CLIP `pairwise_contrastive_loss` 的做法）。
+          负样本池 ≈ n_valid，相似度矩阵 n²。K=12/B=512 时 n≈4340 → 75MB(fp32)。
+        - `'gather'`：跨卡收集文本侧扩大负样本池，图像侧保持本地。
+          矩阵 n × (n_total)，负样本池大 world 倍。K=12/B=512/world=8 时
+          全量矩阵要 4.8GB，所以**按行分块**累加，峰值降到 ~600MB。
+
+        为什么 FG-CLIP 选 local：区域数是 batch 的 K 倍，跨卡矩阵按平方放大。
+        它的主损失有 all_gather，区域损失刻意没有 —— 这是显存约束下的取舍，
+        不是疏漏。本实现把两种都做出来，用实验判断值不值。
+
+        ⚠️ 分布式一致性：gather 前**不能**按 mask 压缩（各 rank 有效数不同会导致
+        NCCL 尺寸不匹配 → watchdog 超时 SIGABRT，已实测踩过）。所以先 gather 定长
+        张量与定长 mask，再在本地筛选。
+        """
+        if mask.dtype != torch.bool:
+            mask = mask.bool()
+
+        if self.region_gather == 'local' or self.world_size <= 1 or not has_distributed:
+            sel = mask.nonzero(as_tuple=True)[0]
+            if sel.numel() < 2:
+                return None
+            return self.main_loss._loss(
+                img_f[sel], txt_f[sel], logit_scale, logit_bias)
+
+        # ---- gather 模式 ----
+        # 1) gather 定长张量（各 rank 形状相同，安全）；文本带梯度，mask 不需要
+        all_txt = torch.cat(torch.distributed.nn.all_gather(txt_f), dim=0)      # [world*BK, D]
+        gathered_mask = [torch.zeros_like(mask) for _ in range(self.world_size)]
+        dist.all_gather(gathered_mask, mask)
+        all_mask = torch.cat(gathered_mask, dim=0)                              # [world*BK]
+
+        # 2) 本地有效行 + 全局有效列
+        loc_sel = mask.nonzero(as_tuple=True)[0]
+        glb_sel = all_mask.nonzero(as_tuple=True)[0]
+        if loc_sel.numel() < 2 or glb_sel.numel() < 2:
+            return None
+        img_v = img_f[loc_sel]                       # [n_loc, D]
+        txt_v = all_txt[glb_sel]                     # [n_glb, D]
+        n_loc = img_v.shape[0]
+        # 本地第 i 个有效行在全局有效列中的下标（正样本位置）
+        offset = int(all_mask[:self.rank * mask.shape[0]].sum())
+        pos_idx = torch.arange(n_loc, device=img_v.device) + offset
+
+        # 3) 按行分块算 SigLIP loss（避免 n_loc × n_glb 全矩阵驻留）
+        chunk = 512
+        total = img_v.new_zeros(())
+        for st in range(0, n_loc, chunk):
+            ed = min(st + chunk, n_loc)
+            logits = self.main_loss.get_logits(
+                img_v[st:ed], txt_v, logit_scale, logit_bias)          # [c, n_glb]
+            labels = -torch.ones_like(logits)
+            rows = torch.arange(ed - st, device=logits.device)
+            labels[rows, pos_idx[st:ed]] = 1.0
+            total = total + (-F.logsigmoid(labels * logits)).sum()
+        return total / n_loc
+
     def forward(
             self,
             image_features,
@@ -1405,6 +1501,10 @@ class SIGRegContrastiveLoss(nn.Module):
             image_proj=None,
             text_proj=None,
             modality_gap_loss: Optional[torch.Tensor] = None,
+            region_image_features=None,
+            region_text_features=None,
+            region_mask=None,
+            region_logit_scale=None,
             pcm_image_features=None,
             pcm_text_features=None,
             output_dict: bool = False,
@@ -1495,6 +1595,25 @@ class SIGRegContrastiveLoss(nn.Module):
         if self.xmatch is not None and image_proj is not None and text_proj is not None \
                 and image_proj.shape[-1] == text_proj.shape[-1]:
             losses["xmatch_loss"] = self.xmatch_weight * self.xmatch(image_proj, text_proj)
+
+        # 区域-短语对比分支（FG-CLIP 式）：RoIAlign 区域特征 × 短语，
+        # 与主损失同款（自动继承 neg_mode）。FG-CLIP 的 box_loss_weight=0.1 作先验。
+        # 注意：区域是**成对**的（第 i 个区域对第 i 个短语），batch 内其余区域为负样本。
+        if region_image_features is not None and region_text_features is not None \
+                and region_mask is not None and self.region_weight > 0:
+            _rl = self._region_loss(
+                region_image_features, region_text_features, region_mask,
+                region_logit_scale if region_logit_scale is not None else logit_scale,
+                logit_bias)
+            if _rl is not None:
+                losses["region_loss"] = self.region_weight * _rl
+            # 区域短语间类别对比（FG-CLIP2 region_cc_loss_weight=0.1）
+            if self.region_cc_weight > 0:
+                _sel = region_mask.bool().nonzero(as_tuple=True)[0]
+                if _sel.numel() >= 2:
+                    _cc = self._region_cc_loss(region_text_features[_sel])
+                    if _cc is not None:
+                        losses["region_cc_loss"] = self.region_cc_weight * _cc
 
         # PCM 短文本分支（Long-CLIP Primary Component Matching）：
         # 与主损失同款（含 neg_mode），作用在 PCA 降维图像特征 × 短 caption 上。

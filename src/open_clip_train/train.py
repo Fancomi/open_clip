@@ -99,8 +99,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
         # ---- Batch unpacking: DINOv3 vs standard ----
         is_multi_teacher = getattr(args, 'multi_teacher', False)
         is_pcm = getattr(args, 'pcm_weight', 0.0) > 0
+        is_region = getattr(args, 'region_weight', 0.0) > 0
         # PCM 与 dual_teacher/dual_text 共用「三元组 batch」解包路径（images, text, text2）
-        is_dual_teacher = getattr(args, 'dual_teacher', False) or getattr(args, 'dual_text', False) or is_pcm
+        is_dual_teacher = (getattr(args, 'dual_teacher', False) or getattr(args, 'dual_text', False)
+                           or (is_pcm and not is_region))
         if is_dinov3:
             # batch = (batch_dict, texts)
             # batch_dict: {global_crops, local_crops, collated_masks, masks_weight, mask_indices}
@@ -126,6 +128,21 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             if is_multi_teacher:
                 images = batch[0].to(device=device, dtype=input_dtype, non_blocking=True)
                 texts_list = [t.to(device=device, non_blocking=True) for t in batch[1:]]
+            elif is_region and is_pcm:
+                images, texts, texts2, rtexts, rboxes, rnvalid = batch
+                images = images.to(device=device, dtype=input_dtype, non_blocking=True)
+                texts  = texts.to(device=device, non_blocking=True)
+                texts2 = texts2.to(device=device, non_blocking=True)
+                rtexts = rtexts.to(device=device, non_blocking=True)
+                rboxes = rboxes.to(device=device, non_blocking=True)
+                rnvalid = rnvalid.to(device=device, non_blocking=True)
+            elif is_region:
+                images, texts, rtexts, rboxes, rnvalid = batch
+                images = images.to(device=device, dtype=input_dtype, non_blocking=True)
+                texts  = texts.to(device=device, non_blocking=True)
+                rtexts = rtexts.to(device=device, non_blocking=True)
+                rboxes = rboxes.to(device=device, non_blocking=True)
+                rnvalid = rnvalid.to(device=device, non_blocking=True)
             elif is_dual_teacher:
                 images, texts, texts2 = batch
                 images = images.to(device=device, dtype=input_dtype, non_blocking=True)
@@ -155,6 +172,10 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 else:
                     if is_multi_teacher:
                         model_out = model(images, texts_list)
+                    elif is_region and is_pcm:
+                        model_out = model(images, texts, texts2, rtexts, rboxes, rnvalid)
+                    elif is_region:
+                        model_out = model(images, texts, None, rtexts, rboxes, rnvalid)
                     elif is_dual_teacher:
                         model_out = model(images, texts, texts2)
                     else:

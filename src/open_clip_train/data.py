@@ -26,9 +26,57 @@ except ImportError:
     hvd = None
 
 
+class RandomResizedCropWithBoxes:
+    """RandomResizedCrop + 同步变换归一化框（区域监督专用）。
+
+    动机：区域坐标是相对**原图**归一化的，默认的 RandomResizedCrop 会让框失效，
+    所以区域组此前只能用 resize-only。而实测随机裁剪值 COCO i2t 1.70 / IN-1k 0.70
+    （gt_s1 有裁剪 23.16/22.95 vs A' 无裁剪 21.46/22.25，同 commit，均超 2σ）——
+    这部分正则化收益不该白丢。本类把裁剪参数取出来，让框跟着变换。
+
+    删减策略：**完全包含**（框必须整体落在裁剪区内，否则丢弃）。
+    不用 clip+IoU 阈值，因为我们的框绑定的是短语级语义
+    （"orange equilateral triangle"），切掉一半后短语与区域不再对应；
+    检测任务里 clip 一个 person 框还是 person，容忍度不同。
+    """
+
+    def __init__(self, size, scale, ratio, interpolation, tail):
+        self.size = size if isinstance(size, (tuple, list)) else (size, size)
+        self.scale = scale
+        self.ratio = ratio
+        self.interpolation = interpolation
+        self.tail = tail            # ToTensor + Normalize 等后续变换
+
+    def __call__(self, img, boxes, n_valid):
+        """img: PIL；boxes: [K,4] 归一化；n_valid: int。返回 (tensor, boxes, n_valid)。"""
+        from torchvision.transforms import RandomResizedCrop
+        from torchvision.transforms.functional import resized_crop
+        W, H = img.size
+        i, j, h, w = RandomResizedCrop.get_params(img, list(self.scale), list(self.ratio))
+        out = self.tail(resized_crop(img, i, j, h, w, list(self.size),
+                                     interpolation=self.interpolation, antialias=True))
+        if n_valid == 0 or w <= 0 or h <= 0:
+            return out, boxes, n_valid
+        # 归一化(原图) → 像素 → 减裁剪原点 → 除裁剪尺寸 = 归一化(裁剪后)
+        b = boxes[:n_valid].clone()
+        b[:, 0] = (b[:, 0] * W - j) / w
+        b[:, 2] = (b[:, 2] * W - j) / w
+        b[:, 1] = (b[:, 1] * H - i) / h
+        b[:, 3] = (b[:, 3] * H - i) / h
+        # 完全包含：四边都在 [0,1] 内，且仍有面积
+        keep = ((b[:, 0] >= 0) & (b[:, 1] >= 0) & (b[:, 2] <= 1) & (b[:, 3] <= 1)
+                & (b[:, 2] > b[:, 0]) & (b[:, 3] > b[:, 1]))
+        kept = b[keep]
+        newb = torch.zeros_like(boxes)
+        nk = int(kept.shape[0])
+        if nk:
+            newb[:nk] = kept
+        return out, newb, nk
+
+
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", tokenizer=None,
-                 caption2_key=None, tokenizer2=None):
+                 caption2_key=None, tokenizer2=None, region_key=None, max_region=12):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
 
@@ -46,16 +94,59 @@ class CsvDataset(Dataset):
         self.captions2 = df[caption2_key].tolist() if self.caption2_key else None
         self.tokenize2 = tokenizer2
 
+        # 可选区域列（FG-CLIP 式区域-短语对比）：JSON [[phrase,x1,y1,x2,y2], ...]，坐标已归一化
+        self.region_key = region_key if region_key and region_key in df.columns else None
+        self.regions = df[region_key].tolist() if self.region_key else None
+        self.max_region = max_region
+
     def __len__(self):
         return len(self.captions)
 
     def __getitem__(self, idx):
+        box_aware = isinstance(self.transforms, RandomResizedCropWithBoxes)
         try:
-            images = self.transforms(Image.open(str(self.images[idx])))
+            pil = Image.open(str(self.images[idx]))
+            if box_aware:
+                pil = pil.convert("RGB")        # box-aware 分支自己管 convert
+                images = None                    # 稍后与框一起变换
+            else:
+                images = self.transforms(pil)
         except (OSError, IOError):
             # 损坏图片: 返回随机邻居替代
             return self.__getitem__((idx + 1) % len(self))
         texts = self.tokenize([str(self.captions[idx])])[0]
+
+        if self.regions is not None:
+            # 区域模式：返回 (image, text, region_texts[K], boxes[K,4], n_valid)
+            # 若同时有 caption2（PCM），返回 6 元组 (image, text, text2, rtexts, boxes, n_valid)
+            # K 固定为 max_region，不足处补零并由 n_valid 标记有效数（collate 需定长）
+            K = self.max_region
+            try:
+                items = json.loads(self.regions[idx])[:K]
+            except (TypeError, ValueError):
+                items = []
+            phrases = [str(it[0]) for it in items]
+            boxes = torch.zeros(K, 4, dtype=torch.float32)
+            for j, it in enumerate(items):
+                boxes[j] = torch.tensor([float(it[1]), float(it[2]), float(it[3]), float(it[4])])
+            n_valid = len(items)
+            # 短语 tokenize；空位用空串占位（前向时按 n_valid 掩掉，不参与损失）
+            pad = K - n_valid
+            region_texts = self.tokenize(phrases + [""] * pad) if K else torch.zeros(0, dtype=torch.long)
+            if box_aware:
+                # 图像与框同步变换；n_valid 可能因框被裁出画面而减少
+                images, boxes, n_valid = self.transforms(pil, boxes, n_valid)
+                if n_valid < K:                  # 被删的框对应短语置空（mask 会掩掉）
+                    pad2 = K - n_valid
+                    region_texts = self.tokenize(phrases[:n_valid] + [""] * pad2)
+            nv = torch.tensor(n_valid, dtype=torch.long)
+            if self.captions2 is not None:
+                texts2 = self.tokenize2([str(self.captions2[idx])])[0]
+                return images, texts, texts2, region_texts, boxes, nv
+            return images, texts, region_texts, boxes, nv
+
+        if images is None:      # box_aware 但无区域列：退化为纯裁剪
+            images, _, _ = self.transforms(pil, torch.zeros(1, 4), 0)
         if self.captions2 is not None:
             texts2 = self.tokenize2([str(self.captions2[idx])])[0]
             return images, texts, texts2
@@ -622,6 +713,8 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None, **kw
         tokenizer=tokenizer,
         caption2_key=getattr(args, 'csv_caption2_key', None),
         tokenizer2=kwargs.get('tokenizer_secondary', None),
+        region_key=getattr(args, 'csv_region_key', None) if is_train else None,
+        max_region=getattr(args, 'max_region', 12),
     )
     num_samples = len(dataset)
     sampler = DistributedSampler(dataset) if args.distributed and is_train else None

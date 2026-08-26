@@ -871,6 +871,9 @@ def create_loss(args):
             xmatch_weight=getattr(args, 'xmatch_weight', 0.0),
             xmatch_mode=getattr(args, 'xmatch_mode', 'pair'),
             pcm_weight=getattr(args, 'pcm_weight', 0.0),
+            region_weight=getattr(args, 'region_weight', 0.0),
+            region_gather=getattr(args, 'region_gather', 'local'),
+            region_cc_weight=getattr(args, 'region_cc_weight', 0.0),
         )
     elif getattr(args, 'dinov3', False):
         # CLIPWithDINOLoss：需要从 model 中读取 embed_dim，由 main.py 传入

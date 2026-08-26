@@ -123,10 +123,25 @@ run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
         PCM="--pcm-weight ${PCM_WEIGHT} --pcm-dim ${PCM_DIM:-32} \
              --csv-caption2-key ${CSV_CAPTION2_KEY:-caption_short}"
     fi
+    # 区域-短语对比（FG-CLIP 式）；坐标依赖 resize-only 变换
+    local REGION=""
+    if [ -n "${REGION_WEIGHT:-}" ]; then
+        # 图像变换：默认 resize-only（框坐标要求）；REGION_CROP_AUG=1 时改用
+        # 框随裁剪同步变换（RandomResizedCropWithBoxes），拿回随机裁剪的正则化收益
+        local _IMGAUG="--image-resize-only"
+        [ "${REGION_CROP_AUG:-0}" = "1" ] && _IMGAUG="--region-crop-aug"
+        REGION="--region-weight ${REGION_WEIGHT} --csv-region-key ${CSV_REGION_KEY:-regions} \
+                --max-region ${MAX_REGION:-12} --region-gather ${REGION_GATHER:-local} \
+                --region-cc-weight ${REGION_CC_WEIGHT:-0.1} \
+                ${REGION_SHARED_SCALE:+--region-shared-scale} \
+                ${REGION_NO_HEAD:+--region-no-boxtext-head} ${_IMGAUG}"
+    fi
+    # 无区域但要 resize-only 对照（A' 组）
+    [ -z "${REGION_WEIGHT:-}" ] && [ "${RESIZE_ONLY:-0}" = "1" ] && REGION="--image-resize-only"
     local GEMMA_COMMON="--warmup ${WARMUP} ${BASE} --epochs ${EPOCHS} ${NS} \
         --dataset-type csv --force-context-length 256 \
         --csv-img-key filepath --csv-caption-key ${CAPKEY} --val-num-captions-per-image 5 \
-        ${PCM} --imagenet-val ${IMNVAL}"
+        ${PCM} ${REGION} --imagenet-val ${IMNVAL}"
     echo "======== [gemma] ${TAG} (data=${DATA_VERSION} ${EXTRA}) => ${NAME} ========"
     if [ ! -f "${GEMMA_TSV}" ]; then
         echo "!!!! 缺 ${GEMMA_TSV} —— 先跑 scripts/data/build_gemma_tsv.py 生成"
@@ -379,6 +394,142 @@ case "${1:-usage}" in
     PCM_WEIGHT="${PCM_WEIGHT:-1.0}" \
     PCM_DIM="${PCM_DIM:-32}" \
       run_gemma "smoke" 29661 "${VISREG_E}"
+    ;;
+
+  # ── ★ 区域-短语对比（FG-CLIP 式，ICML'25）─────────────────────────────────
+  #   从倒数第二层 patch map RoIAlign 抠区域特征，与审核过的短语做对比。
+  #   数据 clip_train_region.tsv（filepath/caption/regions），坐标已归一化。
+  #   ★ 强制 resize-only 变换 ★ —— 区域坐标不能配 RandomResizedCrop。
+  #   用法: bash scripts/train/visreg.sh region              # C 组：gt 短文 + 区域
+  #        bash scripts/train/visreg.sh region-smoke        # 冒烟
+  #        bash scripts/train/visreg.sh gt-resize           # A' 组：gt 短文 + resize-only 对照
+  #        REGION_WEIGHT=0.2 MAX_REGION=6 bash ... region   # 超参 override
+  region)
+    REGION_TSV="${GEMMA_TSV_DIR}/clip_train_region.tsv"
+    if [ ! -f "${REGION_TSV}" ]; then
+        echo "!!!! 缺 ${REGION_TSV} —— 先跑 python scripts/data/build_region_tsv.py"
+        exit 1
+    fi
+    DATA_VERSION="regw${REGION_WEIGHT:-0.2}k${MAX_REGION:-12}${REGION_GATHER:+-}${REGION_GATHER:-}${REGION_SHARED_SCALE:+-sharedsc}_${NEG_MODE}" \
+    GEMMA_TSV="${REGION_TSV}" \
+    CSV_CAPTION_KEY=caption \
+    REGION_WEIGHT="${REGION_WEIGHT:-0.2}" \
+    MAX_REGION="${MAX_REGION:-12}" \
+      run_gemma "E" 29680 "${VISREG_E}"
+    ;;
+
+  # ── ★ H 组：C3 + 随机裁剪（框随裁剪同步变换）───────────────────────────────
+  #   与 C3 的唯一变量：图像变换。C3 用 resize-only（框坐标的必要妥协），
+  #   本组用 RandomResizedCropWithBoxes —— 框跟着裁剪走，裁出画面的丢弃。
+  #   动机：关裁剪实测代价 COCO i2t −1.70 / IN-1k −0.70（gt_s1 vs A'，同 commit，均超 2σ）。
+  #   取舍：单测 scale=(0.9,1.0) 下丢框率约 20~40%（贴边/大框易丢），
+  #        「正则化收益」vs「区域样本减少」谁大，只能实测。
+  #   用法: bash scripts/train/visreg.sh region-cropaug
+  region-cropaug)
+    REGION_TSV="${GEMMA_TSV_DIR}/clip_train_region.tsv"
+    [ -f "${REGION_TSV}" ] || { echo "!!!! 缺 ${REGION_TSV}"; exit 1; }
+    DATA_VERSION="regw${REGION_WEIGHT:-0.2}k${MAX_REGION:-12}-cropaug_${NEG_MODE}" \
+    GEMMA_TSV="${REGION_TSV}" \
+    CSV_CAPTION_KEY=caption \
+    REGION_WEIGHT="${REGION_WEIGHT:-0.2}" \
+    MAX_REGION="${MAX_REGION:-12}" \
+    REGION_SHARED_SCALE=1 \
+    REGION_CROP_AUG=1 \
+      run_gemma "E" 29700 "${VISREG_E}"
+    ;;
+
+  region-cropaug-smoke)
+    REGION_TSV="${GEMMA_TSV_DIR}/clip_train_region.tsv"
+    [ -f "${REGION_TSV}" ] || { echo "!!!! 缺 ${REGION_TSV}"; exit 1; }
+    EPOCHS=1 WARMUP=2 PreGpuBS=128
+    GEMMA_N_TRAIN=$((PreGpuBS * GPUS * 4))
+    DATA_VERSION="regcropaugsmoke_${NEG_MODE}" \
+    GEMMA_TSV="${REGION_TSV}" \
+    CSV_CAPTION_KEY=caption \
+    REGION_WEIGHT="${REGION_WEIGHT:-0.2}" MAX_REGION="${MAX_REGION:-12}" \
+    REGION_SHARED_SCALE=1 REGION_CROP_AUG=1 \
+      run_gemma "smoke" 29701 "${VISREG_E}"
+    ;;
+
+  region-smoke)
+    REGION_TSV="${GEMMA_TSV_DIR}/clip_train_region.tsv"
+    [ -f "${REGION_TSV}" ] || { echo "!!!! 缺 ${REGION_TSV}"; exit 1; }
+    EPOCHS=1 WARMUP=2 PreGpuBS=128
+    GEMMA_N_TRAIN=$((PreGpuBS * GPUS * 4))
+    DATA_VERSION="regsmoke_${NEG_MODE}" \
+    GEMMA_TSV="${REGION_TSV}" \
+    CSV_CAPTION_KEY=caption \
+    REGION_WEIGHT="${REGION_WEIGHT:-0.2}" \
+    MAX_REGION="${MAX_REGION:-12}" \
+      run_gemma "smoke" 29681 "${VISREG_E}"
+    ;;
+
+  # ── ★ G 组：PCM + 区域监督叠加（本周两条最优线合并）────────────────────────
+  #   主分支   SigLIP(img, caption_dense)          长文本
+  #   PCM 短分支 SigLIP(PCA_k(img), caption_short)  保短模板（w=0.2 已调优）
+  #   区域分支  SigLIP(RoIAlign(patch), 短语)       图像塔/分类（C3 配置）
+  #   数据 clip_train_pcmregion.tsv（198.4 万，dense 覆盖所限）
+  #   ⚠️ 样本量 198.4 万 ≠ C3 的 286.9 万，与 pcm_w0.2 可比、与 C3 不完全可比
+  #   ⚠️ 首次运行（0823_2048）在 ep1 因 CUDA OOM 崩溃：三条监督分支叠加后
+  #      allocated 58.3 GB、reserved-but-unallocated 15.9 GB —— 是**碎片**而非容量墙。
+  #      故加 expandable_segments:True（仅换分配器策略，数值完全等价，
+  #      不动 batch/lr，保住与所有历史组的可比性）。
+  #   ⚠️ 第二次运行（0824_1618）1 秒即退：torchrun rendezvous 撞
+  #      `EADDRINUSE port 29690`（同机另一进程占用），完全没进训练。
+  #      故端口改为可覆盖 `PORT=`，队列侧先探测空闲端口再传入。
+  #   用法: bash scripts/train/visreg.sh pcm-region   （可选 PORT=29691 前缀覆盖）
+  pcm-region)
+    PR_TSV="${GEMMA_TSV_DIR}/clip_train_pcmregion.tsv"
+    [ -f "${PR_TSV}" ] || { echo "!!!! 缺 ${PR_TSV} —— 先跑 scripts/data/build_pcm_region_tsv.py"; exit 1; }
+    DATA_VERSION="pcmregw${REGION_WEIGHT:-0.2}p${PCM_WEIGHT:-0.2}_${NEG_MODE}" \
+    PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" \
+    GEMMA_TSV="${PR_TSV}" \
+    CSV_CAPTION_KEY=caption_dense \
+    CSV_CAPTION2_KEY=caption_short \
+    PCM_WEIGHT="${PCM_WEIGHT:-0.2}" PCM_DIM="${PCM_DIM:-32}" \
+    REGION_WEIGHT="${REGION_WEIGHT:-0.2}" MAX_REGION="${MAX_REGION:-12}" \
+    REGION_SHARED_SCALE=1 \
+      run_gemma "E" "${PORT:-29690}" "${VISREG_E}"
+    ;;
+
+  pcm-region-smoke)
+    PR_TSV="${GEMMA_TSV_DIR}/clip_train_pcmregion.tsv"
+    [ -f "${PR_TSV}" ] || { echo "!!!! 缺 ${PR_TSV}"; exit 1; }
+    EPOCHS=1 WARMUP=2 PreGpuBS=128
+    GEMMA_N_TRAIN=$((PreGpuBS * GPUS * 4))
+    DATA_VERSION="pcmregsmoke_${NEG_MODE}" \
+    GEMMA_TSV="${PR_TSV}" \
+    CSV_CAPTION_KEY=caption_dense \
+    CSV_CAPTION2_KEY=caption_short \
+    PCM_WEIGHT="${PCM_WEIGHT:-0.2}" PCM_DIM="${PCM_DIM:-32}" \
+    REGION_WEIGHT="${REGION_WEIGHT:-0.2}" MAX_REGION="${MAX_REGION:-12}" \
+    REGION_SHARED_SCALE=1 \
+      run_gemma "smoke" 29691 "${VISREG_E}"
+    ;;
+
+  # ── ★ E 组：verdict（gemma4 审核）的价值 ────────────────────────────────────
+  #   三档对照，都用 C3 配置（共享 scale / local / K=12 / w=0.2 / cc=0.1）：
+  #     firstbox : 只取首框，不用 verdict —— 对照基线（隔离"框选择策略"）
+  #     soft     : YES 1.0 / NO 0.3 / null 1.0（MANIFEST 推荐）
+  #     hard     : 只丢明确 NO，null 保留（丢 null 会砍六成数据）
+  #   用法: VERDICT_MODE=soft bash scripts/train/visreg.sh region-verdict
+  region-verdict)
+    VM="${VERDICT_MODE:-soft}"
+    V_TSV="${GEMMA_TSV_DIR}/clip_train_region_${VM}.tsv"
+    [ -f "${V_TSV}" ] || { echo "!!!! 缺 ${V_TSV} —— 先跑 scripts/data/attach_verdict_sidecar.py --mode ${VM}"; exit 1; }
+    DATA_VERSION="regvd-${VM}_${NEG_MODE}" \
+    GEMMA_TSV="${V_TSV}" \
+    CSV_CAPTION_KEY=caption \
+    REGION_WEIGHT="${REGION_WEIGHT:-0.2}" MAX_REGION="${MAX_REGION:-12}" \
+    REGION_SHARED_SCALE=1 \
+      run_gemma "E" 29695 "${VISREG_E}"
+    ;;
+
+  # ── A' 组：gt 短文 + resize-only（隔离"关掉随机裁剪"的影响）──────────────
+  gt-resize)
+    DATA_VERSION="gt_resize" GEMMA_TSV="${GEMMA_TSV_DIR}/clip_train_gt.tsv" \
+    RESIZE_ONLY=1 \
+      run_gemma "gt_base" 29682 "${VISREG_E}"
     ;;
 
   # ── standard 口径对照（同 E 配方，仅 --neg-mode standard）────────────────
