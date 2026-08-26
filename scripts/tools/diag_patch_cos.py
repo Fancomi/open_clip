@@ -66,13 +66,30 @@ def load_model(ckpt_path, device):
 
 
 def pair_cos(x):
-    """x: [B, N, D] → (mean cos, mean |cos|)，只算每图内部 patch 两两、去对角。"""
+    """x: [B, N, D] → (mean cos, mean |cos|, mean |cos| 去共同分量)，
+    只算每图内部 patch 两两、去对角。
+
+    第三个量是为什么加的
+    -------------------
+    `visual.head` 在本配方里就是**一层 `Linear(768→1024)`**
+    （`PE-Core-B-16-dinov3.json`: `timm_pool=token` + `timm_proj=linear`，
+    trunk 自带的 `attn_pool` 在 `timm_model.py:87` 被删掉了）。
+    一层线性映射不会"丢掉结构"，但它**可以把所有 patch 共有的那个方向压掉**。
+    §5.9 观察到 trunk L10 的 `|cos|` 0.44~0.47 过一层 head 掉到 0.17~0.19，
+    如果这只是共同分量被压掉，那"head 丢结构"这条线索就是假的；
+    同时 §5.9 说"区域监督把 trunk patch 余弦推高 2.7 倍"也需要确认
+    **不是全体 patch 一起漂向同一个向量**造成的假象。
+    去共同分量 = 每图先减掉自己的 patch 均值向量再算 —— 这正好是"head 是不是在做中心化"
+    和"余弦升高是不是共同分量"这两个问题的同一个判据。
+    """
     xn = F.normalize(x.float(), dim=-1)
     sim = torch.einsum("bnd,bmd->bnm", xn, xn)
     N = sim.shape[-1]
     off = ~torch.eye(N, dtype=torch.bool, device=sim.device)
     v = sim[:, off]
-    return float(v.mean()), float(v.abs().mean())
+    xc = F.normalize(x.float() - x.float().mean(dim=1, keepdim=True), dim=-1)
+    vc = torch.einsum("bnd,bmd->bnm", xc, xc)[:, off]
+    return float(v.mean()), float(v.abs().mean()), float(vc.abs().mean())
 
 
 def text_align(x, classifier):
@@ -125,16 +142,28 @@ def analyze(model, images, device, classifier=None, batch=8):
             output_fmt="NLC", intermediates_only=True)
         b = chunk.shape[0]
         for i, toks in enumerate(inter):                  # [B, N, C]
-            for key, val in zip((f"L{i}", f"L{i}|abs|"), pair_cos(toks)):
+            for key, val in zip((f"L{i}", f"L{i}|abs|", f"L{i}|ctr|"),
+                                pair_cos(toks)):
                 acc[key] = acc.get(key, 0.0) + val * b
         for tag, i in (("HEAD@-2", depth - 2), ("HEAD@-1", depth - 1)):
             proj = head(inter[i])                         # [B, N, 1024]
-            for key, val in zip((tag, tag + "|abs|"), pair_cos(proj)):
+            for key, val in zip((tag, tag + "|abs|", tag + "|ctr|"),
+                                pair_cos(proj)):
                 acc[key] = acc.get(key, 0.0) + val * b
             if classifier is not None:
                 names = ("TXTtop1", "TXTmarg", "TXTnuniq", "TXTent", "TXTnbr")
                 for nm, val in zip(names, text_align(proj, classifier)):
                     k = f"{nm} {tag}"
+                    acc[k] = acc.get(k, 0.0) + val * b
+                # 去共同分量后再判一次。动机：`|cos|` 那两张表显示读出空间里
+                # **原始值单调降、去共同分量后单调升** —— 也就是"全体 patch 共有的那个
+                # 方向"占了读数的大头。类名判定用的是同一个 patch 向量，
+                # 所以这个共同分量同样会污染 argmax。这里同表报一遍，
+                # 若 `ctr` 版 `nbr` 明显高于原始版，说明"推理时先减掉每图 patch 均值"
+                # 是一个零成本的读出改进 → 值得在 eval_ovss.py 上试真 mIoU。
+                pc = proj.float() - proj.float().mean(dim=1, keepdim=True)
+                for nm, val in zip(names, text_align(pc, classifier)):
+                    k = f"{nm}ctr {tag}"
                     acc[k] = acc.get(k, 0.0) + val * b
         cnt += b
     return {k: v / cnt for k, v in acc.items()}
@@ -206,7 +235,7 @@ def main():
 
     tags = [t for t, _ in pairs]
     keys = [k for k in res[tags[0]]
-            if not k.endswith("|abs|") and not k.startswith("TXT")]
+            if not k.endswith(("|abs|", "|ctr|")) and not k.startswith("TXT")]
     W = max(9, max(len(t) for t in tags) + 1)
     def table(title, rows, width):
         print("\n" + "=" * (width + W * len(tags)))
@@ -221,10 +250,16 @@ def main():
           [(k, k) for k in keys], 12)
     table("patch↔patch mean |cos|（★与 projective 口径一致的那个量★）",
           [(k, k + "|abs|") for k in keys], 12)
+    table("patch↔patch mean |cos| 去共同分量（每图先减 patch 均值向量）"
+          "—— 与上一张表对比：差得多 = 上表主要是全体 patch 共漂的假象；"
+          "\n     再与 HEAD@-* 行对比：若 trunk 的去共同分量值 ≈ HEAD 的原始值，"
+          "说明 head 只是在做中心化，'head 丢结构'这条线索作废",
+          [(k, k + "|ctr|") for k in keys], 12)
     if args.voc_text:
-        table("patch↔VOC 类名（top1/marg = 幅度；★nuniq = 每图 argmax 类别种数、"
-              "ent = 其熵，才是'不同位置给不同标签'那个量★）",
-              [(k, k) for k in res[tags[0]] if k.startswith("TXT")], 18)
+        table("patch↔VOC 类名（top1/marg = 幅度，是**反**指标；★nbr = 4-邻域 argmax 一致率，"
+              "才是与 OVSS mIoU 同向的那个量★；\n     `*ctr` 行 = 每图先减 patch 均值向量"
+              "再判，若 ctr 版 nbr 明显更高则'推理前先中心化'是零成本读出改进）",
+              [(k, k) for k in res[tags[0]] if k.startswith("TXT")], 20)
 
     print("\n判读：区域损失只压在**倒数第二层**（= L{}，即 HEAD@-2 的输入）；"
           "OVSS 的判定发生在 HEAD@-* 这个 1024d 空间里。"
