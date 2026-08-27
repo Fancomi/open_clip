@@ -318,6 +318,8 @@ def main(args):
                               and not getattr(args, 'region_shared_scale', False)),
             region_boxtext_head=(getattr(args, 'region_weight', 0.0) > 0
                                  and not getattr(args, 'region_no_boxtext_head', False)),
+            region_roi_grid=getattr(args, 'region_roi_grid', 1),
+            region_roi_agg=getattr(args, 'region_roi_agg', 'mean'),
         )
         model = model.to(device)
 

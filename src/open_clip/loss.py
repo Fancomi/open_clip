@@ -1428,6 +1428,46 @@ class SIGRegContrastiveLoss(nn.Module):
         vals, _ = sim.topk(k, dim=1, largest=True, sorted=True)
         return torch.log(vals.exp().sum(dim=1)).mean()   # == PNTextLoss
 
+    def _region_mil_loss(self, img_cells, txt_f, logit_scale, logit_bias=None, chunk=512):
+        """MIL 版区域-短语对比（C5）：logits[i,j] = max_c  transform(scale · <cell_ic, txt_j>)。
+
+        与 `SigLipLoss._loss` 口径逐条对齐：labels 对角 +1 其余 −1，
+        loss = −logsigmoid(labels·logits).sum() / n。唯一差别是 logits 多经一次
+        "对格子轴取 max"。`logit_bias` 是标量、与 max 可交换，加在 max 之后等价。
+
+        为什么 max 而不是 mean：mean 等价于先平均格子特征（≈ 现有 1×1 池化，
+        近似 no-op）。max 才实现 "框内只要有一个格子命中短语就算命中"，
+        对症 §5.11 结论 4 —— 高 `region_weight` 牺牲的是细长结构类
+        （bicycle/chair/sofa/bottle/person 垫底，cat/car/train 几乎不掉），
+        细长目标在框内占比低，1×1 均值会把它稀释进背景。
+        负样本侧同样取 max（"任一格子都不该匹配错的短语"），与正样本侧对称。
+
+        显存：分块后峰值 [chunk, M, n]，M=4 / n≈4340 / chunk=512 时约 36MB(fp32)。
+        """
+        ml = self.main_loss
+        if getattr(ml, 'neg_alpha', 1.0) < 1.0 or ml.neg_mode == 'orthogonal':
+            raise NotImplementedError(
+                f"region_roi_agg='mil' 暂不支持 neg_mode={ml.neg_mode} / neg_alpha<1"
+                "（本项目 E 配方是 projective）")
+        n = img_cells.shape[0]
+        total = img_cells.new_zeros(())
+        for st in range(0, n, chunk):
+            ed = min(st + chunk, n)
+            cell_logits = logit_scale * torch.einsum(
+                'cmd,nd->cmn', img_cells[st:ed], txt_f)          # [c, M, n]
+            if ml.neg_mode == 'projective':
+                cell_logits = cell_logits.abs()
+            elif ml.neg_mode == 'antipodal':
+                cell_logits = -cell_logits
+            logits = cell_logits.amax(dim=1)                     # [c, n] MIL：取最匹配的格子
+            if logit_bias is not None:
+                logits = logits + logit_bias
+            labels = -torch.ones_like(logits)
+            rows = torch.arange(ed - st, device=logits.device)
+            labels[rows, rows + st] = 1.0
+            total = total + (-F.logsigmoid(labels * logits)).sum()
+        return total / n
+
     def _region_loss(self, img_f, txt_f, mask, logit_scale, logit_bias=None):
         """区域-短语对比损失（SigLIP 口径，保留 neg_mode）。
 
@@ -1452,6 +1492,20 @@ class SIGRegContrastiveLoss(nn.Module):
         """
         if mask.dtype != torch.bool:
             mask = mask.bool()
+
+        # ---- MIL 模式（C5）：img_f 是 [B*K, M, D]，M=grid² 个格子 ----
+        # "区域匹配短语" = 任一格子匹配即可 → 相似度先按格子轴取 max 再进 SigLIP。
+        # 只实现 local 负样本池：gather 已由 C2 判为无收益（见上面 region_gather 说明），
+        # 不为它再写一条"格子 × 分块 gather"的路径。
+        if img_f.dim() == 3:
+            if self.region_gather != 'local' and self.world_size > 1 and has_distributed:
+                raise NotImplementedError(
+                    "region_roi_agg='mil' 只支持 region_gather='local'")
+            sel = mask.nonzero(as_tuple=True)[0]
+            if sel.numel() < 2:
+                return None
+            return self._region_mil_loss(
+                img_f[sel], txt_f[sel], logit_scale, logit_bias)
 
         if self.region_gather == 'local' or self.world_size <= 1 or not has_distributed:
             sel = mask.nonzero(as_tuple=True)[0]

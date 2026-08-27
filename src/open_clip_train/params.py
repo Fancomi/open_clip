@@ -634,6 +634,24 @@ def parse_args(args):
         )
     )
     parser.add_argument(
+        "--region-roi-grid", default=1, type=int,
+        help=(
+            'roi_align 的输出网格边长 S（区域特征取 S×S 个格子）。1=历史行为，'
+            '**与已有全部 run 逐位相同**（单格的均值就是它自己）。'
+            '只有配合 --region-roi-agg=mil 时 S>1 才改变目标函数。'
+        )
+    )
+    parser.add_argument(
+        "--region-roi-agg", default="mean", type=str, choices=["mean", "mil"],
+        help=(
+            'S×S 个格子怎么用。mean=先平均成一个区域向量（S>1 时只是采样密度变了，'
+            '近似 no-op 对照臂）；mil=不平均，每格各自与短语算相似度、'
+            '损失侧对格子取 max（"框内任一格子命中即算命中"）。'
+            'mil 的动机：高 region_weight 牺牲的是细长结构类，'
+            '1×1 均值池化把细长目标稀释进了框内背景。仅支持 --region-gather=local。'
+        )
+    )
+    parser.add_argument(
         "--csv-region-key", default=None, type=str,
         help='TSV 里区域列的列名（如 regions）。见 scripts/data/build_region_tsv.py'
     )

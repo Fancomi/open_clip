@@ -732,8 +732,17 @@ class CLIPLeJEPA(nn.Module):
             pcm_dim: int = 0,
             region_own_scale: bool = False,
             region_boxtext_head: bool = False,
+            region_roi_grid: int = 1,
+            region_roi_agg: str = 'mean',
     ):
         super().__init__()
+        # 区域特征取法（C5）：roi_align 输出 grid×grid，再按 agg 聚合。
+        #   grid=1 + agg=mean → 与历史全部 run **逐位相同**（单格的均值就是它自己）
+        #   grid=S + agg=mean → 仍是一个区域向量，只是采样密度变了（近似 no-op 对照臂）
+        #   grid=S + agg=mil  → 不聚合，S² 个格子各自与短语比，损失侧对格子取 max
+        assert region_roi_agg in ('mean', 'mil'), region_roi_agg
+        self.region_roi_grid = max(1, int(region_roi_grid))
+        self.region_roi_agg = region_roi_agg if self.region_roi_grid > 1 else 'mean'
         self.output_dict = output_dict
         self.clip_model = clip_model
         self.visual = clip_model.visual
@@ -903,6 +912,8 @@ class CLIPLeJEPA(nn.Module):
           n_valid [B]      每图有效框数
         返回:
           (feats [B*K, embed_dim], mask [B*K] bool) —— 定长，padded 位由 mask 标记。
+          `region_roi_agg='mil'` 时 feats 是 [B*K, grid², embed_dim]（多一个格子轴，
+          由 `_region_loss` 在相似度上取 max）。
           trunk 不支持中间层时返回 None。
         """
         from torchvision.ops import roi_align
@@ -930,12 +941,23 @@ class CLIPLeJEPA(nn.Module):
         bidx = torch.arange(B, device=b.device, dtype=b.dtype).repeat_interleave(K).unsqueeze(1)
         rois_in = torch.cat([bidx, b], dim=1)
 
-        # 输出 1×1 = 区域平均池化；aligned=True 修正半像素偏移
-        rois = roi_align(fmap.float(), rois_in, output_size=(1, 1),
-                         spatial_scale=1.0, sampling_ratio=-1, aligned=True)[..., 0, 0]
+        # 输出 grid×grid；aligned=True 修正半像素偏移。
+        # grid=1 时与历史 run 完全一致（`sampling_ratio=-1` 已在整框内自适应取点求均值）。
+        S = self.region_roi_grid
+        rois = roi_align(fmap.float(), rois_in, output_size=(S, S),
+                         spatial_scale=1.0, sampling_ratio=-1, aligned=True)  # [B*K, C, S, S]
         # 过 visual.head 投到文本空间（跳过 pooling —— 那是全图池化，区域分支不能用）
         head = self.clip_model.visual.head
-        feats = head(rois.to(fmap.dtype))                     # [B*K, D]
+        if self.region_roi_agg == 'mil':
+            # MIL：保留 S² 个格子，各自投到文本空间；"区域匹配短语"= 任一格子匹配即可。
+            # 动机（§5.11 结论 4）：高 W 牺牲的是细长结构类（bicycle/chair/sofa/bottle/person），
+            # 1×1 均值池化会把细长目标稀释在框内背景里；MIL 让真正含目标的格子单独承担匹配。
+            N = rois.shape[0]
+            cells = rois.flatten(2).transpose(1, 2).reshape(N * S * S, C)      # [B*K*S*S, C]
+            feats = head(cells.to(fmap.dtype)).reshape(N, S * S, -1)           # [B*K, S*S, D]
+        else:
+            # mean：S=1 时 `mean` 就是那一个格子本身（逐位相同，不是近似）
+            feats = head(rois.mean(dim=(-2, -1)).to(fmap.dtype))               # [B*K, D]
         # mask：每图前 n_valid 个为有效
         ar = torch.arange(K, device=n_valid.device).unsqueeze(0).expand(B, K)
         mask = (ar < n_valid.unsqueeze(1)).reshape(B * K)
@@ -1020,7 +1042,7 @@ class CLIPLeJEPA(nn.Module):
                 and region_nvalid is not None and image is not None):
             out_roi = self._roi_features(image, region_boxes, region_nvalid)
             if out_roi is not None:
-                rois, region_mask = out_roi                       # [B*K, D], [B*K]
+                rois, region_mask = out_roi                       # [B*K,(S²,)D], [B*K]
                 # 短语定长展平（与 rois 同为 batch-major，逐位对应）
                 B, K, L = region_texts.shape
                 flat = region_texts.reshape(B * K, L)
