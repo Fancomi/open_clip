@@ -52,11 +52,13 @@ def load_docci(split, limit=0):
     desc = DOCCI / "docci_descriptions.jsonlines"
     if not desc.exists():
         raise SystemExit(f"缺 {desc} —— 先下 docci_descriptions.jsonlines")
-    img_root = DOCCI / "images_aar"
+    # ★ 只认 images/ ★ DOCCI-AAR 是**另一个数据集**（train 4932 vs DOCCI 9647），
+    # 不是同一批图的缩放版，descriptions 也不覆盖它。按 index 硬配 = 随机配对，
+    # 会得到「R@1 恰好等于随机基线」的假结果（08-27 实际踩过，见 memory）。
+    img_root = DOCCI / "images"
     if not img_root.exists():
-        img_root = DOCCI / "images"
-    if not img_root.exists():
-        raise SystemExit(f"缺图像目录 {DOCCI}/images_aar（或 images）—— 先解压 tar.gz")
+        raise SystemExit(f"缺图像目录 {img_root} —— 需要 docci_images.tar.gz（7.59 GB），"
+                         f"**不是 docci_images_aar.tar.gz**")
 
     rows = []
     with open(desc, encoding="utf-8") as f:
@@ -71,19 +73,16 @@ def load_docci(split, limit=0):
 
     paths, caps, missing = [], [], 0
     for _, fn, cap in rows:
-        # aar 包里的文件名多一个 aar_ 前缀（aar_test_00000.jpg），
-        # 而 descriptions 里写的是 test_00000.jpg —— 两种都试。
         p = img_root / fn
-        if not p.exists():
-            p = img_root / f"aar_{fn}"
         if not p.exists():
             missing += 1
             continue
         paths.append(str(p))
         caps.append(cap)
     if missing:
-        print(f"  ⚠️ {missing} 张图在磁盘上缺失，已跳过（会改变 query 数 → 地板也跟着变，必须记录）",
-              flush=True)
+        raise SystemExit(f"{missing}/{len(rows)} 张图缺失 —— 图像包与 descriptions 对不上，"
+                         f"很可能下错了包（AAR ≠ DOCCI）。**不允许跳过后继续跑**："
+                         f"缺图会改变 query 数，地板跟着变，且掩盖配错的可能。")
     if limit > 0:
         paths, caps = paths[:limit], caps[:limit]
     return paths, caps
