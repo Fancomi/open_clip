@@ -343,6 +343,12 @@ def main():
     best = ", ".join(f"{CLASSES[i]} {iou[i] * 100:.1f}" for i in order[::-1][:5])
     print(f"  最好 5 类: {best}", flush=True)
     print(f"  最差 5 类: {worst}", flush=True)
+    # 全部类的逐类 IoU（按类下标固定顺序，方便跨 run 逐位对齐比较）。
+    # 只报"最差 5 类"时无法做"某一组类是否被专门救回"这种分组比较（C5 的方向性
+    # 预登记判据需要它，见 analysis/research/region_01_supervision.md §6.3）。
+    # 行内不含 "mIoU"/"aAcc" 字样，不会污染各驱动脚本按这两个词做的 grep。
+    allcls = ", ".join(f"{CLASSES[i]} {iou[i] * 100:.1f}" for i in range(len(CLASSES)))
+    print(f"  逐类 IoU（{len(CLASSES)} 类，按类下标）: {allcls}", flush=True)
     print(f"  耗时 {time.time() - t0:.0f}s", flush=True)
 
 
