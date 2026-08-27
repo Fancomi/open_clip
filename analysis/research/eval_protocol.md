@@ -193,6 +193,8 @@ standard 系）时，建议同时跑 projective 与 standard 两组作为对照�
 | Urban-1k t2i R@1 | 1000 描述 | **1.92**（推定） | ⚠️ 未单独定标，借 i2t —— 见下方推定依据 |
 | **VOC-20 OVSS mIoU**（penult） | 1449 图 / ~1.2 亿像素 | **~0.12** | ⚠️ 只有 2× gt_base（n=2） |
 | **VOC-20 OVSS mIoU**（last） | 同上 | **~0.16** | ⚠️ 同上 |
+| **ADE-150 OVSS mIoU**（penult） | 2000 图 / 150 类 | **~0.06** | ⚠️ 同上（n=2，08-27 标） |
+| **ADE-150 OVSS mIoU**（last） | 同上 | **~0.03** | ⚠️ 同上 |
 
 **规律：2σ 随 query 数量单调下降，与"测的是分类还是检索"无关。**
 同一个 COCO 评测里 t2i（25000 条 caption 当 query）的 2σ 只有 0.13，
@@ -213,11 +215,15 @@ i2t/t2i 是同一次前向出来的，成本为零 —— 只是历史上没记 
 但**区域组内部 0.3~0.5 的差**（例如 8 变体消融、相邻 W 的长文本项）建立在一个
 可能不适用的地板上 → 引用时要写"按 `gt_base` 地板判"。
 
-⚠️ **OVSS 两行是 n=2 的散布，不是 4 次运行的 2σ**（`gt_base` seed 0 vs seed 1，
+⚠️ **OVSS 那四行是 n=2 的散布，不是 4 次运行的 2σ**（`gt_base` seed 0 vs seed 1，
 配置与数据完全相同，只差 `--seed`）。它给的是量级而不是分布，引用时按"粗地板"用。
 它之所以这么小，符合上面那条规律：query 是**像素**而不是图，样本量比其他口径高 4~5 个数量级。
 所以 OVSS 上几点的差都远超地板 —— 反过来说，**OVSS 上很小的差也可能是真的**，
 不要用其他口径的直觉（"差 1 点不算"）去判它。
+**ADE-150 的地板比 VOC-20 还小一半（0.06 / 0.03）**，同一条规律：2000 图 > 1449 图，
+而且 150 类的分母比 20 类大得多。**代价是绝对值也小一个量级**（最好 5.66 vs VOC 的 49.96）——
+所以 ADE 上"0.06 的差"与 VOC 上"0.5 的差"在可信度上是同一档，
+**跨数据集比较必须先按各自地板归一，不能直接比 Δ 的绝对大小**。
 
 ⚠️ **2026-08-25 修订**：k-NN 的旧 2σ 是 **0.78**，那是 100 类 × 20 图 = 2000 张
 子集下的标定值。全量口径把它压到 0.30（紧 2.6 倍）。**旧口径不只噪声大，还系统性
@@ -250,10 +256,18 @@ python scripts/eval/eval_urban1k.py --ckpt ... --tag pcm_proj --neg-mode project
 # IN-1k k-NN probe（纯图像口径，无文本参与；全量 1000×50 已是默认，勿再传子集参数）
 python scripts/eval/eval_knn_probe.py --ckpt ... --tag pcm_w0.2 --num-workers 12
 
-# OVSS：VOC-2012 val 开放词表分割 mIoU（唯一的**局部**表征口径，全量 1449 图已是默认）
+# OVSS：开放词表分割 mIoU（唯一的**局部**表征口径族，两个数据集都是全量为默认）
 # --dense-mode penult = 与训练时区域分支同一条读出路径；last = 对照。两个都要报。
 python scripts/eval/eval_ovss.py --ckpt ... --tag regw2.0
 python scripts/eval/eval_ovss.py --ckpt ... --tag regw2.0_LAST --dense-mode last
+
+# 第二个数据集 ADE20K-150（2000 val 图 / 150 类）。ADE_ROOT **必须是绝对路径** ——
+# open_clip/ 下没有 datas/ 目录也没有软链，写相对路径直接 No such file or directory。
+export ADE_ROOT=/root/paddlejob/workspace/env_run/penghaotian/datas/ade20k/ADEChallengeData2016
+python scripts/eval/eval_ovss.py --ckpt ... --dataset ade --tag regw2.0_ade
+# 单次全量约 84 秒（VOC 是 43~60 秒），与 8 卡训练共存实测吞吐 1262~1399/s（正常 1500~1700/s）。
+# ⚠️ mIoU 用 nanmean(iou where union>0)（mmseg 惯例）→ **子集系统性偏低**
+#    （50 图 1.15 / 100 图 1.32 / 全量 1.94，同一个 ckpt），子集数字绝不可与全量混比。
 ```
 
 ---
@@ -269,11 +283,17 @@ python scripts/eval/eval_ovss.py --ckpt ... --tag regw2.0_LAST --dense-mode last
 | **COCO** karpathy 5cap | 5000 图 × 5 caption（全量） | 短文本检索 | ~13 tok | `eval_standard.py --retrieval` |
 | **Urban-1k** | 1000 图 × 1000 长描述（1:1） | 长文本检索 | ~132 tok | `eval_urban1k.py` |
 | **VOC-2012 val OVSS** | 1449 图，逐**像素**判定 | **局部**表征：patch 级语义可分割性 | 20 个类名 × 80 模板 | `eval_ovss.py` |
+| **ADE20K-150 val OVSS** | 2000 图，逐**像素**判定 | 同上，但 **150 个细类**（更难、更不宽容） | 150 个类名 × 80 模板 | `eval_ovss.py --dataset ade` |
 
 ⚠️ **OVSS 不在这把梯子上，它在另一根轴上。** 上面四个都是"一张图 → 一个向量 → 比一次"的
 **全局**口径，梯子排的是文本参与度；OVSS 是"每个 patch 自己去和类名比"的**局部**口径。
 两根轴可以互相矛盾，而且实测就是矛盾的（`region_weight` 在两边方向相反，铁律第 6 条）。
 所以**它不是第五级台阶，是第二把梯子的第一级**。
+⚠️ **局部这一族内部也不能只报一个数据集**（08-27 实证，`region_01_supervision.md` §5.13）：
+同一批 ckpt 上，VOC-20 说"区域监督在两种读出上都是 ×4~×9"，
+ADE-150 只在 `last` 上复现，**`penult` 上 W≥2.0 与 `gt_base` 已不可区分**。
+选它们的共同理由是**都没有阈值超参**（VOC-20 把背景与 void 都 ignore；
+ADE 的 GT 里 0 本身就是 ignore），所以两个数据集共用一条代码路径、结果可直接并列。
 其协议与 SCLIP / ClearCLIP / NACLIP 系列严格一致（短边 336、滑窗 224/stride 112、
 20 类 × 80 官方模板、**无任何推理期改造**、无后处理），因此可以与那一族论文的
 VOC20 一列对位看 —— 但骨干与类名同义词列表都未对齐，只能定位不能当同条件比较。
