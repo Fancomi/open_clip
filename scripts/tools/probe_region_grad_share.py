@@ -116,6 +116,9 @@ def build(a, ckpt, device):
         region_own_scale=(a.region_weight > 0 and not getattr(a, "region_shared_scale", False)),
         region_boxtext_head=(a.region_weight > 0
                              and not getattr(a, "region_no_boxtext_head", False)),
+        # 与 main.py:321-322 对齐；grid>1 + mil 不新增参数，strict 断言照样能过
+        region_roi_grid=getattr(a, "region_roi_grid", 1),
+        region_roi_agg=getattr(a, "region_roi_agg", "mean"),
     )
     sd = torch.load(ckpt, map_location="cpu", weights_only=False)
     sd = sd.get("state_dict", sd)
@@ -205,6 +208,13 @@ def main():
     ap.add_argument("--batch", type=int, default=128,
                     help="默认 128 而非训练的 512（反传显存）；比值对 batch 不敏感但绝对值敏感")
     ap.add_argument("--steps", type=int, default=4)
+    # 用途：拿**已有 ckpt** 量一个**还没训练过的损失形式**的梯度占比。
+    # C5（grid=2 + MIL）起训前要确认它与 mean 版同量级，但那时没有 C5 的 params.txt
+    # → 借 regw2.0 的 ckpt/params，只把聚合方式改掉。
+    # ⚠️ 这样量到的是"同一套权重下换聚合方式"的占比，不是 C5 训练中期的占比
+    #    （中期强度会漂，方向已登记为逆着假说，见 /tmp/c5_prereg.md §3.3）。
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
+                    help="覆盖 params.txt 里的字段，可给多次，如 --set region_roi_grid=2")
     args = ap.parse_args()
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -214,8 +224,19 @@ def main():
         ck = run / "checkpoints" / args.epoch
         assert ck.exists(), f"ckpt 不存在：{ck}"
         a = read_params(run)
+        for kv in args.set:
+            k, v = kv.split("=", 1)
+            try:
+                v = ast.literal_eval(v)
+            except (ValueError, SyntaxError):
+                pass
+            setattr(a, k, v)
         tag = run.name.split("_")[2] if len(run.name.split("_")) > 2 else run.name
-        print(f"=> {tag}  region_weight={getattr(a, 'region_weight', 0.0)}", flush=True)
+        if args.set:
+            tag += "+" + ",".join(args.set)
+        print(f"=> {tag}  region_weight={getattr(a, 'region_weight', 0.0)}"
+              f"  roi_grid={getattr(a, 'region_roi_grid', 1)}"
+              f"  roi_agg={getattr(a, 'region_roi_agg', 'mean')}", flush=True)
         res[tag], nv = probe(a, str(ck), device, args.batch, args.steps)
         res[tag]["n_valid/图"] = nv
         tags.append(tag)
