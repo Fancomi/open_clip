@@ -25,6 +25,13 @@ mIoU 是这件事的直接测量：每个 patch 自己去和类名比，答对�
    它没有任何阈值超参，是 SCLIP / ClearCLIP / NACLIP 系列的标准 benchmark 之一。
    VOC-21（含背景）需要一个背景阈值，本脚本对若干阈值都报一遍，不指定"官方值"，
    因为那个值一变排序就可能变。
+   `--dataset ade` 是第二个 benchmark（**ADE20K-150 val 2000 图**）：它没有背景类，
+   GT 的 0 就是 ignore，所以同样没有阈值超参，走与 VOC-20 完全相同的代码路径。
+   选它作为第二个是因为标注是 PNG label map、纯 PIL 可读、**零新依赖**
+   （训练环境锁死 `torch==2.6.0+cu124`，不值得为 `pycocotools` / `detail-api` 去动）。
+   ⚠️ **两个 benchmark 都只用朴素类名、不做同义词扩展**（VOC 20 个、ADE 取
+   `objectInfo150.txt` 的第一个同义词）。SCLIP/ClearCLIP 用的 `cls_*.txt` 含扩展、
+   通常更高 → **我们内部可比，但与论文数字不同条件**。
 4. **不做任何推理期改造**（不含 ClearCLIP 去残差 / SCLIP 相关自注意力 /
    NACLIP 邻域注意力）。那些改造是为"没有 dense 监督的原版 CLIP"救急的；
    本项目的问题是"区域监督到底有没有学到空间可区分性"，
@@ -36,6 +43,7 @@ mIoU 是这件事的直接测量：每个 patch 自己去和类名比，答对�
   python scripts/eval/eval_ovss.py --ckpt logs/.../epoch_10.pt --tag regw2.0
   python scripts/eval/eval_ovss.py --ckpt ... --tag foo --limit 50   # 冒烟
   python scripts/eval/eval_ovss.py --ckpt ... --tag foo --dense-mode last
+  python scripts/eval/eval_ovss.py --ckpt ... --tag foo --dataset ade  # ADE20K-150
 """
 import argparse
 import sys
@@ -51,6 +59,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 VOC_ROOT = Path("/root/paddlejob/workspace/env_run/penghaotian/datas/voc2012/"
                 "VOCdevkit/VOC2012")
+ADE_ROOT = Path("/root/paddlejob/workspace/env_run/penghaotian/datas/ade20k/"
+                "ADEChallengeData2016")
 
 # VOC2012 调色板标签：0=背景，1..20=前景，255=void（物体轮廓，官方要求忽略）
 VOC_CLASSES = [
@@ -58,6 +68,63 @@ VOC_CLASSES = [
     "chair", "cow", "dining table", "dog", "horse", "motorbike", "person",
     "potted plant", "sheep", "sofa", "train", "tv monitor",
 ]
+
+
+def ade_classnames():
+    """从官方 objectInfo150.txt 读 150 个类名，取**第一个同义词**。
+
+    为什么不手抄：150 个名字手抄必出错，而这个文件就是标注的权威来源。
+    为什么只取第一个同义词：与 VOC-20 用 20 个朴素类名保持一致 ——
+    SCLIP/ClearCLIP 的 `cls_ade20k.txt` 含同义词扩展，通常更高，
+    我们两个 benchmark 都不做扩展，内部可比，但**不与论文数字同条件**。
+    """
+    f = ADE_ROOT / "objectInfo150.txt"
+    if not f.exists():
+        sys.exit(f"找不到 {f}（先解压 ADEChallengeData2016.zip）")
+    names = []
+    for line in f.read_text().splitlines()[1:]:          # 首行是表头
+        cols = line.split("\t")
+        if len(cols) < 5:
+            continue
+        names.append(cols[4].split(",")[0].strip())
+    assert len(names) == 150, f"objectInfo150 解析出 {len(names)} 类，应为 150"
+    return names
+
+
+def load_dataset(name, limit):
+    """返回 (items, classnames, has_bg, scope, full_n)。
+
+    GT 约定统一成 **0 = 背景/ignore，1..C = 类，255 = void**：
+    VOC 原生就是这样；ADE 的 0 是 ignore、1..150 是类，没有 255。
+    所以下游的 `mask = (gt>0)&(gt<255)`、`g = gt-1` 两个数据集共用一条代码路径。
+    has_bg=False 时跳过"背景阈值"那一族指标（ADE 没有背景类，不存在这个超参）。
+    """
+    if name == "voc":
+        ids_file = VOC_ROOT / "ImageSets/Segmentation/val.txt"
+        if not ids_file.exists():
+            sys.exit(f"找不到 VOC2012：{ids_file}"
+                     f"（先跑 tools/install_all.sh 的 data_voc2012）")
+        ids = ids_file.read_text().split()
+        items = [(VOC_ROOT / f"JPEGImages/{i}.jpg",
+                  VOC_ROOT / f"SegmentationClass/{i}.png") for i in ids]
+        classes, has_bg, full_n = VOC_CLASSES, True, 1449
+        title = "VOC-2012 val"
+    elif name == "ade":
+        d = ADE_ROOT / "images/validation"
+        if not d.exists():
+            sys.exit(f"找不到 ADE20K：{d}（先解压 ADEChallengeData2016.zip）")
+        stems = sorted(p.stem for p in d.glob("ADE_val_*.jpg"))
+        items = [(d / f"{s}.jpg", ADE_ROOT / f"annotations/validation/{s}.png")
+                 for s in stems]
+        classes, has_bg, full_n = ade_classnames(), False, 2000
+        title = "ADE20K-150 val"
+    else:
+        raise ValueError(name)
+    if limit:
+        items = items[:limit]
+    scope = (f"★全量 {full_n}★" if len(items) >= full_n
+             else f"⚠️子集 {len(items)} 张(不可与全量混比)")
+    return items, classes, has_bg, scope, title
 
 
 def load_model(ckpt_path, device):
@@ -196,24 +263,20 @@ def main():
                     help="必须与训练配方的 --neg-mode 一致（E 配方=projective）")
     ap.add_argument("--dense-mode", default="penult", choices=["penult", "last"],
                     help="penult=倒数第二层（与训练区域分支同路径，默认）")
+    ap.add_argument("--dataset", default="voc", choices=["voc", "ade"],
+                    help="voc=VOC-2012 val 1449 图 20 类；ade=ADE20K-150 val 2000 图 150 类")
     ap.add_argument("--short-side", type=int, default=336,
                     help="短边缩放到多少；窗口固定 224 与训练分辨率一致")
     ap.add_argument("--stride", type=int, default=112)
     ap.add_argument("--limit", type=int, default=0, help=">0 时只跑前 N 张（冒烟用）")
     ap.add_argument("--bg-thd", type=float, nargs="*",
                     default=[0.3, 0.4, 0.5, 0.6],
-                    help="VOC-21 的背景概率阈值，会各报一遍")
+                    help="VOC-21 的背景概率阈值，会各报一遍（ADE 无背景类，自动跳过）")
     args = ap.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    ids_file = VOC_ROOT / "ImageSets/Segmentation/val.txt"
-    if not ids_file.exists():
-        sys.exit(f"找不到 VOC2012：{ids_file}（先跑 tools/install_all.sh 的 data_voc2012）")
-    ids = ids_file.read_text().split()
-    if args.limit:
-        ids = ids[:args.limit]
-    scope = "★全量 1449★" if len(ids) >= 1449 else f"⚠️子集 {len(ids)} 张(不可与全量混比)"
-    print(f"[{args.tag}] VOC-2012 val OVSS | device={device} "
+    items, CLASSES, has_bg, scope, title = load_dataset(args.dataset, args.limit)
+    print(f"[{args.tag}] {title} OVSS | device={device} "
           f"neg_mode={args.neg_mode} dense={args.dense_mode} "
           f"short={args.short_side} win=224/stride={args.stride} {scope}", flush=True)
 
@@ -221,17 +284,19 @@ def main():
     mean, std = get_norm(val_tr)
     dt = torch.float16 if device == "cuda" else torch.float32
     mean, std = mean.to(device), std.to(device)
-    classifier = build_classifier(model, tok, VOC_CLASSES, device)   # [D,20]
-    print(f"  类名嵌入 {tuple(classifier.shape)}（20 类 × 80 模板平均）", flush=True)
+    C = len(CLASSES)
+    classifier = build_classifier(model, tok, CLASSES, device)        # [D,C]
+    print(f"  类名嵌入 {tuple(classifier.shape)}（{C} 类 × 80 模板平均，"
+          f"无同义词扩展）", flush=True)
     logit_scale = float(model.logit_scale.exp().item())
 
-    C = len(VOC_CLASSES)
-    conf20 = np.zeros((C, C), dtype=np.int64)               # 只前景，背景当 ignore
-    conf21 = {t: np.zeros((C + 1, C + 1), dtype=np.int64) for t in args.bg_thd}
+    conf_fg = np.zeros((C, C), dtype=np.int64)          # 只前景，背景/ignore 当 ignore
+    conf_bg = ({t: np.zeros((C + 1, C + 1), dtype=np.int64) for t in args.bg_thd}
+               if has_bg else {})
     t0 = time.time()
-    for n, iid in enumerate(ids, 1):
-        img = Image.open(VOC_ROOT / f"JPEGImages/{iid}.jpg").convert("RGB")
-        gt = np.array(Image.open(VOC_ROOT / f"SegmentationClass/{iid}.png"))
+    for n, (ip, gp) in enumerate(items, 1):
+        img = Image.open(ip).convert("RGB")
+        gt = np.array(Image.open(gp))
         W0, H0 = img.size
         s = args.short_side / min(W0, H0)
         img = img.resize((max(1, round(W0 * s)), max(1, round(H0 * s))), Image.BICUBIC)
@@ -247,33 +312,35 @@ def main():
         pred_fg = prob.argmax(0).cpu().numpy()
         maxp = prob.max(0).values.cpu().numpy()
 
-        # --- VOC-20：GT 背景(0) 与 void(255) 都忽略，只在前景像素上算
-        m20 = (gt > 0) & (gt < 255)
-        if m20.any():
-            g = gt[m20].astype(np.int64) - 1
-            p = pred_fg[m20].astype(np.int64)
-            np.add.at(conf20, (g, p), 1)
-        # --- VOC-21：背景是一个真实类别，靠最大前景概率过阈值判定
-        m21 = gt < 255
-        if m21.any():
-            g21 = gt[m21].astype(np.int64)                  # 0=bg, 1..20
-            for thd in args.bg_thd:
-                p21 = np.where(maxp[m21] < thd, 0, pred_fg[m21] + 1)
-                np.add.at(conf21[thd], (g21, p21.astype(np.int64)), 1)
+        # --- 主口径：GT 的 0（背景/ignore）与 255（void）都忽略，只在类像素上算
+        m = (gt > 0) & (gt < 255)
+        if m.any():
+            g = gt[m].astype(np.int64) - 1
+            p = pred_fg[m].astype(np.int64)
+            np.add.at(conf_fg, (g, p), 1)
+        # --- 附带口径（只有 VOC 有）：背景是一个真实类别，靠最大前景概率过阈值判定
+        if has_bg:
+            m21 = gt < 255
+            if m21.any():
+                g21 = gt[m21].astype(np.int64)              # 0=bg, 1..C
+                for thd in args.bg_thd:
+                    p21 = np.where(maxp[m21] < thd, 0, pred_fg[m21] + 1)
+                    np.add.at(conf_bg[thd], (g21, p21.astype(np.int64)), 1)
 
-        if n % 200 == 0 or n == len(ids):
-            print(f"    ... {n}/{len(ids)}  ({time.time() - t0:.0f}s)", flush=True)
+        if n % 200 == 0 or n == len(items):
+            print(f"    ... {n}/{len(items)}  ({time.time() - t0:.0f}s)", flush=True)
 
-    miou20, aacc20, iou20 = miou_from_conf(conf20)
-    print(f"  ★VOC-20 mIoU={miou20 * 100:.2f}  aAcc={aacc20 * 100:.2f}  "
-          f"({len(ids)} 图, 20 类, 无阈值超参, {scope})", flush=True)
-    for thd in args.bg_thd:
-        m, a, _ = miou_from_conf(conf21[thd])
-        print(f"   VOC-21 mIoU={m * 100:.2f}  aAcc={a * 100:.2f}  (bg_thd={thd})",
+    miou, aacc, iou = miou_from_conf(conf_fg)
+    label = f"VOC-{C}" if args.dataset == "voc" else f"ADE-{C}"
+    print(f"  ★{label} mIoU={miou * 100:.2f}  aAcc={aacc * 100:.2f}  "
+          f"({len(items)} 图, {C} 类, 无阈值超参, {scope})", flush=True)
+    for thd in args.bg_thd if has_bg else []:
+        m_, a_, _ = miou_from_conf(conf_bg[thd])
+        print(f"   VOC-{C + 1} mIoU={m_ * 100:.2f}  aAcc={a_ * 100:.2f}  (bg_thd={thd})",
               flush=True)
-    order = np.argsort(np.nan_to_num(iou20, nan=-1))
-    worst = ", ".join(f"{VOC_CLASSES[i]} {iou20[i] * 100:.1f}" for i in order[:5])
-    best = ", ".join(f"{VOC_CLASSES[i]} {iou20[i] * 100:.1f}" for i in order[::-1][:5])
+    order = np.argsort(np.nan_to_num(iou, nan=-1))
+    worst = ", ".join(f"{CLASSES[i]} {iou[i] * 100:.1f}" for i in order[:5])
+    best = ", ".join(f"{CLASSES[i]} {iou[i] * 100:.1f}" for i in order[::-1][:5])
     print(f"  最好 5 类: {best}", flush=True)
     print(f"  最差 5 类: {worst}", flush=True)
     print(f"  耗时 {time.time() - t0:.0f}s", flush=True)
