@@ -12,12 +12,19 @@
   <out-root>/annotations/clip_train_gt.tsv        (filepath\tcaption, 原 CC3M alt-text)
   <out-root>/annotations/clip_train_short.tsv     (gemma_short, 一句话描述)
   <out-root>/annotations/clip_train_dense.tsv     (gemma_dense, 一段密集描述)
-  <out-root>/annotations/clip_train_dense_256.tsv (dense 但截断到 256 token 内, 用于 context_length=256)
+  <out-root>/annotations/clip_train_dense_256.tsv (dense 中 ≤256 token 的行，**超窗行整行丢掉**)
+
+⚠️⚠️ `dense_256` 的命名与旧注释都写成"截断到 256"，**那是错的** ——
+第 20 行才是实际行为：**丢整行，不是截断**。代价实测（`stat_caption_tokens.py`，
+全量 289.4 万行）：只保留 **69.34% 的图 + 61.89% 的 BPE token 质量**，
+即 30.66% 的图从未参与训练。若要"截断而非丢行"，直接用 `clip_train_dense.tsv`
+（本脚本已产出的全量版）—— 运行时截断由 `tokenizer.py:263-267` 负责，
+保头、末位强写 EOT、绝不丢行。
 
 过滤规则:
   - gemma_dense 缺失（error 条目, 无 dense）→ 该版本跳过该行
   - 默认只保留 gemma_dense 非空的行（完整 2,655,317 条）；--keep-error 时保留但该版本跳过
-  - dense_256: 用 open_clip tokenizer 数 BPE token, 超 256 的行跳过（保证 256 窗口零截断）
+  - dense_256: 用 open_clip tokenizer 数 BPE token, 超 256 的行**跳过整行**（保证 256 窗口零截断）
 
 用法:
   python scripts/data/build_gemma_tsv.py --cap-dir .../out/gemma_cap --out-root .../cc3m-tsv
@@ -35,7 +42,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
 log = logging.getLogger(__name__)
 
-# CLIP-BPE tokenizer（PE-Core 文本塔同款）; 惰性加载, 供 dense_256 截断判定用
+# CLIP-BPE tokenizer（PE-Core 文本塔同款）; 惰性加载, 供 dense_256 的**丢行**判定用
 _tok = None
 
 
@@ -192,7 +199,7 @@ def main():
         "versions": stats_versions,
         "errors": errors,
         "images_root": str(images_root),
-        "note": "dense_256 为截断到 256 token 内的 dense 子集（context_length=256 训练用）",
+        "note": "dense_256 = dense 中 BPE<=256 的**行子集**（超窗行整行丢弃，不是截断）；保留 69.34% 图 / 61.89% token",
     }
     (ann_dir / "_gemma_stats.json").write_text(json.dumps(stats, indent=2))
     log.info(f"DONE shards={len(jsonls)} versions={stats_versions}")
