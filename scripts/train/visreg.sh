@@ -418,7 +418,7 @@ case "${1:-usage}" in
         echo "!!!! 缺 ${REGION_TSV} —— 先跑 python scripts/data/build_region_tsv.py"
         exit 1
     fi
-    DATA_VERSION="regw${REGION_WEIGHT:-0.2}k${MAX_REGION:-12}${REGION_GATHER:+-}${REGION_GATHER:-}${REGION_SHARED_SCALE:+-sharedsc}${REGION_ROI_GRID:+-roi${REGION_ROI_GRID}${REGION_ROI_AGG:-mean}}_${NEG_MODE}" \
+    DATA_VERSION="regw${REGION_WEIGHT:-0.2}k${MAX_REGION:-12}${REGION_GATHER:+-}${REGION_GATHER:-}${REGION_SHARED_SCALE:+-sharedsc}${REGION_ROI_GRID:+-roi${REGION_ROI_GRID}${REGION_ROI_AGG:-mean}}${DV_SUFFIX:-}_${NEG_MODE}" \
     GEMMA_TSV="${REGION_TSV}" \
     CSV_CAPTION_KEY=caption \
     REGION_WEIGHT="${REGION_WEIGHT:-0.2}" \
@@ -489,7 +489,7 @@ case "${1:-usage}" in
   pcm-region)
     PR_TSV="${GEMMA_TSV_DIR}/clip_train_pcmregion.tsv"
     [ -f "${PR_TSV}" ] || { echo "!!!! 缺 ${PR_TSV} —— 先跑 scripts/data/build_pcm_region_tsv.py"; exit 1; }
-    DATA_VERSION="pcmregw${REGION_WEIGHT:-0.2}p${PCM_WEIGHT:-0.2}_${NEG_MODE}" \
+    DATA_VERSION="pcmregw${REGION_WEIGHT:-0.2}p${PCM_WEIGHT:-0.2}${REGION_ROI_GRID:+-roi${REGION_ROI_GRID}${REGION_ROI_AGG:-mean}}${DV_SUFFIX:-}_${NEG_MODE}" \
     PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" \
     GEMMA_TSV="${PR_TSV}" \
     CSV_CAPTION_KEY=caption_dense \
