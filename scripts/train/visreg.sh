@@ -47,6 +47,11 @@ CC3M_N_TRAIN=2894191
 GEMMA_TSV_DIR="${GEMMA_TSV_DIR:-${ROOT}/datas/cc3m-tsv/annotations}"
 DATA_VERSION="${DATA_VERSION:-dense_256}"
 GEMMA_TSV="${GEMMA_TSV_DIR}/clip_train_${DATA_VERSION}.tsv"
+# 文本塔窗口。默认 256 = 全部历史 run 的取值（改这个默认值会让历史 run 不可复现）。
+# CTX_LEN=320 用于"dense 生产目标窗口 + 截断代替丢行"那条线（Task #21 / L1）。
+# ⚠️ 评测端不要写死：eval_* 已改为按 ckpt 的 text.positional_embedding 自动探测，
+#    写死 256 去加载 320 ckpt 会静默插值压回 256，不报错但指标变差。
+CTX_LEN="${CTX_LEN:-256}"
 
 GPUS=${GPUS:-8}; PreGpuBS=${PreGpuBS:-512}
 GlobalBS=$((PreGpuBS * GPUS))
@@ -141,7 +146,7 @@ run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
     # 无区域但要 resize-only 对照（A' 组）
     [ -z "${REGION_WEIGHT:-}" ] && [ "${RESIZE_ONLY:-0}" = "1" ] && REGION="--image-resize-only"
     local GEMMA_COMMON="--warmup ${WARMUP} ${BASE} --epochs ${EPOCHS} ${NS} \
-        --dataset-type csv --force-context-length 256 \
+        --dataset-type csv --force-context-length ${CTX_LEN} \
         --csv-img-key filepath --csv-caption-key ${CAPKEY} --val-num-captions-per-image 5 \
         ${PCM} ${REGION} --imagenet-val ${IMNVAL}"
     echo "======== [gemma] ${TAG} (data=${DATA_VERSION} ${EXTRA}) => ${NAME} ========"
@@ -169,7 +174,7 @@ run_dual() {  # run_dual TAG PORT   (DualTextCLIP 双文本塔, 双列 TSV)
     local DUAL_COMMON="--warmup ${WARMUP} --precision amp_bf16 --workers 32 --batch-size ${PreGpuBS} \
         --lr ${LR} --beta1 0.9 --beta2 0.95 --eps 1e-6 --wd 0.2 \
         --save-frequency 1 --grad-checkpointing --log-every-n-steps 1 --val-frequency 1 \
-        --epochs ${EPOCHS} --dataset-type csv --force-context-length 256 \
+        --epochs ${EPOCHS} --dataset-type csv --force-context-length ${CTX_LEN} \
         --csv-img-key filepath --csv-caption-key caption_short --csv-caption2-key caption_dense \
         --val-num-captions-per-image 5 --imagenet-val ${IMNVAL}"
     echo "======== [dual] ${TAG} => ${NAME} ========"
@@ -365,19 +370,20 @@ case "${1:-usage}" in
   #   用法: bash scripts/train/visreg.sh pcm
   #        NEG_MODE=standard bash scripts/train/visreg.sh pcm
   pcm)
-    DUAL_TSV="${GEMMA_TSV_DIR}/clip_train_dual.tsv"
+    # DUAL_TSV_NAME=clip_train_dual_full.tsv → 全量 dense（超窗行截断，不丢行）
+    DUAL_TSV="${GEMMA_TSV_DIR}/${DUAL_TSV_NAME:-clip_train_dual.tsv}"
     if [ ! -f "${DUAL_TSV}" ]; then
         echo "!!!! 缺 ${DUAL_TSV} —— 先跑 python scripts/data/build_dual_tsv.py"
         exit 1
     fi
     # 主文本=dense 长文，短分支=gt 短文
-    DATA_VERSION="pcmw${PCM_WEIGHT:-1.0}d${PCM_DIM:-32}_${NEG_MODE}" \
+    DATA_VERSION="pcmw${PCM_WEIGHT:-1.0}d${PCM_DIM:-32}${DV_SUFFIX:-}_${NEG_MODE}" \
     GEMMA_TSV="${DUAL_TSV}" \
     CSV_CAPTION_KEY=caption_dense \
     CSV_CAPTION2_KEY=caption_short \
     PCM_WEIGHT="${PCM_WEIGHT:-1.0}" \
     PCM_DIM="${PCM_DIM:-32}" \
-      run_gemma "E" 29660 "${VISREG_E}"
+      run_gemma "E" "${PORT:-29660}" "${VISREG_E}"
     ;;
 
   # ── PCM 冒烟（4 steps 验证双分支管线 + 梯度）─────────────────────────────
