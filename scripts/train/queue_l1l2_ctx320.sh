@@ -38,17 +38,26 @@ say() { echo "[l1l2 $(date '+%m-%d %H:%M:%S')] $*" | tee -a "$LOG"; }
 cd /root/paddlejob/workspace/env_run/penghaotian/vision_encoder/open_clip
 ANN=/root/paddlejob/workspace/env_run/penghaotian/datas/cc3m-tsv/annotations
 
-# ── 0. 等 C6（Task #19）的**驱动脚本**退出 ────────────────────────────────
-# 等驱动而非训练进程：C6 训完还要自己跑评测，臂间空窗若只看训练进程会被别人挤进去
-say "等 C6 驱动脚本（bash visreg.sh region）退出…"
+# ── 0. 等 C6（Task #19）整条 lane（训练 + 评测）退出 ──────────────────────
+# ⚠️ 22:45 踩到的坑：本脚本原来只等 `bash scripts/train/visreg.sh region`，
+#    但那只是**训练 wrapper**；真正的臂驱动是 `/tmp/c6_queue.sh`，它在训练
+#    wrapper 退出后还要跑约 40 分钟评测（eval_standard/knn/urban/docci + 4×OVSS）。
+#    结果 22:43:50 就判"C6 已退出"，再 3 分钟就要起 L1 → 会和 GPU0 上的评测
+#    对撞（旁挂评测让 8 卡训练掉 15~20% 吞吐）。抢在起训前 1 分钟 kill 掉重排。
+# ✅ 正确做法：等三类进程**全部**消失 —— 训练进程、任何 eval_*.py、任何臂驱动脚本。
+#    「等驱动脚本而非训练进程」这条铁律没错，错在把 visreg.sh 当成了驱动脚本。
+BUSY_PAT='open_clip_train[.]main|scripts/eval/eval_[a-z0-9_]*[.]py|bash /tmp/[a-z0-9_]*queue[.]sh|bash scripts/train/visreg[.]sh'
+busy() { pgrep -af "$BUSY_PAT" | grep -v "l1l2_queue" | grep -v "^$$ " ; }
+say "等 C6 整条 lane（训练 + 评测 + 驱动脚本）退出…"
 for i in $(seq 1 720); do          # 720 × 60s = 12h 上限
-    pgrep -f 'bash scripts/train/visreg[.]sh region' >/dev/null || break
+    busy >/dev/null || break
+    [ $((i % 10)) -eq 1 ] && say "  仍忙：$(busy | head -2 | cut -c1-110 | tr '\n' ' ')"
     sleep 60
 done
-if pgrep -f 'bash scripts/train/visreg[.]sh region' >/dev/null; then
-    say "!!! 12 小时后 C6 驱动仍在，放弃（人工排查）"; exit 1
+if busy >/dev/null; then
+    say "!!! 12 小时后 C6 lane 仍在，放弃（人工排查）"; busy | tee -a "$LOG"; exit 1
 fi
-say "C6 驱动已退出。再等 3 分钟让 NCCL / 显存释放干净。"
+say "C6 lane 已全部退出。再等 3 分钟让 NCCL / 显存释放干净。"
 sleep 180
 
 # ── 1. 起训前现查（铁律 1；08-26 撞车吞吐 −42%）──────────────────────────
