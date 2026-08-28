@@ -190,6 +190,24 @@ def load_state_dict(
     return state_dict
 
 
+def context_length_from_checkpoint(checkpoint_path: str, default: int = 256) -> int:
+    """从 ckpt 的文本位置编码形状读出它训练时用的 context_length。
+
+    为什么必须自动探测：评测脚本里写死 `force_context_length=256` 时，加载一个
+    320 窗口的 ckpt 会静默走 `resize_text_pos_embed`（`load_checkpoint` 里那一行），
+    把 320 个位置**插值压回 256** —— 不报错、不 missing，指标只是变差一点，
+    是最难发现的一类口径错配。宁可在这里多读一次 ckpt。
+    """
+    import torch as _torch
+    ck = _torch.load(checkpoint_path, map_location='cpu', weights_only=False)
+    sd = ck['state_dict'] if isinstance(ck, dict) and 'state_dict' in ck else ck
+    for k, v in sd.items():
+        # 文本塔的位置编码；视觉塔那一个键名里带 visual，排除掉
+        if k.endswith('positional_embedding') and 'visual' not in k:
+            return int(v.shape[0])
+    return default
+
+
 def load_checkpoint(
         model: Union[CLIP, CustomTextCLIP],
         checkpoint_path: str,

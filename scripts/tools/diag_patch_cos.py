@@ -51,11 +51,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 def load_model(ckpt_path, device):
     """与 eval_ovss / eval_knn_probe 完全相同的加载路径，保证与那些数字可对照。"""
     from open_clip import create_model_and_transforms
+    from open_clip.factory import context_length_from_checkpoint
     from open_clip.model import CLIPLeJEPA
 
+    ctx = context_length_from_checkpoint(ckpt_path)
     base, _, val_tr = create_model_and_transforms(
         "PE-Core-B-16-dinov3", "", precision="fp32", device="cpu",
-        output_dict=True, force_context_length=256)
+        output_dict=True, force_context_length=ctx)
     model = CLIPLeJEPA(clip_model=base, sigreg_target="cls", output_dict=True)
     sd = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     sd = sd.get("state_dict", sd)

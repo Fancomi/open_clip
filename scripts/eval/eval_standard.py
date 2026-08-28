@@ -92,11 +92,13 @@ def apply_neg_mode(sim, neg_mode, neg_alpha=1.0):
 
 def load_model(ckpt_path, device):
     from open_clip import create_model_and_transforms, get_tokenizer
+    from open_clip.factory import context_length_from_checkpoint
     from open_clip.model import CLIPLeJEPA
 
+    ctx = context_length_from_checkpoint(ckpt_path)
     base, train_tr, val_tr = create_model_and_transforms(
         "PE-Core-B-16-dinov3", "", precision="fp32", device="cpu",
-        output_dict=True, force_context_length=256)
+        output_dict=True, force_context_length=ctx)
     model = CLIPLeJEPA(clip_model=base, sigreg_target="cls", output_dict=True)
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     sd = ckpt["state_dict"] if "state_dict" in ckpt else ckpt
@@ -105,7 +107,8 @@ def load_model(ckpt_path, device):
     model = model.to(device).eval()
     if device == "cuda":
         model = model.half()
-    tok = get_tokenizer("PE-Core-B-16-dinov3", context_length=256)
+    print(f"  context_length={ctx}（按 ckpt 的 text.positional_embedding 探测，不写死）", flush=True)
+    tok = get_tokenizer("PE-Core-B-16-dinov3", context_length=ctx)
     return model, tok, val_tr
 
 

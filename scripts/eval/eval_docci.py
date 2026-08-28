@@ -99,6 +99,8 @@ def main():
                     choices=["standard", "projective", "antipodal", "orthogonal"],
                     help="必须与训练配方一致（查 logs/<run>/params.txt 的 neg_mode）")
     ap.add_argument("--neg-alpha", type=float, default=1.0)
+    ap.add_argument("--tok-context-length", type=int, default=None,
+                    help="只改分词窗口、不动模型（默认跟 ckpt 探测值）。把 320 训练的 ckpt 按 256 分词，用来把\"模型变好\"与\"评测文本少截断\"分开")
     ap.add_argument("--batch", type=int, default=25)
     ap.add_argument("--limit", type=int, default=0, help=">0 时只跑前 N 对（冒烟用，★数字不可与全量混比★）")
     args = ap.parse_args()
@@ -112,7 +114,7 @@ def main():
     scope = f"★limit={args.limit}（非全量，不可与全量混比）★" if args.limit else "★全量★"
     print(f"  数据: {n} 图 × {n} 条人写长描述（1:1 配对，训练集外）{scope}", flush=True)
 
-    model, tok, val_tr = load_model(args.ckpt, device)
+    model, tok, val_tr = load_model(args.ckpt, device, tok_ctx=args.tok_context_length)
     dt = torch.float16 if device == "cuda" else torch.float32
 
     toks = tok(caps)

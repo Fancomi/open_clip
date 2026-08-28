@@ -62,17 +62,20 @@ IMAGENET_VAL = Path("/root/paddlejob/workspace/env_run/penghaotian/datas/imagene
 
 def load_model(ckpt_path, device):
     from open_clip import create_model_and_transforms
+    from open_clip.factory import context_length_from_checkpoint
     from open_clip.model import CLIPLeJEPA
 
+    ctx = context_length_from_checkpoint(ckpt_path)
     base, _, val_tr = create_model_and_transforms(
         "PE-Core-B-16-dinov3", "", precision="fp32", device="cpu",
-        output_dict=True, force_context_length=256)
+        output_dict=True, force_context_length=ctx)
     model = CLIPLeJEPA(clip_model=base, sigreg_target="cls", output_dict=True)
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     sd = ckpt["state_dict"] if "state_dict" in ckpt else ckpt
     sd = {k.replace("module.", ""): v for k, v in sd.items()}
     missing, unexpected = model.load_state_dict(sd, strict=False)
-    print(f"  加载 {Path(ckpt_path).name}: missing={len(missing)} unexpected={len(unexpected)}", flush=True)
+    print(f"  加载 {Path(ckpt_path).name}: missing={len(missing)} unexpected={len(unexpected)} "
+          f"context_length={ctx}（探测值；本口径纯图像，不受它影响，只为杜绝静默 resize）", flush=True)
     model = model.to(device).eval()
     if device == "cuda":
         model = model.half()

@@ -41,23 +41,31 @@ def apply_neg_mode(sim, neg_mode, neg_alpha=1.0):
     return sim
 
 
-def load_model(ckpt_path, device):
+def load_model(ckpt_path, device, tok_ctx=None):
     from open_clip import create_model_and_transforms, get_tokenizer
+    from open_clip.factory import context_length_from_checkpoint
     from open_clip.model import CLIPLeJEPA
 
+    ctx = context_length_from_checkpoint(ckpt_path)
     base, _, val_tr = create_model_and_transforms(
         "PE-Core-B-16-dinov3", "", precision="fp32", device="cpu",
-        output_dict=True, force_context_length=256)
+        output_dict=True, force_context_length=ctx)
     model = CLIPLeJEPA(clip_model=base, sigreg_target="cls", output_dict=True)
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     sd = ckpt["state_dict"] if "state_dict" in ckpt else ckpt
     sd = {k.replace("module.", ""): v for k, v in sd.items()}
     missing, unexpected = model.load_state_dict(sd, strict=False)
-    print(f"  加载 {Path(ckpt_path).name}: missing={len(missing)} unexpected={len(unexpected)}", flush=True)
+    # tok_ctx 只改**分词窗口**，不动模型 —— `CustomTextCLIP.encode_text` 是按 seq_len
+    # 切位置编码的（`transformer.py:1289`），所以 320 的模型喂 256 长的 token 是**精确等价**于
+    # 一个 256 模型看同一段被截到 256 的文本，无插值、无损。用途：把"模型变好了"与
+    # "评测文本少被截了"分开（DOCCI 在 256 窗口下有 3.2% 的 query 触顶）。
+    tok_ctx = ctx if tok_ctx is None else int(tok_ctx)
+    print(f"  加载 {Path(ckpt_path).name}: missing={len(missing)} unexpected={len(unexpected)} "
+          f"模型 context_length={ctx}（ckpt 探测）分词窗口={tok_ctx}", flush=True)
     model = model.to(device).eval()
     if device == "cuda":
         model = model.half()
-    tok = get_tokenizer("PE-Core-B-16-dinov3", context_length=256)
+    tok = get_tokenizer("PE-Core-B-16-dinov3", context_length=tok_ctx)
     return model, tok, val_tr
 
 
@@ -85,6 +93,8 @@ def main():
                     choices=["standard", "projective", "antipodal", "orthogonal"],
                     help="必须与训练配方一致（查 logs/<run>/params.txt 的 neg_mode）")
     ap.add_argument("--neg-alpha", type=float, default=1.0)
+    ap.add_argument("--tok-context-length", type=int, default=None,
+                    help="只改分词窗口、不动模型（默认跟 ckpt 探测值）。把 320 训练的 ckpt 按 256 分词，用来把\"模型变好\"与\"评测文本少截断\"分开")
     ap.add_argument("--batch", type=int, default=25)
     args = ap.parse_args()
 
@@ -95,7 +105,7 @@ def main():
     n = len(paths)
     print(f"  数据: {n} 图 × {n} 长描述（1:1 配对，训练集外）", flush=True)
 
-    model, tok, val_tr = load_model(args.ckpt, device)
+    model, tok, val_tr = load_model(args.ckpt, device, tok_ctx=args.tok_context_length)
     dt = torch.float16 if device == "cuda" else torch.float32
 
     with torch.no_grad():
