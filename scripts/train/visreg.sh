@@ -134,6 +134,8 @@ run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
                 --max-region ${MAX_REGION:-12} --region-gather ${REGION_GATHER:-local} \
                 --region-cc-weight ${REGION_CC_WEIGHT:-0.1} \
                 ${REGION_SHARED_SCALE:+--region-shared-scale} \
+                ${REGION_ROI_GRID:+--region-roi-grid ${REGION_ROI_GRID}} \
+                ${REGION_ROI_AGG:+--region-roi-agg ${REGION_ROI_AGG}} \
                 ${REGION_NO_HEAD:+--region-no-boxtext-head} ${_IMGAUG}"
     fi
     # 无区域但要 resize-only 对照（A' 组）
@@ -410,12 +412,12 @@ case "${1:-usage}" in
         echo "!!!! 缺 ${REGION_TSV} —— 先跑 python scripts/data/build_region_tsv.py"
         exit 1
     fi
-    DATA_VERSION="regw${REGION_WEIGHT:-0.2}k${MAX_REGION:-12}${REGION_GATHER:+-}${REGION_GATHER:-}${REGION_SHARED_SCALE:+-sharedsc}_${NEG_MODE}" \
+    DATA_VERSION="regw${REGION_WEIGHT:-0.2}k${MAX_REGION:-12}${REGION_GATHER:+-}${REGION_GATHER:-}${REGION_SHARED_SCALE:+-sharedsc}${REGION_ROI_GRID:+-roi${REGION_ROI_GRID}${REGION_ROI_AGG:-mean}}_${NEG_MODE}" \
     GEMMA_TSV="${REGION_TSV}" \
     CSV_CAPTION_KEY=caption \
     REGION_WEIGHT="${REGION_WEIGHT:-0.2}" \
     MAX_REGION="${MAX_REGION:-12}" \
-      run_gemma "E" 29680 "${VISREG_E}"
+      run_gemma "E" ${PORT:-29680} "${VISREG_E}"
     ;;
 
   # ── ★ H 组：C3 + 随机裁剪（框随裁剪同步变换）───────────────────────────────
