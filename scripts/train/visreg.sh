@@ -413,7 +413,10 @@ case "${1:-usage}" in
   #        bash scripts/train/visreg.sh gt-resize           # A' 组：gt 短文 + resize-only 对照
   #        REGION_WEIGHT=0.2 MAX_REGION=6 bash ... region   # 超参 override
   region)
-    REGION_TSV="${GEMMA_TSV_DIR}/clip_train_region.tsv"
+    # REGION_TSV_NAME 可换表：clip_train_region.tsv（建表期硬截 K=12，79.7% 的图卡在上限）
+    # 或 clip_train_region_k24.tsv（K=24，18.71 区域/图，77.4% 的图超过 12）。
+    # ⚠️ 换表必须同时传 MAX_REGION，否则训练侧仍按默认 12 截（按面积降序 → 等价于旧表）。
+    REGION_TSV="${GEMMA_TSV_DIR}/${REGION_TSV_NAME:-clip_train_region.tsv}"
     if [ ! -f "${REGION_TSV}" ]; then
         echo "!!!! 缺 ${REGION_TSV} —— 先跑 python scripts/data/build_region_tsv.py"
         exit 1
