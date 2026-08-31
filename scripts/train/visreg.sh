@@ -490,10 +490,13 @@ case "${1:-usage}" in
   #      286.9 万的 **69.2%**，与 Task #21 查出的 `clip_train_dual.tsv` 丢行比例 69.34%
   #      几乎相同 —— 同一个 bug（建表时把 BPE>256 的行**整行丢掉**）。
   #      全量版 `clip_train_pcmregion_full.tsv`（286.9 万，与 region 表等量，超窗行运行时截断）
-  #      已于 08-28 18:13 与 dual_full 同批建好。用 `PR_TSV_NAME=clip_train_pcmregion_full.tsv`
-  #      覆盖即可，默认值不动以保住 G / C9 / C9s1 / C11 的可比性。
+  #      已于 08-28 18:13 与 dual_full 同批建好。
+  #   ✅✅ 08-31 §5.29/§5.30（C9F 判 X1、C9Fs1 判 Z1）后**默认表已改为 _full**：
+  #      修丢行在三损失族上 13/13 口径同向为正（IN-1k +2.72、k-NN bb +2.02、
+  #      DOCCI 71.70/74.98 刷新全项目最高），且 seed 双峰从 29.23 缩到 2.21。
+  #      要复现 G / C9 / C9s1 / C11 的口径，显式传 `PR_TSV_NAME=clip_train_pcmregion.tsv`。
   pcm-region)
-    PR_TSV="${GEMMA_TSV_DIR}/${PR_TSV_NAME:-clip_train_pcmregion.tsv}"
+    PR_TSV="${GEMMA_TSV_DIR}/${PR_TSV_NAME:-clip_train_pcmregion_full.tsv}"
     [ -f "${PR_TSV}" ] || { echo "!!!! 缺 ${PR_TSV} —— 先跑 scripts/data/build_pcm_region_tsv.py"; exit 1; }
     DATA_VERSION="pcmregw${REGION_WEIGHT:-0.2}p${PCM_WEIGHT:-0.2}${REGION_ROI_GRID:+-roi${REGION_ROI_GRID}${REGION_ROI_AGG:-mean}}${DV_SUFFIX:-}_${NEG_MODE}" \
     PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" \
