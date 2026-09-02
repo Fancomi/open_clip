@@ -652,6 +652,17 @@ def parse_args(args):
         )
     )
     parser.add_argument(
+        "--region-text-chunk", default=0, type=int,
+        help=(
+            '区域短语过文本塔时的分块条数。0=关，**与已有全部 run 逐位相同**（整块前向）。'
+            '>0 时把 [B*K,L] 切成每块 N 条分别前向，每块各自截断到块内最大长度 → '
+            '显存峰值从「batch 内最长短语」解耦成「块内最长短语」。'
+            '动机：文本塔按 batch 内最大长度截断（commit a4338fc）后，峰值由 batch 里'
+            '最长那条区域短语决定，K=24 时随机撞上长尾 batch 就 OOM（33% 处炸，'
+            '反解约 57 token）。文本塔逐行独立 ⇒ 分块数值等价，只多几次 kernel launch。'
+        )
+    )
+    parser.add_argument(
         "--csv-region-key", default=None, type=str,
         help='TSV 里区域列的列名（如 regions）。见 scripts/data/build_region_tsv.py'
     )

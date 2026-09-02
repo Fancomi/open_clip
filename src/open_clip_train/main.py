@@ -320,6 +320,7 @@ def main(args):
                                  and not getattr(args, 'region_no_boxtext_head', False)),
             region_roi_grid=getattr(args, 'region_roi_grid', 1),
             region_roi_agg=getattr(args, 'region_roi_agg', 'mean'),
+            region_text_chunk=getattr(args, 'region_text_chunk', 0),
         )
         model = model.to(device)
 

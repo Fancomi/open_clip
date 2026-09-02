@@ -141,6 +141,7 @@ run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
                 ${REGION_SHARED_SCALE:+--region-shared-scale} \
                 ${REGION_ROI_GRID:+--region-roi-grid ${REGION_ROI_GRID}} \
                 ${REGION_ROI_AGG:+--region-roi-agg ${REGION_ROI_AGG}} \
+                ${REGION_TEXT_CHUNK:+--region-text-chunk ${REGION_TEXT_CHUNK}} \
                 ${REGION_NO_HEAD:+--region-no-boxtext-head} ${_IMGAUG}"
     fi
     # 无区域但要 resize-only 对照（A' 组）

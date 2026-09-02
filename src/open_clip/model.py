@@ -734,6 +734,7 @@ class CLIPLeJEPA(nn.Module):
             region_boxtext_head: bool = False,
             region_roi_grid: int = 1,
             region_roi_agg: str = 'mean',
+            region_text_chunk: int = 0,
     ):
         super().__init__()
         # 区域特征取法（C5）：roi_align 输出 grid×grid，再按 agg 聚合。
@@ -743,6 +744,11 @@ class CLIPLeJEPA(nn.Module):
         assert region_roi_agg in ('mean', 'mil'), region_roi_agg
         self.region_roi_grid = max(1, int(region_roi_grid))
         self.region_roi_agg = region_roi_agg if self.region_roi_grid > 1 else 'mean'
+        # 区域文本分块前向：0/负 = 关（与历史 run 逐位相同）。
+        # >0 时把 [B*K,L] 的区域短语切成每块 N 条分别过文本塔，逐块各自截断到
+        # 块内最大长度 —— 显存峰值从「batch 内最长短语」解耦成「块内最长短语」。
+        # 文本塔逐行独立（causal + pad-mask），分块在数值上等价。
+        self.region_text_chunk = max(0, int(region_text_chunk))
         self.output_dict = output_dict
         self.clip_model = clip_model
         self.visual = clip_model.visual
@@ -979,6 +985,26 @@ class CLIPLeJEPA(nn.Module):
         max_len = int(eot.max().item()) + 1
         return text[:, :max_len] if max_len < text.shape[1] else text
 
+    def _encode_region_texts(self, flat: torch.Tensor) -> torch.Tensor:
+        """区域短语过文本塔。[B*K,L] → [B*K,D]，不归一化。
+
+        `region_text_chunk == 0` 时走整块前向，与历史 run 逐位相同。
+        >0 时按固定条数分块：每块**各自**截断到块内最大长度，因此显存峰值由
+        「块内最长短语」决定，而不再由整个 batch 的最长短语决定 —— 这是 K=24 时
+        长尾 batch OOM 的根因（commit a4338fc 引入 batch-max 截断的副作用）。
+        文本塔是 causal + pad-mask 的逐行独立映射 ⇒ 分块结果与整块数值等价。
+        """
+        N = self.region_text_chunk
+        if N <= 0 or flat.shape[0] <= N:
+            return self.clip_model.encode_text(
+                self._trim_to_batch_max(flat), normalize=False)
+        outs = [
+            self.clip_model.encode_text(
+                self._trim_to_batch_max(flat[i:i + N]), normalize=False)
+            for i in range(0, flat.shape[0], N)
+        ]
+        return torch.cat(outs, dim=0)
+
     def forward(self, image: Optional[torch.Tensor] = None, text: Optional[torch.Tensor] = None,
                 text2: Optional[torch.Tensor] = None,
                 region_texts: Optional[torch.Tensor] = None,
@@ -1046,8 +1072,7 @@ class CLIPLeJEPA(nn.Module):
                 # 短语定长展平（与 rois 同为 batch-major，逐位对应）
                 B, K, L = region_texts.shape
                 flat = region_texts.reshape(B * K, L)
-                txt_raw = self.clip_model.encode_text(
-                    self._trim_to_batch_max(flat), normalize=False)
+                txt_raw = self._encode_region_texts(flat)
                 if self.boxtext_head is not None:
                     txt_raw = self.boxtext_head(txt_raw)
                 region_img_f = F.normalize(rois, dim=-1)
