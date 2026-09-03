@@ -34,18 +34,36 @@ class RandomResizedCropWithBoxes:
     （gt_s1 有裁剪 23.16/22.95 vs A' 无裁剪 21.46/22.25，同 commit，均超 2σ）——
     这部分正则化收益不该白丢。本类把裁剪参数取出来，让框跟着变换。
 
-    删减策略：**完全包含**（框必须整体落在裁剪区内，否则丢弃）。
-    不用 clip+IoU 阈值，因为我们的框绑定的是短语级语义
-    （"orange equilateral triangle"），切掉一半后短语与区域不再对应；
-    检测任务里 clip 一个 person 框还是 person，容忍度不同。
+    删减策略有两档，由 `keep_area_thr` 选：
+
+    - `keep_area_thr <= 0`（默认，历史行为）：**完全包含** —— 框必须整体落在裁剪区内，
+      否则丢弃。当初的理由是我们的框绑定短语级语义（"orange equilateral triangle"），
+      切掉一半后短语与区域不再对应；检测任务里 clip 一个 person 框还是 person，
+      容忍度不同。
+    - `keep_area_thr > 0`：**clip + 保留面积比阈值** —— 把框裁到 [0,1] 内，
+      只要「裁剪后面积 / 裁剪前面积 ≥ 阈值」就保留（保留的是裁过的框）。
+      动机：完全包含在 scale=(0.9,1.0) 下丢掉四分之一以上的框，等于把区域监督的
+      信号量削掉一大块 —— 而 H 组那次 crop-aug 判有害（k-NN −0.55 / COCO t2i −0.40）时，
+      我们错把原因归给「保框约束削弱了增强」，实际 H 用的 scale 与 gt_base 完全相同，
+      真正的差别就是这笔框损失。改 clip + 面积阈值后丢框率大幅下降，
+      而语义损失被阈值兜住（thr=0.8 ⇒ 最多切掉 20% 面积）。
+
+    实测丢框率（k24 表 3000 图 / 20138 框，K=12，scale=(0.9,1.0)，ratio=(3/4,4/3)，
+    见 /tmp/verify_keep_area.py）：
+
+    | thr | 0（完全包含） | 0.9 | 0.8 | 0.7 | 0.6 | 0.5 | 0.3 |
+    |---|---|---|---|---|---|---|---|
+    | 丢框率 | 26.2% | 12.1% | **6.9%** | 3.0% | 1.8% | 1.2% | 0.7% |
+    | 零框图 | 6.0% | 3.1% | **1.7%** | 0.9% | 0.8% | 0.7% | 0.6% |
     """
 
-    def __init__(self, size, scale, ratio, interpolation, tail):
+    def __init__(self, size, scale, ratio, interpolation, tail, keep_area_thr=0.0):
         self.size = size if isinstance(size, (tuple, list)) else (size, size)
         self.scale = scale
         self.ratio = ratio
         self.interpolation = interpolation
         self.tail = tail            # ToTensor + Normalize 等后续变换
+        self.keep_area_thr = float(keep_area_thr)
 
     def __call__(self, img, boxes, n_valid):
         """img: PIL；boxes: [K,4] 归一化；n_valid: int。返回 (tensor, boxes, n_valid)。"""
@@ -63,9 +81,16 @@ class RandomResizedCropWithBoxes:
         b[:, 2] = (b[:, 2] * W - j) / w
         b[:, 1] = (b[:, 1] * H - i) / h
         b[:, 3] = (b[:, 3] * H - i) / h
-        # 完全包含：四边都在 [0,1] 内，且仍有面积
-        keep = ((b[:, 0] >= 0) & (b[:, 1] >= 0) & (b[:, 2] <= 1) & (b[:, 3] <= 1)
-                & (b[:, 2] > b[:, 0]) & (b[:, 3] > b[:, 1]))
+        if self.keep_area_thr <= 0:
+            # 完全包含：四边都在 [0,1] 内，且仍有面积
+            keep = ((b[:, 0] >= 0) & (b[:, 1] >= 0) & (b[:, 2] <= 1) & (b[:, 3] <= 1)
+                    & (b[:, 2] > b[:, 0]) & (b[:, 3] > b[:, 1]))
+        else:
+            # clip 到画面内，按「保留面积 / 原面积」过阈值决定留不留（留裁过的框）
+            area0 = ((b[:, 2] - b[:, 0]).clamp(min=0) * (b[:, 3] - b[:, 1]).clamp(min=0))
+            b = b.clamp(0.0, 1.0)
+            area1 = ((b[:, 2] - b[:, 0]).clamp(min=0) * (b[:, 3] - b[:, 1]).clamp(min=0))
+            keep = (area0 > 0) & (area1 > 0) & ((area1 / area0.clamp(min=1e-8)) >= self.keep_area_thr)
         kept = b[keep]
         newb = torch.zeros_like(boxes)
         nk = int(kept.shape[0])

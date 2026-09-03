@@ -673,9 +673,18 @@ def parse_args(args):
     parser.add_argument(
         "--region-crop-aug", default=False, action="store_true",
         help=(
-            '区域监督下启用随机裁剪，框随裁剪同步变换（完全包含策略：裁出画面的框丢弃）。'
+            '区域监督下启用随机裁剪，框随裁剪同步变换。删框判据见 --region-keep-area-thr。'
             '动机：关掉 RandomResizedCrop 实测代价 COCO i2t −1.70 / IN-1k −0.70（均超 2σ），'
             '这部分正则化收益不该白丢。优先级高于 --image-resize-only。'
+        )
+    )
+    parser.add_argument(
+        "--region-keep-area-thr", default=0.0, type=float,
+        help=(
+            '配合 --region-crop-aug 的删框判据。0（默认）= 完全包含（框整体在裁剪区内才留），'
+            'scale=(0.9,1.0) 下实测丢框 26.2%%、6.0%% 的图零框；'
+            '>0 = clip 到画面内并要求「裁后面积/裁前面积 ≥ 本值」，'
+            '0.8 → 6.9%%/1.7%%、0.6 → 1.8%%/0.8%%（k24 表 3000 图 20138 框实测）。'
         )
     )
     parser.add_argument(

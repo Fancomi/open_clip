@@ -256,16 +256,19 @@ def main(args):
     # 区域监督要求图像变换只做 resize（不做 RandomResizedCrop）——
     # 区域坐标是相对原图归一化的，随机裁剪会让坐标失效。FG-CLIP 同样直接 resize。
     if getattr(args, 'region_crop_aug', False) and getattr(args, 'region_weight', 0.0) > 0:
-        # 区域 + 随机裁剪：框跟着裁剪同步变换（完全包含策略，裁出画面的框丢弃）
+        # 区域 + 随机裁剪：框跟着裁剪同步变换
+        # 删框判据：--region-keep-area-thr（0 = 完全包含；>0 = clip + 保留面积比阈值）
         from torchvision.transforms import InterpolationMode, Compose
         from open_clip_train.data import RandomResizedCropWithBoxes
         _rrc = preprocess_train.transforms[0]          # 原 RandomResizedCrop
         _tail = Compose(list(preprocess_train.transforms[1:]))
+        _kat = float(getattr(args, 'region_keep_area_thr', 0.0) or 0.0)
         preprocess_train = RandomResizedCropWithBoxes(
             size=_rrc.size, scale=_rrc.scale, ratio=_rrc.ratio,
-            interpolation=InterpolationMode.BICUBIC, tail=_tail)
+            interpolation=InterpolationMode.BICUBIC, tail=_tail, keep_area_thr=_kat)
+        _pol = "完全包含（裁出画面的框丢弃）" if _kat <= 0 else f"clip + 保留面积 ≥ {_kat}"
         logging.info(f"=> region_crop_aug: RandomResizedCropWithBoxes"
-                     f"(size={_rrc.size}, scale={_rrc.scale}) —— 框随裁剪同步变换")
+                     f"(size={_rrc.size}, scale={_rrc.scale}) —— 框随裁剪同步变换，删框判据={_pol}")
     elif getattr(args, 'image_resize_only', False):
         from torchvision.transforms import Compose, Resize, InterpolationMode
         _sz = preprocess_val.transforms[0].size

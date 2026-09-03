@@ -134,7 +134,8 @@ run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
         # 图像变换：默认 resize-only（框坐标要求）；REGION_CROP_AUG=1 时改用
         # 框随裁剪同步变换（RandomResizedCropWithBoxes），拿回随机裁剪的正则化收益
         local _IMGAUG="--image-resize-only"
-        [ "${REGION_CROP_AUG:-0}" = "1" ] && _IMGAUG="--region-crop-aug"
+        [ "${REGION_CROP_AUG:-0}" = "1" ] && _IMGAUG="--region-crop-aug \
+                ${REGION_KEEP_AREA_THR:+--region-keep-area-thr ${REGION_KEEP_AREA_THR}}"
         REGION="--region-weight ${REGION_WEIGHT} --csv-region-key ${CSV_REGION_KEY:-regions} \
                 --max-region ${MAX_REGION:-12} --region-gather ${REGION_GATHER:-local} \
                 --region-cc-weight ${REGION_CC_WEIGHT:-0.1} \
