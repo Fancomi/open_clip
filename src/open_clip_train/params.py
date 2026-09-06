@@ -671,6 +671,41 @@ def parse_args(args):
         help='每图最多用多少个区域（实测 p90=11，成本随此值线性增长）'
     )
     parser.add_argument(
+        "--region-select", default="order", type=str,
+        choices=["order", "random", "random-epoch", "dedup"],
+        help=(
+            '每图候选框多于 --max-region 时怎么挑 K 个。'
+            'order（默认）= 取前 K 个，建表已按面积降序 ⇒ **与已有全部 run 逐位相同**；'
+            'random = 每图固定的随机 K 个（种子只含 --seed 与行号，跨 epoch 不变）；'
+            'random-epoch = 每 epoch 重挑（种子额外含 epoch）；'
+            'dedup = 仍按面积降序，但短语与前面重复的框排到最后 ⇒ 优先填满不同短语。'
+            '动机：K=12→24 实测既没用也没害（§5.33）但贵 26.5% 吞吐，'
+            '于是改问「哪 12 个」与「每 epoch 换不换」；random-epoch 在 4× 重复的 CC3M 上'
+            '相当于零算力增加唯一监督（§5.15 实测唯一数据减半值 −3.2~−4.0）。'
+            'dedup 的量级（1/100 代表性切片 28,690 行实测）：全部候选 18.71 框/图 → 去重后'
+            '15.09 唯一短语（重复率 19.3%），order 取的 top-12 是 10.92 → 9.35'
+            '（重复率 14.5%，~84% 的图至少有一个重复短语）；region_gather=local 下'
+            '这些重复短语在 512×K 的短语池里是确定的假负例。'
+            '四种取法都保持子集内原有的面积降序，框数一律 = min(K, 候选数)，'
+            '且候选数 ≤ K 的行四者完全一致。'
+        )
+    )
+    parser.add_argument(
+        "--region-crop-fix-align", default=False, action="store_true",
+        help=(
+            '修正 --region-crop-aug 下「删框后短语错配」这个 bug（默认关，只为与 C13/C14/C15 '
+            '三臂逐位可比；新臂一律显式打开）。'
+            'bug 本体：删框时 `kept = b[keep]` 把保留的框压到前面，而挑短语用的是 '
+            '`phrases[:n_valid]`（取前 n 个）—— 只要被丢的框不在末尾，从它往后每个 slot 的'
+            '短语都错位一格。框按面积降序、大框最容易被裁出画面 ⇒ 错配偏向从开头就发生。'
+            '实测（clip_train_region.tsv 1/100 代表性切片 2 万图）保留框中错配比例：'
+            'thr=0.8 **2.41%**、thr=0.6 0.27%、thr=0（完全包含）**53.95%** —— '
+            '即 08-24 H 组与 C15 那档「完全包含」有一半以上的区域监督配到了错短语，'
+            '这可能就是 H 组当年判「crop-aug 有害」的真因（而不是丢框本身）。'
+            '打开后按 keep 掩码取对应短语，配对严格正确。'
+        )
+    )
+    parser.add_argument(
         "--region-crop-aug", default=False, action="store_true",
         help=(
             '区域监督下启用随机裁剪，框随裁剪同步变换。删框判据见 --region-keep-area-thr。'

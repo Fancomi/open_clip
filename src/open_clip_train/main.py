@@ -263,12 +263,16 @@ def main(args):
         _rrc = preprocess_train.transforms[0]          # 原 RandomResizedCrop
         _tail = Compose(list(preprocess_train.transforms[1:]))
         _kat = float(getattr(args, 'region_keep_area_thr', 0.0) or 0.0)
+        _fa = bool(getattr(args, 'region_crop_fix_align', False))
         preprocess_train = RandomResizedCropWithBoxes(
             size=_rrc.size, scale=_rrc.scale, ratio=_rrc.ratio,
-            interpolation=InterpolationMode.BICUBIC, tail=_tail, keep_area_thr=_kat)
+            interpolation=InterpolationMode.BICUBIC, tail=_tail, keep_area_thr=_kat,
+            fix_align=_fa)
         _pol = "完全包含（裁出画面的框丢弃）" if _kat <= 0 else f"clip + 保留面积 ≥ {_kat}"
+        _al = "按 keep 掩码取短语（已修错配）" if _fa else "取前 n 个短语（历史行为，丢框不在末尾即错配）"
         logging.info(f"=> region_crop_aug: RandomResizedCropWithBoxes"
-                     f"(size={_rrc.size}, scale={_rrc.scale}) —— 框随裁剪同步变换，删框判据={_pol}")
+                     f"(size={_rrc.size}, scale={_rrc.scale}) —— 框随裁剪同步变换，"
+                     f"删框判据={_pol}，短语配对={_al}")
     elif getattr(args, 'image_resize_only', False):
         from torchvision.transforms import Compose, Resize, InterpolationMode
         _sz = preprocess_val.transforms[0].size

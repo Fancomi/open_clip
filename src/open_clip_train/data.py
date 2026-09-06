@@ -55,18 +55,38 @@ class RandomResizedCropWithBoxes:
     |---|---|---|---|---|---|---|---|
     | 丢框率 | 26.2% | 12.1% | **6.9%** | 3.0% | 1.8% | 1.2% | 0.7% |
     | 零框图 | 6.0% | 3.1% | **1.7%** | 0.9% | 0.8% | 0.7% | 0.6% |
+
+    ⚠️ 上表测在 `clip_train_region_k24.tsv` 的**前 3000 行**上，而那一段每图只有
+    8.29 个候选框、全表是 18.71（>K 的行 23.9% vs 全表 77.5%）—— **不具代表性**。
+    在 `clip_train_region.tsv` 的 1/100 代表性切片（2 万图，见 /tmp/measure_misalign.py）
+    上重测：thr=0.8 丢框 1.37%、thr=0.6 丢框 0.23%、thr=0（完全包含）丢框 **39.92%**。
+    引用丢框率一律用后一组。
+
+    ⚠️⚠️ 删框会把短语配对打乱（`--region-crop-fix-align` 之前的历史行为）：
+    `kept = b[keep]` 把保留的框**压到前面**，而调用方取短语时用的是 `phrases[:n_valid]`
+    ——「取前 n 个」。只要被丢的框不在末尾，从它往后每个 slot 的短语都错位一格。
+    同一切片实测「保留框中错配比例」：thr=0.8 **2.41%**、thr=0.6 0.27%、
+    thr=0 **53.95%**（有错配的图分别 6.52% / 1.03% / 65.34%）。
+    框按面积降序 ⇒ 大框在前、也最容易被裁出画面 ⇒ 错配偏向发生在**开头**、影响最大。
     """
 
-    def __init__(self, size, scale, ratio, interpolation, tail, keep_area_thr=0.0):
+    def __init__(self, size, scale, ratio, interpolation, tail, keep_area_thr=0.0,
+                 fix_align=False):
         self.size = size if isinstance(size, (tuple, list)) else (size, size)
         self.scale = scale
         self.ratio = ratio
         self.interpolation = interpolation
         self.tail = tail            # ToTensor + Normalize 等后续变换
         self.keep_area_thr = float(keep_area_thr)
+        self.fix_align = bool(fix_align)   # 见 --region-crop-fix-align
 
     def __call__(self, img, boxes, n_valid):
-        """img: PIL；boxes: [K,4] 归一化；n_valid: int。返回 (tensor, boxes, n_valid)。"""
+        """img: PIL；boxes: [K,4] 归一化；n_valid: int。
+
+        返回 (tensor, boxes, n_valid, kept_idx)。`kept_idx` 是保留下来的框在**输入
+        顺序**里的下标列表，供调用方挑对应短语；`fix_align=False` 时返回 None，
+        调用方退回历史行为（取前 n_valid 个短语 —— 有丢框时会错配，见该开关的说明）。
+        """
         from torchvision.transforms import RandomResizedCrop
         from torchvision.transforms.functional import resized_crop
         W, H = img.size
@@ -74,7 +94,7 @@ class RandomResizedCropWithBoxes:
         out = self.tail(resized_crop(img, i, j, h, w, list(self.size),
                                      interpolation=self.interpolation, antialias=True))
         if n_valid == 0 or w <= 0 or h <= 0:
-            return out, boxes, n_valid
+            return out, boxes, n_valid, (list(range(n_valid)) if self.fix_align else None)
         # 归一化(原图) → 像素 → 减裁剪原点 → 除裁剪尺寸 = 归一化(裁剪后)
         b = boxes[:n_valid].clone()
         b[:, 0] = (b[:, 0] * W - j) / w
@@ -96,12 +116,14 @@ class RandomResizedCropWithBoxes:
         nk = int(kept.shape[0])
         if nk:
             newb[:nk] = kept
-        return out, newb, nk
+        kept_idx = [x for x, v in enumerate(keep.tolist()) if v] if self.fix_align else None
+        return out, newb, nk, kept_idx
 
 
 class CsvDataset(Dataset):
     def __init__(self, input_filename, transforms, img_key, caption_key, sep="\t", tokenizer=None,
-                 caption2_key=None, tokenizer2=None, region_key=None, max_region=12):
+                 caption2_key=None, tokenizer2=None, region_key=None, max_region=12,
+                 region_select="order", region_seed=0, shared_epoch=None):
         logging.debug(f'Loading csv data from {input_filename}.')
         df = pd.read_csv(input_filename, sep=sep)
 
@@ -123,6 +145,35 @@ class CsvDataset(Dataset):
         self.region_key = region_key if region_key and region_key in df.columns else None
         self.regions = df[region_key].tolist() if self.region_key else None
         self.max_region = max_region
+        self.region_select = region_select
+        self.region_seed = region_seed
+        self.shared_epoch = shared_epoch
+
+    def _select_regions(self, items, idx, K):
+        """候选框多于 K 时挑 K 个（见 --region-select）。
+
+        order        取前 K 个（建表按面积降序 ⇒ 与历史 run 逐位一致）
+        random       每图固定的随机 K 个（种子 = seed × 行号，跨 epoch 不变）
+        random-epoch 每 epoch 重挑（种子额外含 epoch，由 SharedEpoch 传进 worker）
+        dedup        仍按面积降序，但短语重复的框排到最后 ⇒ 优先填满不同短语
+
+        四种取法都返回**保持原有面积降序**的子集，且框数一律 = min(K, 候选数)；
+        候选数 ≤ K 时四者完全一致。
+        """
+        if self.region_select == "order" or len(items) <= K:
+            return items[:K]
+        if self.region_select == "dedup":
+            seen, first, dup = set(), [], []
+            for i, it in enumerate(items):
+                p = str(it[0])
+                (dup if p in seen else first).append(i)
+                seen.add(p)
+            return [items[i] for i in sorted((first + dup)[:K])]
+        ep = 0
+        if self.region_select == "random-epoch" and self.shared_epoch is not None:
+            ep = self.shared_epoch.get_value()
+        rng = random.Random((self.region_seed * 1000003 + idx) * 1009 + ep)
+        return [items[i] for i in sorted(rng.sample(range(len(items)), K))]
 
     def __len__(self):
         return len(self.captions)
@@ -147,7 +198,7 @@ class CsvDataset(Dataset):
             # K 固定为 max_region，不足处补零并由 n_valid 标记有效数（collate 需定长）
             K = self.max_region
             try:
-                items = json.loads(self.regions[idx])[:K]
+                items = self._select_regions(json.loads(self.regions[idx]), idx, K)
             except (TypeError, ValueError):
                 items = []
             phrases = [str(it[0]) for it in items]
@@ -160,10 +211,13 @@ class CsvDataset(Dataset):
             region_texts = self.tokenize(phrases + [""] * pad) if K else torch.zeros(0, dtype=torch.long)
             if box_aware:
                 # 图像与框同步变换；n_valid 可能因框被裁出画面而减少
-                images, boxes, n_valid = self.transforms(pil, boxes, n_valid)
+                images, boxes, n_valid, kept_idx = self.transforms(pil, boxes, n_valid)
                 if n_valid < K:                  # 被删的框对应短语置空（mask 会掩掉）
                     pad2 = K - n_valid
-                    region_texts = self.tokenize(phrases[:n_valid] + [""] * pad2)
+                    # kept_idx 非 None（--region-crop-fix-align）时按保留下标挑短语；
+                    # None 时退回历史行为「取前 n_valid 个」—— 丢框不在末尾就会错配
+                    sel = phrases[:n_valid] if kept_idx is None else [phrases[i] for i in kept_idx]
+                    region_texts = self.tokenize(sel + [""] * pad2)
             nv = torch.tensor(n_valid, dtype=torch.long)
             if self.captions2 is not None:
                 texts2 = self.tokenize2([str(self.captions2[idx])])[0]
@@ -171,7 +225,7 @@ class CsvDataset(Dataset):
             return images, texts, region_texts, boxes, nv
 
         if images is None:      # box_aware 但无区域列：退化为纯裁剪
-            images, _, _ = self.transforms(pil, torch.zeros(1, 4), 0)
+            images, _, _, _ = self.transforms(pil, torch.zeros(1, 4), 0)
         if self.captions2 is not None:
             texts2 = self.tokenize2([str(self.captions2[idx])])[0]
             return images, texts, texts2
@@ -729,6 +783,9 @@ def get_wds_dataset(args, preprocess_img, is_train, epoch=0, floor=False, tokeni
 def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None, **kwargs):
     input_filename = args.train_data if is_train else args.val_data
     assert input_filename
+    # 区域选框策略：只有 random-epoch 需要把 epoch 同步进 worker 进程
+    region_select = getattr(args, 'region_select', 'order') if is_train else 'order'
+    shared_epoch = SharedEpoch(epoch=epoch) if region_select == 'random-epoch' else None
     dataset = CsvDataset(
         input_filename,
         preprocess_fn,
@@ -740,6 +797,9 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None, **kw
         tokenizer2=kwargs.get('tokenizer_secondary', None),
         region_key=getattr(args, 'csv_region_key', None) if is_train else None,
         max_region=getattr(args, 'max_region', 12),
+        region_select=region_select,
+        region_seed=getattr(args, 'seed', 0),
+        shared_epoch=shared_epoch,
     )
     num_samples = len(dataset)
     sampler = DistributedSampler(dataset) if args.distributed and is_train else None
@@ -757,7 +817,7 @@ def get_csv_dataset(args, preprocess_fn, is_train, epoch=0, tokenizer=None, **kw
     dataloader.num_samples = num_samples
     dataloader.num_batches = len(dataloader)
 
-    return DataInfo(dataloader, sampler)
+    return DataInfo(dataloader, sampler, shared_epoch)
 
 
 class SyntheticDataset(Dataset):

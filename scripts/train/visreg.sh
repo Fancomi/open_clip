@@ -133,9 +133,12 @@ run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
     if [ -n "${REGION_WEIGHT:-}" ]; then
         # 图像变换：默认 resize-only（框坐标要求）；REGION_CROP_AUG=1 时改用
         # 框随裁剪同步变换（RandomResizedCropWithBoxes），拿回随机裁剪的正则化收益
+        # ⚠️ REGION_CROP_FIX_ALIGN=1 修「删框后短语错位」的 bug（默认关，只为与
+        #    C13/C13s1/C14/C15 逐位可比）；新的 crop-aug 臂一律要显式传 1
         local _IMGAUG="--image-resize-only"
         [ "${REGION_CROP_AUG:-0}" = "1" ] && _IMGAUG="--region-crop-aug \
-                ${REGION_KEEP_AREA_THR:+--region-keep-area-thr ${REGION_KEEP_AREA_THR}}"
+                ${REGION_KEEP_AREA_THR:+--region-keep-area-thr ${REGION_KEEP_AREA_THR}} \
+                $([ "${REGION_CROP_FIX_ALIGN:-0}" = "1" ] && echo --region-crop-fix-align)"
         REGION="--region-weight ${REGION_WEIGHT} --csv-region-key ${CSV_REGION_KEY:-regions} \
                 --max-region ${MAX_REGION:-12} --region-gather ${REGION_GATHER:-local} \
                 --region-cc-weight ${REGION_CC_WEIGHT:-0.1} \
@@ -143,6 +146,7 @@ run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
                 ${REGION_ROI_GRID:+--region-roi-grid ${REGION_ROI_GRID}} \
                 ${REGION_ROI_AGG:+--region-roi-agg ${REGION_ROI_AGG}} \
                 ${REGION_TEXT_CHUNK:+--region-text-chunk ${REGION_TEXT_CHUNK}} \
+                ${REGION_SELECT:+--region-select ${REGION_SELECT}} \
                 ${REGION_NO_HEAD:+--region-no-boxtext-head} ${_IMGAUG}"
     fi
     # 无区域但要 resize-only 对照（A' 组）
