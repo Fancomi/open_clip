@@ -100,6 +100,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
         is_multi_teacher = getattr(args, 'multi_teacher', False)
         is_pcm = getattr(args, 'pcm_weight', 0.0) > 0
         is_region = getattr(args, 'region_weight', 0.0) > 0
+        _has_t2 = False     # 本 batch 里到底有没有 text2（见下面 6 元组分支的注释）
         # PCM 与 dual_teacher/dual_text 共用「三元组 batch」解包路径（images, text, text2）
         is_dual_teacher = (getattr(args, 'dual_teacher', False) or getattr(args, 'dual_text', False)
                            or (is_pcm and not is_region))
@@ -128,7 +129,13 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
             if is_multi_teacher:
                 images = batch[0].to(device=device, dtype=input_dtype, non_blocking=True)
                 texts_list = [t.to(device=device, non_blocking=True) for t in batch[1:]]
-            elif is_region and is_pcm:
+            elif is_region and len(batch) == 6:
+                # ⚠️ 解包分支按 **batch 的实际元数** 决定，不按 pcm_weight ——
+                # 数据集只要 csv_caption2_key 命中列就会吐 text2（与权重无关，data.py:222），
+                # 旧写法 `is_region and is_pcm` 会让 `--pcm-weight 0` 的消融臂在第一个 batch
+                # 崩 "too many values to unpack (expected 5)"。
+                # 对历史所有臂是严格 no-op：至今每个臂都满足「配了 caption2 ⟺ pcm_weight>0」。
+                _has_t2 = True
                 images, texts, texts2, rtexts, rboxes, rnvalid = batch
                 images = images.to(device=device, dtype=input_dtype, non_blocking=True)
                 texts  = texts.to(device=device, non_blocking=True)
@@ -172,7 +179,7 @@ def train_one_epoch(model, data, loss, epoch, optimizer, scaler, scheduler, dist
                 else:
                     if is_multi_teacher:
                         model_out = model(images, texts_list)
-                    elif is_region and is_pcm:
+                    elif is_region and _has_t2:
                         model_out = model(images, texts, texts2, rtexts, rboxes, rnvalid)
                     elif is_region:
                         model_out = model(images, texts, None, rtexts, rboxes, rnvalid)

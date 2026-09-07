@@ -139,7 +139,11 @@ class CsvDataset(Dataset):
         # 可选第二文本列（DualTextCLIP 用）：caption2_key + tokenizer2
         self.caption2_key = caption2_key if caption2_key and caption2_key in df.columns else None
         self.captions2 = df[caption2_key].tolist() if self.caption2_key else None
-        self.tokenize2 = tokenizer2
+        # tokenizer2 为 None 时回退主 tokenizer：main.py 里 tokenizer_secondary 只在
+        # pcm_weight>0 时创建，且创建参数与主 tokenizer 逐位相同（同 model、同 context）
+        # ⇒ 回退对历史所有臂数值等价，只为让 `--pcm-weight 0` 的消融臂（caption2 列在、
+        #   权重为 0）不在第一个 batch 崩 'NoneType' object is not callable。
+        self.tokenize2 = tokenizer2 if tokenizer2 is not None else tokenizer
 
         # 可选区域列（FG-CLIP 式区域-短语对比）：JSON [[phrase,x1,y1,x2,y2], ...]，坐标已归一化
         self.region_key = region_key if region_key and region_key in df.columns else None
