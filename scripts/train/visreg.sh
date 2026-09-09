@@ -510,7 +510,7 @@ case "${1:-usage}" in
     DATA_VERSION="pcmregw${REGION_WEIGHT:-0.2}p${PCM_WEIGHT:-0.2}${REGION_ROI_GRID:+-roi${REGION_ROI_GRID}${REGION_ROI_AGG:-mean}}${DV_SUFFIX:-}_${NEG_MODE}" \
     PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True" \
     GEMMA_TSV="${PR_TSV}" \
-    CSV_CAPTION_KEY=caption_dense \
+    CSV_CAPTION_KEY="${PR_CAP_KEY:-caption_dense}" \
     CSV_CAPTION2_KEY=caption_short \
     PCM_WEIGHT="${PCM_WEIGHT:-0.2}" PCM_DIM="${PCM_DIM:-32}" \
     REGION_WEIGHT="${REGION_WEIGHT:-0.2}" MAX_REGION="${MAX_REGION:-12}" \
