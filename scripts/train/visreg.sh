@@ -135,10 +135,16 @@ run_gemma() {  # run_gemma TAG PORT EXTRA   (gemma dense 数据, 256 上下文)
         # 框随裁剪同步变换（RandomResizedCropWithBoxes），拿回随机裁剪的正则化收益
         # ⚠️ REGION_CROP_FIX_ALIGN=1 修「删框后短语错位」的 bug（默认关，只为与
         #    C13/C13s1/C14/C15 逐位可比）；新的 crop-aug 臂一律要显式传 1
+        # ⚠️⚠️ 这里**绝对不要**写成 `$([ cond ] && echo --flag)` —— 本文件是 `set -e`，
+        #    命令替换里 `[ ]` 判假会让整个赋值语句的退出码变 1，脚本当场静默退出
+        #    （C14/C15 就是这么死的：visreg.sh 返回 1、无输出目录、train.log 0 字节，
+        #     而 C13s1 因为在这行落地前就已起训所以没事）。用预先算好的变量。
+        local _FIXALIGN=""
+        [ "${REGION_CROP_FIX_ALIGN:-0}" = "1" ] && _FIXALIGN="--region-crop-fix-align"
         local _IMGAUG="--image-resize-only"
         [ "${REGION_CROP_AUG:-0}" = "1" ] && _IMGAUG="--region-crop-aug \
                 ${REGION_KEEP_AREA_THR:+--region-keep-area-thr ${REGION_KEEP_AREA_THR}} \
-                $([ "${REGION_CROP_FIX_ALIGN:-0}" = "1" ] && echo --region-crop-fix-align)"
+                ${_FIXALIGN}"
         REGION="--region-weight ${REGION_WEIGHT} --csv-region-key ${CSV_REGION_KEY:-regions} \
                 --max-region ${MAX_REGION:-12} --region-gather ${REGION_GATHER:-local} \
                 --region-cc-weight ${REGION_CC_WEIGHT:-0.1} \
